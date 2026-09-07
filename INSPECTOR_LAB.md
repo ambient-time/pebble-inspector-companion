@@ -1,6 +1,10 @@
 # Pebble Inspector Lab
 
 Private Android companion experiment for Field Inspector, by Luke Steuber.
+**Parked September 7, 2026:** the owner's Time 2 speech test was too choppy and
+quiet for conversational use. This isolated companion build is preserved for
+reuse; native recognition and provider integration were not implemented.
+See the [saved experiment](https://github.com/lukeslp/pebble-field-inspector/blob/main/docs/experiment-handoff.md).
 Based on [Core Devices' mobile app](https://github.com/coredevices/mobileapp) at
 `d52101ad3d8940c5aa392d6f224e774cb6f5ce84`.
 
