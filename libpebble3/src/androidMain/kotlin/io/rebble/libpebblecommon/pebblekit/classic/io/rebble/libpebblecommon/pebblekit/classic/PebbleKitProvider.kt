@@ -2,6 +2,8 @@ package io.rebble.libpebblecommon.pebblekit.classic
 
 import android.content.ContentProvider
 import android.content.ContentValues
+import android.content.ComponentName
+import android.content.Context
 import android.database.Cursor
 import android.database.MatrixCursor
 import android.net.Uri
@@ -43,7 +45,7 @@ class PebbleKitProvider : ContentProvider(), LibPebbleKoinComponent {
         selectionArgs: Array<out String>?,
         sortOrder: String?
     ): Cursor? {
-        if (uri != URI_CONTENT_BASALT) {
+        if (uri != contentUri(requireNotNull(context))) {
             return null
         }
 
@@ -122,7 +124,11 @@ class PebbleKitProvider : ContentProvider(), LibPebbleKoinComponent {
     }
 
     companion object {
-        internal val URI_CONTENT_BASALT = "content://com.getpebble.android.provider.basalt/state".toUri()
+        internal fun contentUri(context: Context): Uri {
+            val component = ComponentName(context, PebbleKitProvider::class.java)
+            val authority = context.packageManager.getProviderInfo(component, 0).authority
+            return "content://$authority/state".toUri()
+        }
     }
 }
 

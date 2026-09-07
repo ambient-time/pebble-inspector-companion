@@ -19,6 +19,7 @@ class PebbleKitProviderNotifier(
     }
 
     fun init() {
+        val contentUri = PebbleKitProvider.contentUri(context)
         libPebbleCoroutineScope.launch {
             watches.watches.map {
                 it.any { it is ConnectedPebbleDevice }
@@ -26,7 +27,7 @@ class PebbleKitProviderNotifier(
                 .distinctUntilChanged()
                 .collect {
                     try {
-                        context.contentResolver.notifyChange(PebbleKitProvider.URI_CONTENT_BASALT, null)
+                        context.contentResolver.notifyChange(contentUri, null)
                     } catch (e: SecurityException) {
                         logger.e(e) { "Failed to notify PebbleKitProvider content change - is the provider present in app manifest?" }
                     }

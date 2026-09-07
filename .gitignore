@@ -22,3 +22,6 @@ androidApp/src/main/assets/bundled-apps/
 iosApp/bundled-apps/*
 !iosApp/bundled-apps/.gitkeep
 .lock-waf_darwin_build
+/dist/
+/tools/__pycache__/
+/cactus-native/.cxx/

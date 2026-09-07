@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- PebbleKit no longer uses these declarations. Stock owns their names. -->
+    <permission android:name="io.rebble.pebblekit2.permission.SEND_DATA_TO_WATCH" tools:node="remove" />
+    <permission android:name="io.rebble.pebblekit2.permission.RECEIVE_DATA_FROM_WATCH" tools:node="remove" />
+    <permission android:name="io.rebble.pebblekit2.permission.READ_PROVIDER" tools:node="remove" />
+    <application
+        android:allowBackup="false"
+        android:fullBackupContent="@xml/inspector_backup_rules"
+        android:dataExtractionRules="@xml/inspector_data_extraction_rules"
+        tools:replace="android:allowBackup,android:fullBackupContent,android:dataExtractionRules">
+        <meta-data
+            android:name="firebase_crashlytics_collection_enabled"
+            android:value="false"
+            tools:replace="android:value" />
+        <meta-data android:name="firebase_analytics_collection_deactivated" android:value="true" />
+        <provider
+            android:name="io.rebble.libpebblecommon.pebblekit.two.PebbleKitProvider"
+            android:authorities="${applicationId}.pebblekit"
+            tools:replace="android:authorities" />
+        <provider
+            android:name="io.rebble.libpebblecommon.pebblekit.classic.PebbleKitProvider"
+            android:authorities="${applicationId}.pebblekit.classic"
+            tools:replace="android:authorities" />
+    </application>
+</manifest>

@@ -85,6 +85,12 @@ android {
                 mappingFileUploadEnabled = false
             }
         }
+        create("inspectorLab") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".inspectorlab"
+            matchingFallbacks += listOf("debug")
+            signingConfig = signingConfigs.getByName("debug")
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -96,6 +102,8 @@ dependencies {
     implementation(project(":composeApp"))
     // Components this module's manifest declares, so lint can resolve them.
     implementation(project(":util"))
+    // The lab manifest overrides both PebbleKit providers' authorities.
+    add("inspectorLabImplementation", project(":libpebble3"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.health.kmp)
 
@@ -119,9 +127,10 @@ dependencies {
 // configuration cache.
 androidComponents {
     onVariants { variant ->
+        val suffix = if (variant.buildType == "inspectorLab") "-inspector-lab.1" else ""
         variant.outputs.forEach {
             it.versionCode.set(gitVersionCode)
-            it.versionName.set(gitVersionName)
+            it.versionName.set(gitVersionName.map { version -> version + suffix })
         }
     }
 }
