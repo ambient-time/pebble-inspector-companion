@@ -5,6 +5,7 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class SignalSettings(
+    val onboardingComplete: Boolean = false,
     val provider: String = "openai",
     val model: String = "gpt-4.1-mini",
     val endpoint: String = "",
@@ -51,18 +52,22 @@ data class SignalRecord(
     val sourceKeys: Set<String> = emptySet(),
     val references: List<String> = emptyList(),
     val delivered: Boolean = false,
+    val kind: String = "analysis",
     val endpoint: String = "",
 )
 
 data class SignalSource(val key: String, val name: String, val group: String, val available: Boolean = true)
 data class SignalWatch(val id: String, val name: String, val connected: Boolean)
 data class SignalState(
+    val initialized: Boolean = false,
+    val buildVersion: String = "",
+    val installStatus: String = "",
     val settings: SignalSettings = SignalSettings(),
     val records: List<SignalRecord> = emptyList(),
     val sources: List<SignalSource> = emptyList(),
     val watches: List<SignalWatch> = emptyList(),
     val busy: Boolean = false,
-    val status: String = "Choose providers and collection sources in Settings.",
+    val status: String = "Choose sources, then capture when ready.",
     val threadId: String = "",
     val selectedRecordId: String? = null,
     val configuredProviders: Set<String> = emptySet(),
@@ -78,6 +83,10 @@ interface SignalStation {
     fun saveKey(provider: String, key: String)
     fun testProvider()
     fun ask(text: String, searchHistory: Boolean = false)
+    fun capture()
+    fun analyzeRecord(id: String)
+    fun installWatchApp()
+    fun openPermissionSettings()
     fun survey()
     fun recordOnWatch()
     fun cancel()

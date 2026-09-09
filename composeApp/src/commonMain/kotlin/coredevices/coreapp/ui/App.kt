@@ -5,6 +5,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
+import coredevices.pebble.signal.SignalStation
+import org.koin.compose.getKoin
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
@@ -34,14 +37,18 @@ fun App() {
     }
     AppTheme {
         val settings: Settings = koinInject()
-        val startDestination = if (settings.getBoolean(SHOWN_ONBOARDING, false)) {
+        val koin = getKoin()
+        val signal = remember(koin) { koin.getOrNull<SignalStation>() }
+        val startDestination = if (signal?.available == true) {
+            PebbleRoutes.SignalHomeRoute
+        } else if (settings.getBoolean(SHOWN_ONBOARDING, false)) {
             PebbleRoutes.WatchHomeRoute
         } else {
             CommonRoutes.OnboardingRoute
         }
         Box(Modifier.fillMaxSize().dismissKeyboardOnTapOutside()) {
             AppNavHost(navHostController, startDestination)
-            SttModelUpdatePrompt()
+            if (signal?.available != true) SttModelUpdatePrompt()
         }
     }
 }

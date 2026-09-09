@@ -547,12 +547,14 @@ fun WatchHomeScreen(
                         TopAppBar(
                             navigationIcon = {
                                 AnimatedVisibility(
-                                    visible = params.canGoBack,
+                                    visible = params.canGoBack || signalStation?.available == true,
                                     enter = fadeIn() + expandHorizontally(),
                                     exit = fadeOut() + shrinkHorizontally()
                                 ) {
                                     IconButton(onClick = {
-                                        if (overrideGoBack.subscriptionCount.value > 0) {
+                                        if (!params.canGoBack && signalStation?.available == true) {
+                                            coreNav.navigateTo(PebbleRoutes.SignalHomeRoute)
+                                        } else if (overrideGoBack.subscriptionCount.value > 0) {
                                             overrideGoBack.tryEmit(Unit)
                                         } else {
                                             pebbleNavHostController.popBackStack()
@@ -576,9 +578,7 @@ fun WatchHomeScreen(
                             actions = {
                                 if (signalStation?.available == true && params.title != "Signal Station") {
                                     TextButton(onClick = {
-                                        pebbleNavHostController.navigate(PebbleNavBarRoutes.SignalStationRoute) {
-                                            launchSingleTop = true
-                                        }
+                                        coreNav.navigateTo(PebbleRoutes.SignalHomeRoute)
                                     }) { Text("Signal Station") }
                                 }
                                 params.actions(this)
@@ -761,7 +761,9 @@ fun WatchHomeScreen(
                     params.searchState?.query = ""
                 }
                 BackHandler(enabled = params.searchState?.show != true && !params.canGoBack) {
-                    if (!moveCurrentTaskToBackground(rootBackUiContext)) {
+                    if (signalStation?.available == true) {
+                        coreNav.navigateTo(PebbleRoutes.SignalHomeRoute)
+                    } else if (!moveCurrentTaskToBackground(rootBackUiContext)) {
                         coreNav.goBack()
                     }
                 }

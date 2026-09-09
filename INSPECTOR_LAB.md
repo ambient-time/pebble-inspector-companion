@@ -1,9 +1,9 @@
-# Signal Station in Pebble Inspector Lab
+# Signal Station
 
 I built Signal Station to ask questions from a Pebble and give those questions
 a little context. Speak on the watch or type on the phone, choose the readings
 to include, and get a text reply. The phone keeps the full conversation and
-survey history; the watch collects signals and shows a short answer.
+capture history; the watch collects signals and shows a short answer.
 
 By Luke Steuber. This is an experimental Android companion and Pebble watchapp.
 
@@ -14,33 +14,37 @@ remains in Git history; its choppy speaker playback is no longer part of this ap
 
 ## Set up
 
-1. Install the verified `inspectorLab` APK. Its package is
-   `coredevices.coreapp.inspectorlab`, labeled **Pebble Inspector Lab**. Keep the
-   stock companion and its data. Bluetooth pairing is still shared hardware:
-   keep only one companion actively connected to the test watch.
-2. Complete watch setup, using **Skip sign in** for the account-free watch path.
-   Leave Index disabled. Open **Signal Station** from the watch companion toolbar.
-3. In Settings, select a provider, model, and its own key. OpenAI defaults to
-   `gpt-4.1-mini`. Anthropic, Gemini, xAI, OpenRouter, and custom OpenAI-compatible
-   Chat Completions endpoints are also supported. A custom endpoint must use
-   HTTPS. Provider testing sends a small paid request only when tapped.
-4. Choose **OpenAI** recognition and save its separate transcription key, or
-   explicitly choose the stock companion recognizer. OpenAI recognition requests
-   `gpt-transcribe`; the provider must support that model. There is no automatic
-   fallback. App-specific OpenAI dictation currently requires exactly one connected
-   watch, because the upstream speech hook identifies the app but not its watch. The watch's ordinary dictation stream is the only audio input.
-5. Select the connected watch. Enable each desired source, then tap the
-   permissions button. All collection sources start disabled. Permission and
-   hardware restrictions remain visible as unavailable readings.
-6. Install the matching Signal Station 1.1.0 PBW from the staged pair. Its UUID
-   remains `e2fd86ec-dfb8-460c-afc1-ebe4d071657a`. The native bridge accepts only
-   the bundled PKJS digest and selected watch; an older PBW needs updating.
+1. Install the Signal Station test APK. The package remains
+   `coredevices.coreapp.inspectorlab`, so it updates Pebble Inspector Lab in place.
+   Keep only one companion actively connected to the test watch.
+2. The first launch explains local captures, lets you choose individual sources,
+   and offers Android permission prompts for those choices. Every source is
+   optional; setup can be skipped and revisited in Settings.
+3. Open **Devices** to pair the watch. Select it on the Capture screen, then tap
+   **Install watch app** to install the bundled Signal Station 1.2.0 and verify
+   its connection. Install with only the selected watch connected.
+4. Tap **Capture readings** to save enabled sources on the phone. No provider
+   key is needed. Open the capture in History to inspect each reading and choose
+   **Analyze readings** when you want to send it to a model.
+5. For analysis, choose a provider, model and key in Settings. OpenAI defaults to
+   `gpt-4.1-mini`; Anthropic, Gemini, xAI, OpenRouter and custom HTTPS
+   OpenAI-compatible Chat Completions endpoints are supported. Provider testing
+   sends a request only when tapped and may incur charges.
+6. For watch dictation, choose OpenAI recognition and its separate transcription
+   key, or explicitly choose the stock recognizer. OpenAI requests `gpt-transcribe`;
+   the account must support that model. There is no automatic fallback. App-specific
+   dictation requires exactly one connected watch because the upstream speech hook
+   identifies the app but not the watch. Ordinary dictation is the only audio input.
 
-**Ask** sends typed or confirmed dictated text. **Survey** collects enabled
-sources once and requests an analysis. **Record on watch** starts dictation on
-the selected watch. Conversation, History and Settings stay on the phone;
-collection progress and a UTF-8-safe brief return to the watch. The complete
-answer is saved independently of watch delivery.
+On the watch home screen, **Up captures**, **Select asks**, and **Down opens
+recent history**. Up and Down scroll reports; Back returns home or cancels an
+active request. Recent history shows up to five eligible records from this phone
+for the selected watch. Full records and deletion controls stay on the phone.
+
+**Ask** sends typed or confirmed dictated text. **Capture & analyze** collects
+and requests analysis together. A plain capture never requests model analysis;
+enabled weather sources still contact their weather service. Capture completion
+is acknowledged only after the phone saves the record.
 
 ## Sources and limits
 
@@ -67,7 +71,7 @@ places**, then select a result. Search sends only that text to Open-Meteo.
 Alternatively, choose **Near this phone** and grant location permission.
 
 Current weather, the next six hours, daylight, air quality, and UV each have their
-own switch. They all start off. Survey fetches only the selected groups and saves
+own switch. They all start off. Capture fetches only the selected groups and saves
 the readings with the report. Changing the place starts a new conversation so a
 previous city's report does not quietly become the context for a new one.
 
@@ -129,7 +133,7 @@ python3 tools/verify_inspector_apk.py androidApp/build/outputs/apk/inspectorLab/
 The companion's `tools/import-signal-watch.py` imports a reviewed PBW and pins its
 PKJS SHA-256. Repeat import after any watch JS change. From committed source,
 `bash tools/stage-inspector-lab.sh` builds and verifies a revision-named package
-under ignored `dist/`. Lab revision 3 increments the APK version code and retains
+under ignored `dist/`. Lab revision 4 increments the APK version code and retains
 the original runtime class namespace, separate PebbleKit provider authorities,
 fake Firebase configuration, and disabled analytics/Crashlytics.
 
@@ -138,8 +142,8 @@ The Android encrypted-storage test runs only on the lab variant with
 `coredevices.coreapp.signal.SignalStoreTest`. Use an emulator or designated test
 phone; it uses a unique test-only database and key namespace.
 
-[Signal Station 1.1.0](https://developer.repebble.com/dashboard/apps/37360ca4d9764881bd1d6f4d/edit)
-is saved as an Unlisted listing with a Draft release. Installing the
+[Signal Station draft](https://developer.repebble.com/dashboard/apps/37360ca4d9764881bd1d6f4d/edit)
+is maintained as an Unlisted listing with a Draft release. Installing the
 watchapp alone does not supply the experimental Android companion. Build, emulator, physical
 watch, provider-account and pairing-recovery evidence are recorded separately in
 [SIGNAL_VALIDATION.md](SIGNAL_VALIDATION.md).

@@ -131,9 +131,9 @@ dependencies {
 androidComponents {
     onVariants { variant ->
         val isInspectorLab = variant.buildType == "inspectorLab"
-        val suffix = if (isInspectorLab) "-inspector-lab.3" else ""
+        val suffix = if (isInspectorLab) "-inspector-lab.4" else ""
         variant.outputs.forEach {
-            it.versionCode.set(gitVersionCode.map { code -> if (isInspectorLab) code + 2 else code })
+            it.versionCode.set(gitVersionCode.map { code -> if (isInspectorLab) code + 3 else code })
             it.versionName.set(gitVersionName.map { version -> version + suffix })
         }
     }

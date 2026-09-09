@@ -27,6 +27,9 @@ interface NavBarRoute
 
 object PebbleRoutes {
     @Serializable
+    data object SignalHomeRoute : CoreRoute
+
+    @Serializable
     data object WatchHomeRoute : CoreRoute
 
     @Serializable
@@ -188,7 +191,7 @@ fun NavGraphBuilder.addNavBarRoutes(
             topBarParams.actions {}
         }
         if (station?.available == true) {
-            SignalScreen(station)
+            LaunchedEffect(station) { scopedCoreNav.navigateTo(PebbleRoutes.SignalHomeRoute) }
         }
     }
     composableWithAnimations<PebbleNavBarRoutes.WatchesRoute>(viewModel) {

@@ -67,7 +67,7 @@ class AndroidSignalStation(private val context: Context, private val pebble: () 
                 val records = withContext(Dispatchers.IO) { store.records().map { record ->
                     if (record.state in setOf("working", "recording")) record.copy(state = "interrupted", summary = "Interrupted; no request was retried.").also { store.save(it) } else record
                 } }
-                mutable.value = SignalState(settings = settings, records = records, sources = collectors.sources(), threadId = id(), configuredProviders = configured())
+                mutable.value = SignalState(initialized = true, buildVersion = buildVersion(), settings = settings, records = records, sources = collectors.sources(), threadId = id(), configuredProviders = configured())
                 val recognition = SignalWatchTranscription(providers) {
                     withContext(Dispatchers.Main.immediate) {
                         val runner = runners[mutable.value.settings.watchId]
@@ -88,6 +88,12 @@ class AndroidSignalStation(private val context: Context, private val pebble: () 
             } catch (_: Exception) { status("Could not open protected Signal Station storage. Existing data was preserved."); initialized.completeExceptionally(IllegalStateException("Storage unavailable")) }
         }
     }
+    private suspend fun refreshWatchSettings() {
+        val selected = mutable.value.settings.watchId
+        val runner = runners[selected] ?: return
+        if (pebble().watches.value.filterIsInstance<ConnectedPebbleDevice>().any { it.serial == selected && it.identifier == runner.device.identifier && it.runningApp.value == APP_UUID } && trusted(runner))
+            runCatching { runner.sendConfigMessage("{\"kind\":\"refresh\"}") }
+    }
     private suspend fun configured(): Set<String> = providerNames.filter { !store.get(it).isNullOrBlank() }.toSet()
     override fun updateSettings(settings: SignalSettings) {
         if (!available) return
@@ -106,6 +112,7 @@ class AndroidSignalStation(private val context: Context, private val pebble: () 
                     if (newThread) attachments = emptySet()
                     mutable.update { it.copy(settings = sanitized, threadId = if (newThread) id() else it.threadId, status = "Settings saved. Collection runs only when requested.") }
                 } }
+                if (generation == token) refreshWatchSettings()
             } catch (_: Exception) { status("Settings could not be saved.") }
             finally { if (generation == token) mutable.update { it.copy(busy = false) } }
         }
@@ -118,6 +125,7 @@ class AndroidSignalStation(private val context: Context, private val pebble: () 
                 withContext(Dispatchers.IO) { store.put(provider, key) }
                 val configured = configured()
                 mutable.update { it.copy(configuredProviders = configured, status = "Credential saved on this phone.") }
+                refreshWatchSettings()
             } catch (_: Exception) { status("Credential could not be saved. Existing credentials were preserved.") }
         }
     }
@@ -140,6 +148,49 @@ class AndroidSignalStation(private val context: Context, private val pebble: () 
     override fun ask(text: String, searchHistory: Boolean) {
         if (text.isBlank()) return
         startOperation { settings, token -> execute(text.take(8000), settings, token, searchHistory, false) }
+    }
+    override fun capture() { startOperation { settings, token -> execute("Capture current context", settings, token, false, true, captureOnly = true) } }
+    override fun analyzeRecord(id: String) {
+        if (mutable.value.busy) { status("A request is already running. Cancel it first."); return }
+        val record = mutable.value.records.find { it.id == id && it.state == "ready" } ?: return
+        if (!SignalHistory.allowed(record, mutable.value.settings.enabled)) { status("This capture contains a disabled source. Enable it before sending it for analysis."); return }
+        attachments = setOf(id)
+        ask("Analyze this saved capture. State when it was collected and which readings are missing. Cite its record ID.")
+    }
+    private fun buildVersion(): String = runCatching {
+        val version = context.packageManager.getPackageInfo(context.packageName, 0).versionName
+        val watch = context.assets.open("signal-station/watch-provenance.json").bufferedReader().use { json.parseToJsonElement(it.readText()).jsonObject }
+        "Phone $version · Watch ${watch["version"]?.jsonPrimitive?.content.orEmpty()}"
+    }.getOrDefault("Build details unavailable")
+    override fun installWatchApp() {
+        startOperation { settings, token ->
+            val watch = selectedWatch(settings)
+            if (pebble().watches.value.filterIsInstance<ConnectedPebbleDevice>().size != 1)
+                throw SignalProviderException("Connect only the selected watch while installing Signal Station.")
+            mutable.update { it.copy(installStatus = "Installing bundled watchapp…") }
+            val file = withContext(Dispatchers.IO) {
+                val bytes = context.assets.open("signal-station/signal-station.pbw").use { it.readBytes() }
+                val metadata = context.assets.open("signal-station/watch-provenance.json").bufferedReader().use { json.parseToJsonElement(it.readText()).jsonObject }
+                val digest = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+                check(digest == metadata.getValue("pbw_sha256").jsonPrimitive.content)
+                File(context.cacheDir, "signal-station-bundled.pbw").apply { writeBytes(bytes) }
+            }
+            try {
+                runners.remove(watch.serial)
+                val installed = pebble().sideloadApp(kotlinx.io.files.Path(file.absolutePath), loadOnWatch = false)
+                ensureActiveToken(token)
+                if (!installed) throw SignalProviderException("Watch installation timed out. Check the watch connection, then retry Install.")
+                launchWatch(watch)
+                ensureActiveToken(token)
+                mutable.update { it.copy(installStatus = "Bundled watchapp connected and verified.", status = "Signal Station is ready on your watch.") }
+            } catch (error: Exception) {
+                mutable.update { it.copy(installStatus = "Watch connection not verified. Retry Install when connected.") }
+                throw error
+            } finally { withContext(Dispatchers.IO) { file.delete() } }
+        }
+    }
+    override fun openPermissionSettings() {
+        context.startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:${context.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
     override fun survey() { startOperation { settings, token -> execute("Summarize my current context.", settings, token, false, true) } }
     override fun recordOnWatch() {
@@ -213,7 +264,7 @@ class AndroidSignalStation(private val context: Context, private val pebble: () 
         put("kind", kind); put("request_id", request); put("enabled", JsonArray(settings.enabled.map(::JsonPrimitive))); put("confirmTranscript", settings.confirmTranscript)
     }.toString()
 
-    private suspend fun execute(question: String, settings: SignalSettings, token: Long, history: Boolean, survey: Boolean, wireId: Int? = null, fromWatch: String? = null) {
+    private suspend fun execute(question: String, settings: SignalSettings, token: Long, history: Boolean, survey: Boolean, wireId: Int? = null, fromWatch: String? = null, captureOnly: Boolean = false) {
         val request = wireId ?: nextId()
         activeRequest = request
         activeWatch = fromWatch ?: settings.watchId
@@ -221,10 +272,10 @@ class AndroidSignalStation(private val context: Context, private val pebble: () 
         requestedSources = settings.enabled
         phase = if (survey) "collecting" else "inference"
         watchReadings = mutableListOf(); watchDone = CompletableDeferred()
-        val candidates = if (history) SignalHistory.retrieve(mutable.value.records, question, settings.enabled) else mutable.value.records.filter { it.id in attachments && SignalHistory.allowed(it, settings.enabled) && it.state == "ready" }
+        val candidates = if (captureOnly) emptyList() else if (history) SignalHistory.retrieve(mutable.value.records, question, settings.enabled) else mutable.value.records.filter { it.id in attachments && SignalHistory.allowed(it, settings.enabled) && it.state == "ready" }
         val references = boundedRecords(candidates, 64 * 1024)
         attachments = emptySet()
-        var record = SignalRecord(id(), mutable.value.threadId, now(), question, provider = settings.provider, model = settings.model, watchId = activeWatch, references = references.map { it.id }, endpoint = settings.endpoint)
+        var record = SignalRecord(id(), mutable.value.threadId, now(), question, provider = if (captureOnly) "local" else settings.provider, model = if (captureOnly) "" else settings.model, watchId = activeWatch, references = references.map { it.id }, endpoint = if (captureOnly) "" else settings.endpoint, kind = if (captureOnly) "capture" else "analysis")
         activeRecord = record.id
         save(record, token)
         ensureActiveToken(token)
@@ -255,7 +306,7 @@ class AndroidSignalStation(private val context: Context, private val pebble: () 
                         val runner = launchWatch(target)
                         activeRunner = runner
                         withTimeoutOrNull(25_000) {
-                            runner.sendConfigMessage(command("survey", request, settings))
+                            runner.sendConfigMessage(command(if (captureOnly) "capture" else "survey", request, settings))
                             watchDone.await()
                         }
                     } catch (e: CancellationException) { throw e } catch (_: Exception) {}
@@ -272,12 +323,19 @@ class AndroidSignalStation(private val context: Context, private val pebble: () 
             if (readingBytes + bytes > 80 * 1024) false else { readingBytes += bytes; true }
         }
         val omittedReadings = eligibleReadings.size - readings.size
-        val priorCandidates = if (history) emptyList() else mutable.value.records.filter { it.threadId == record.threadId && it.id != record.id && it.state == "ready" && SignalHistory.allowed(it, settings.enabled) && it.provider == settings.provider && it.model == settings.model && it.endpoint == settings.endpoint }.sortedBy { it.createdAt }.takeLast(10)
+        val priorCandidates = if (history || captureOnly) emptyList() else mutable.value.records.filter { it.threadId == record.threadId && it.id != record.id && it.state == "ready" && SignalHistory.allowed(it, settings.enabled) && it.provider == settings.provider && it.model == settings.model && it.endpoint == settings.endpoint }.sortedBy { it.createdAt }.takeLast(10)
         val prior = boundedRecords(priorCandidates, 48 * 1024)
         val sourceKeys = readings.map { it.key }.toSet() + references.flatMap { it.sourceKeys } + prior.flatMap { it.sourceKeys }
         record = record.copy(observations = readings, sourceKeys = sourceKeys, references = (record.references + prior.map { it.id }).distinct(), watchId = activeWatch)
         save(record, token)
         ensureActiveToken(token)
+        if (captureOnly) {
+            val summary = SignalCapture.summary(readings, omittedReadings)
+            save(record.copy(answer = summary, summary = summary, state = "ready"), token)
+            ensureActiveToken(token)
+            mutable.update { it.copy(selectedRecordId = record.id, status = "Capture saved on this phone. Choose Analyze in History when ready.") }
+            return
+        }
         phase = "inference"
         status("Analyzing with ${settings.provider}…")
         val evidence = buildString {
@@ -428,9 +486,9 @@ class AndroidSignalStation(private val context: Context, private val pebble: () 
             parsed.user != null || parsed.password != null || parsed.fragment.isNotEmpty() || !url.startsWith(PREFIX))
             return@withContext InterceptResponse("{}", 400)
         val route = parsed.encodedPath.removePrefix("/native/v1/")
-        val expectedMethod = if (route in setOf("capabilities", "status")) "GET" else "POST"
+        val expectedMethod = if (route in setOf("capabilities", "status", "history")) "GET" else "POST"
         if (method != expectedMethod || parsed.parameters.names().any { it != "request_id" } ||
-            (route != "status" && !parsed.parameters.isEmpty())) return@withContext InterceptResponse("{}", 400)
+            (route !in setOf("status", "history") && !parsed.parameters.isEmpty())) return@withContext InterceptResponse("{}", 400)
         if (body != null && body.toByteArray().size > 32 * 1024) return@withContext InterceptResponse("{}", 413)
         val data = runCatching { json.parseToJsonElement(body ?: "{}").jsonObject }.getOrElse { return@withContext InterceptResponse("{}", 400) }
         fun primitive(key: String) = data[key] as? JsonPrimitive
@@ -443,6 +501,7 @@ class AndroidSignalStation(private val context: Context, private val pebble: () 
         fun response(block: JsonObjectBuilder.() -> Unit) = InterceptResponse(buildJsonObject(block).toString(), 200)
         when (route) {
             "capabilities" -> response { put("configured", mutable.value.settings.provider in mutable.value.configuredProviders); put("enabled", JsonArray(mutable.value.settings.enabled.map(::JsonPrimitive))); put("confirmTranscript", mutable.value.settings.confirmTranscript); put("reducedMotion", mutable.value.settings.reducedMotion) }
+            "history" -> response { put("text", SignalCapture.watchHistory(mutable.value.records, mutable.value.settings.enabled, watch)) }
             "status" -> {
                 val record = wireResults[request]?.takeIf { it.first == watch }?.second?.takeIf { it.id !in deletedIds }
                 if (record == null && !(activeRequest == request && activeWatch == watch)) return@withContext InterceptResponse("{}", 404)
@@ -452,7 +511,7 @@ class AndroidSignalStation(private val context: Context, private val pebble: () 
             "start" -> {
                 val kind = primitive("kind")?.contentOrNull.orEmpty()
                 val prompt = primitive("prompt")?.contentOrNull.orEmpty()
-                if (request == null || kind !in setOf("ask", "survey") || connected.runningApp.value != APP_UUID ||
+                if (request == null || kind !in setOf("ask", "survey", "capture") || connected.runningApp.value != APP_UUID ||
                     (kind == "ask" && (prompt.isBlank() || prompt.toByteArray().size > 400))) return@withContext InterceptResponse("{}", 400)
                 val confirmRecording = activeRequest == request && activeWatch == watch && activeRunner === caller.runner && phase == "recording" && kind == "ask"
                 if (!confirmRecording && (watch to request) in claimedRequests) {
@@ -470,7 +529,7 @@ class AndroidSignalStation(private val context: Context, private val pebble: () 
                 claimedRequests += watch to request
                 startOperation(ownerIsPhone = owner) { settings, token ->
                     activeRunner = caller.runner
-                    execute(if (kind == "survey") "Summarize my current context." else prompt, settings, token, false, kind == "survey", request, watch)
+                    execute(if (kind == "capture") "Capture current context" else if (kind == "survey") "Summarize my current context." else prompt, settings, token, false, kind in setOf("survey", "capture"), request, watch, captureOnly = kind == "capture")
                 }
                 response { put("state", "working") }
             }

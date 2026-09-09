@@ -17,8 +17,8 @@ def inspect(pbw):
             raise ValueError("This is not the approved Signal Station watchapp")
         if set(info.get("targetPlatforms", [])) != TARGETS:
             raise ValueError("All six approved watch targets must be packaged")
-        if info.get("versionLabel") != "1.1.0":
-            raise ValueError("Signal Station version must be 1.1.0")
+        if info.get("versionLabel") != "1.2.0":
+            raise ValueError("Signal Station version must be 1.2.0")
         for target in TARGETS:
             if not archive.read(f"{target}/pebble-app.bin"):
                 raise ValueError(f"Missing binary for {target}")

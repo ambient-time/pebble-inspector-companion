@@ -12,7 +12,7 @@ def package(pin=None, pbw_digest=None, uuid="e2fd86ec-dfb8-460c-afc1-ebe4d071657
     pbw = io.BytesIO()
     with zipfile.ZipFile(pbw, "w") as z:
         z.writestr("pebble-js-app.js", script)
-        z.writestr("appinfo.json", json.dumps(dict(uuid=uuid, versionLabel="1.1.0", targetPlatforms=["basalt", "chalk", "diorite", "emery", "flint", "gabbro"])))
+        z.writestr("appinfo.json", json.dumps(dict(uuid=uuid, versionLabel="1.2.0", targetPlatforms=["basalt", "chalk", "diorite", "emery", "flint", "gabbro"])))
     data = pbw.getvalue()
     apk = io.BytesIO()
     with zipfile.ZipFile(apk, "w") as z:

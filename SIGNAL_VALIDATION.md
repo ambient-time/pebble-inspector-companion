@@ -120,3 +120,27 @@ reads that asset. Installation currently relies on opening the separate PBW
 file. The watch currently exposes latest-report viewing, not a history browser;
 Survey always requests model analysis. Sensor-only capture, watch history, and
 new button shortcuts are proposals under discussion, not implemented behavior.
+
+
+## Companion revision 4 and watch 1.2.0
+
+This supersedes the prior sweep's proposed-feature notes. Signal Station now has
+its own lab-only launch route and optional first-launch setup, source choices,
+permission prompts, app icon and label. The package and signing identity remain
+unchanged. Capture saves observations without calling a model provider; later
+analysis creates a separate referenced report. Bundled installation checks the
+PBW digest and requires one selected connected watch before installing and waiting
+for the trusted script handshake. No physical install is implied.
+
+The watch now exposes Up Capture, Select Ask and Down History on its home screen.
+History is a bounded local read with its own delivery acknowledgment; capture
+completion uses the existing durable-record acknowledgment. Provider and source
+changes refresh an open watch's settings. The imported watch source is
+`22e1f7799011e34f4aebaa37242742dbd3e39a15`.
+
+Host tests cover old settings/record decoding, missing readings, history filtering
+and UTF-8 bounds. All six watch targets and 25 protocol tests plus the native C
+button/motion/UTF-8/DST harnesses passed. Android assembly and lint passed during
+integration. Final artifact, interactive and publication evidence follows after
+staging. CloudPebble's read-only screenshot probe still waited for the phone;
+no older Signals weather-face build was installed.

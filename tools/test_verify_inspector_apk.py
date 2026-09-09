@@ -11,7 +11,7 @@ from verify_inspector_apk import (
 def manifest():
     return ET.fromstring('''<manifest xmlns:android="http://schemas.android.com/apk/res/android"
       package="coredevices.coreapp.inspectorlab" android:versionCode="11100003"
-      android:versionName="1.11.0.3-inspector-lab.3">
+      android:versionName="1.11.0.3-inspector-lab.4">
       <application android:name="coredevices.coreapp.MainApplication"
         android:debuggable="true" android:allowBackup="false" android:label="@string/app_name">
         <activity android:name="coredevices.coreapp.MainActivity" />
@@ -100,7 +100,7 @@ class ToolOutputTests(unittest.TestCase):
     A: package="coredevices.coreapp.inspectorlab" (Raw: "coredevices.coreapp.inspectorlab")
       E: application (line=3)
         A: http://schemas.android.com/apk/res/android:debuggable(0x0101000f)=true
-        A: http://schemas.android.com/apk/res/android:label(0x01010001)="Pebble Inspector Lab" (Raw: "Pebble Inspector Lab")
+        A: http://schemas.android.com/apk/res/android:label(0x01010001)="Signal Station" (Raw: "Signal Station")
           E: provider (line=4)
             A: http://schemas.android.com/apk/res/android:authorities(0x01010018)="example.lab"
       E: uses-sdk (line=5)
@@ -117,9 +117,9 @@ class ToolOutputTests(unittest.TestCase):
                 parse_xmltree(value)
 
     def test_resolved_label_in_every_locale(self):
-        self.assertEqual(parse_badging("application-label:'Pebble Inspector Lab'\n"), [LABEL])
+        self.assertEqual(parse_badging("application-label:'Signal Station'\n"), [LABEL])
         for value in ("", "application-label:'Pebble'\n",
-                      "application-label:'Pebble Inspector Lab'\napplication-label-fr:'Pebble'\n"):
+                      "application-label:'Signal Station'\napplication-label-fr:'Pebble'\n"):
             with self.assertRaises(VerificationError):
                 parse_badging(value)
 

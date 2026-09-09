@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Inspect a built Pebble Inspector Lab APK before installing it."""
+"""Inspect a built Signal Station APK before installing it."""
 
 import argparse
 import hashlib
@@ -15,7 +15,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 
 PACKAGE = "coredevices.coreapp.inspectorlab"
-LABEL = "Pebble Inspector Lab"
+LABEL = "Signal Station"
 ANDROID = "{http://schemas.android.com/apk/res/android}"
 DOMAINS = {
     "root", "file", "database", "sharedpref", "external", "device_root",
@@ -72,7 +72,7 @@ def parse_badging(text):
     labels = re.findall(r"^application-label(?:-[^:]*)?:'([^']*)'$", text, re.M)
     require(labels, "aapt2 returned no resolved application label")
     require(all(label == LABEL for label in labels),
-            "Resolved application labels must all be Pebble Inspector Lab")
+            "Resolved application labels must all be Signal Station")
     return sorted(set(labels))
 
 
@@ -97,7 +97,7 @@ def validate_manifest(root, labels):
     require(root.tag == "manifest", "APK XML root is not manifest")
     require(root.get("package") == PACKAGE, "APK package must be " + PACKAGE)
     version = root.get(ANDROID + "versionName", "")
-    require(version.endswith("-inspector-lab.3"), "APK version lacks -inspector-lab.3 suffix")
+    require(version.endswith("-inspector-lab.4"), "APK version lacks -inspector-lab.4 suffix")
     code = root.get(ANDROID + "versionCode", "")
     require(code.isdecimal() and int(code) > 0, "APK has no positive version code")
     require(labels and all(label == LABEL for label in labels), "APK has the wrong visible label")
@@ -197,7 +197,7 @@ def validate_signal_assets(archive):
             script_digest = hashlib.sha256(watch.read("pebble-js-app.js")).hexdigest()
             info = json.loads(watch.read("appinfo.json"))
             require(info["uuid"] == "e2fd86ec-dfb8-460c-afc1-ebe4d071657a", "Wrong bundled watch UUID")
-            require(info["versionLabel"] == "1.1.0", "Wrong bundled watch version")
+            require(info["versionLabel"] == "1.2.0", "Wrong bundled watch version")
             require(set(info["targetPlatforms"]) == {"basalt", "chalk", "diorite", "emery", "flint", "gabbro"}, "Bundled watch target mismatch")
         require(script_digest == pin == provenance["pkjs_sha256"], "Native bridge script digest mismatch")
         require(re.fullmatch(r"[0-9a-f]{40}", provenance["source_commit"]) is not None, "Watch source revision missing")

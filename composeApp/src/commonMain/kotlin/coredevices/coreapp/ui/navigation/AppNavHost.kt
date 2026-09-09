@@ -36,6 +36,9 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
+import org.koin.compose.getKoin
+import coredevices.pebble.signal.SignalScreen
+import coredevices.pebble.signal.SignalStation
 
 private val logger = Logger.withTag("AppNavHost")
 
@@ -85,6 +88,7 @@ fun AppNavHost(navController: NavHostController, startDestination: Any) {
     val coreNav = remember {
         object : CoreNav {
             override fun navigateTo(route: CoreRoute) {
+                if (route == PebbleRoutes.SignalHomeRoute && navController.popBackStack(PebbleRoutes.SignalHomeRoute, false)) return
                 if (route == PebbleRoutes.WatchHomeRoute) {
                     navController.popBackStack(CommonRoutes.OnboardingRoute, true)
                 }
@@ -109,6 +113,13 @@ fun AppNavHost(navController: NavHostController, startDestination: Any) {
     }
     val experimentalDevices: ExperimentalDevices = koinInject()
     NavHost(navController, startDestination = startDestination) {
+        composable<PebbleRoutes.SignalHomeRoute> {
+            val koin = getKoin()
+            val station = remember(koin) { koin.getOrNull<SignalStation>() }
+            if (station?.available == true) SignalScreen(station, standalone = true, onManageWatch = {
+                coreNav.navigateTo(PebbleRoutes.WatchHomeRoute)
+            })
+        }
         experimentalDevices.addExperimentalRoutes(this, coreNav)
         addPebbleRoutes(
             coreNav,

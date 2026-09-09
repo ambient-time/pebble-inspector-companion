@@ -1,6 +1,6 @@
 {
   "uuid": "e2fd86ec-dfb8-460c-afc1-ebe4d071657a",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "targets": [
     "basalt",
     "chalk",
@@ -9,7 +9,7 @@
     "flint",
     "gabbro"
   ],
-  "pbw_sha256": "93d76e2a6e58db3bd05e56879bb7bfe11bc173463bc09d23270e71a178be26df",
-  "pkjs_sha256": "837c551f5581d1e5795de0d719afed26004def40d4c30415b6137ca09d61641e",
-  "source_commit": "dc37e48acfc6018b825c13fa5da045208c191097"
+  "pbw_sha256": "2584b4f46f2c26228ff711bfb497196e1803d9229b8c04bdac7eeb8be672c911",
+  "pkjs_sha256": "607b9dbe36d4f1309f742188e76d8a55abeb3b2ba3051d67a34d0e8d8262c942",
+  "source_commit": "22e1f7799011e34f4aebaa37242742dbd3e39a15"
 }
