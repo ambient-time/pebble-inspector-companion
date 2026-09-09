@@ -144,3 +144,30 @@ button/motion/UTF-8/DST harnesses passed. Android assembly and lint passed durin
 integration. Final artifact, interactive and publication evidence follows after
 staging. CloudPebble's read-only screenshot probe still waited for the phone;
 no older Signals weather-face build was installed.
+
+
+### Frozen revision 4 verification
+
+Final source: `a842da86b19ba7d53dfaf3755dc2a74e0c4113b6`.
+APK: `1.12.0.1-inspector-lab.4`, code `11200004`, label Signal Station.
+SHA-256: `18356b0fa73bb6948457fb9eb8785fb4a51b0403feb50542971849f846b7decf`.
+The original signing certificate remains unchanged. APK verification passed with
+its bundled watch 1.2.0/PKJS digests, manifest isolation and backup exclusions.
+Assembly, lint, 131 host tests and 17 package tests passed.
+
+On the Android emulator, the optional three-step guide ran after an in-place
+upgrade. Selecting only phone battery saved a ready capture without any provider
+key. The record survived subsequent APK updates and process restart. After
+revoking location, the guide showed Android's location prompt; declining it still
+saved battery and a `permission_denied` location observation, without inference.
+Record detail explained the missing provider prerequisite for later analysis.
+Final light and dark screens were visually checked. No fatal or Room identity
+errors appeared in the inspected log. These are emulator observations.
+
+The public download page, index, APK, PBW, both source ZIPs, licenses, checksums,
+and both discovery manifests were fetched over HTTPS and matched staged bytes.
+Unrelated catalog/manifest entries were preserved. The listing is Unlisted and
+watch release 1.2.0 remains Draft, with required Android companion metadata,
+custom icons and native Emery/Chalk/Diorite screenshots. CloudPebble still waited
+for a phone connection. Physical pairing, installation, sensors and paid
+provider/dictation round trips remain unverified.
