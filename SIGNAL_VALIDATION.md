@@ -86,3 +86,37 @@ OpenAI dictation requires one connected trusted watch; multiple connections fail
 closed rather than routing speech under another watch's authorization. Unsupported
 sensor/health data remains unavailable. No physical install, public release,
 store publication, or live-provider success is implied by these build results.
+
+
+## Companion sweep — September 9, 2026
+
+Downloaded the public lab-3 APK and watch 1.1.0 PBW again; both matched their
+frozen SHA-256 digests. Installed that exact APK on the Field Inspector Android
+emulator with `adb install -r`. No physical device was listed by local ADB.
+
+Completed watch-only onboarding with sign-in skipped. Devices has a Signal
+Station toolbar action. Conversation, History, answer/recognition settings,
+selected-watch controls, and the weather place form all rendered. The weather
+search itself and paid provider calls were not exercised. The empty History
+screen correctly reported zero records; the conversation correctly reported
+that no selected watch was connected. No fatal exception or protected-storage
+initialization failure appeared in the inspected runtime log.
+
+Re-ran 126 companion host tests (zero failures/errors), 17 package-verification
+tests, and 20 watch protocol tests plus the C motion/UTF-8/DST checks. Source
+tracing confirmed the Android Koin binding, injected per-runner HTTP context,
+watch UUID and PKJS digest checks, selected-watch gate, and text/config-message
+transport. These checks do not establish a physical end-to-end connection.
+
+The signed-in CloudPebble account contains an older `Signals` weather watchface
+(project 26277, last built September 3), not a Signal Station project. No build
+or install was triggered there. A screenshot probe using Cloud Dev Connection
+waited for a phone; the New Cloud Dev Connection probe returned “Connection
+interrupted.” Signal Station requires the lab companion to own the connection;
+a stock-companion developer connection alone does not verify its native bridge.
+
+The matching PBW is bundled for provenance validation, but no install action
+reads that asset. Installation currently relies on opening the separate PBW
+file. The watch currently exposes latest-report viewing, not a history browser;
+Survey always requests model analysis. Sensor-only capture, watch history, and
+new button shortcuts are proposals under discussion, not implemented behavior.
