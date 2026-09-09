@@ -4,10 +4,10 @@ import kotlinx.serialization.Serializable
 import kotlin.math.*
 
 @Serializable
-data class SignalPresenceTarget(val id: String, val radio: String, val address: String, val label: String, val enabled: Boolean = true)
+data class SignalPresenceTarget(val id: String, val radio: String, val address: String, val label: String, val enabled: Boolean = true, val beaconId: String = "")
 @Serializable
 data class SignalPlaceFence(val id: String, val label: String, val latitude: Double, val longitude: Double, val radiusMeters: Int = 150, val wifiSsid: String = "", val enabled: Boolean = true)
-data class SignalRadioCandidate(val radio: String, val address: String, val name: String, val rssi: Int, val measuredAt: Long?, val status: String, val security: String = "")
+data class SignalRadioCandidate(val radio: String, val address: String, val name: String, val rssi: Int, val measuredAt: Long?, val status: String, val security: String = "", val beaconId: String = "", val metadata: String = "", val sampleCount: Int = 1, val medianRssi: Int? = null)
 data class SignalPresenceResult(val observations: List<SignalObservation>, val candidates: List<SignalRadioCandidate>)
 data class SignalPlaceLookup(val place: SignalPlace, val description: String)
 data class SignalPresenceFix(val latitude: Double, val longitude: Double, val accuracyMeters: Double, val measuredAt: Long)
@@ -18,6 +18,9 @@ object SignalPresence {
         SignalSource("presence.wifi", "Enrolled Wi-Fi access points", "Presence"),
         SignalSource("presence.places", "Saved place boundaries", "Presence"),
     )
+    fun matches(target: SignalPresenceTarget, sample: SignalRadioCandidate): Boolean = target.radio == sample.radio &&
+        if (target.beaconId.isNotBlank()) SignalBeacon.validIdentity(target.beaconId) && target.beaconId == sample.beaconId
+        else target.address.equals(sample.address, true)
     fun fresh(sample: SignalRadioCandidate, now: Long): Boolean = sample.status == "fresh" && sample.measuredAt?.let { now - it in 0..15_000 } == true
     fun observations(enabled: Set<String>, targets: List<SignalPresenceTarget>, fences: List<SignalPlaceFence>, samples: List<SignalRadioCandidate>, coverage: Map<String, String>, fix: SignalPresenceFix?, now: Long): List<SignalObservation> = buildList {
         for (radio in listOf("bluetooth", "wifi")) {
@@ -27,9 +30,11 @@ object SignalPresence {
             val status = coverage[radio] ?: "unavailable"
             add(SignalObservation(key, "phone", "Fresh retained radio observations=${rows.count { fresh(it, now) }}; scan=$status; strongest 64 retained at most; partial coverage, not a total device or people count", collectedAt = now, status = status))
             targets.filter { it.enabled && it.radio == radio }.take(32).forEach { target ->
-                val sample = rows.filter { it.address.equals(target.address, true) }.maxByOrNull { it.measuredAt ?: 0 }
-                val state = when { sample != null && fresh(sample, now) -> "observed"; sample != null -> "cached"; status == "fresh" -> "not_observed"; else -> "unknown" }
-                add(SignalObservation(key, "phone", "${target.label.take(100)}: $state${sample?.let { "; rssi=${it.rssi} dBm" }.orEmpty()}; observation does not establish a person's presence or distance", collectedAt = now, measuredAt = sample?.measuredAt, status = state, identity = "target:${target.id}"))
+                val matches = rows.filter { matches(target, it) }
+                val sample = matches.maxByOrNull { it.measuredAt ?: 0 }
+                val ambiguous = target.beaconId.isNotBlank() && matches.filter { fresh(it, now) }.distinctBy { it.address.lowercase() }.size > 1
+                val state = when { ambiguous -> "ambiguous"; sample != null && fresh(sample, now) -> "observed"; sample != null -> "cached"; status == "fresh" -> "not_observed"; else -> "unknown" }
+                add(SignalObservation(key, "phone", "${target.label.take(100)}: $state${sample?.let { "; rssi=${it.rssi} dBm${it.medianRssi?.let { median -> "; scan median=$median dBm; fresh samples=${it.sampleCount}" }.orEmpty()}" }.orEmpty()}; observation does not establish a person's presence or distance", collectedAt = now, measuredAt = sample?.measuredAt, status = state, identity = "target:${target.id}"))
             }
         }
         if ("presence.places" in enabled && fences.none { it.enabled }) add(SignalObservation("presence.places", "phone", "No enabled saved places; place coverage unknown", collectedAt = now, status = "unknown"))

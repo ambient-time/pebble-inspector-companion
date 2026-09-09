@@ -72,7 +72,7 @@ data class SignalState(
     val sources: List<SignalSource> = emptyList(),
     val watches: List<SignalWatch> = emptyList(),
     val busy: Boolean = false,
-    val status: String = "Choose sources, then capture when ready.",
+    val status: String = "Ask a question, or capture readings to explore later.",
     val threadId: String = "",
     val selectedRecordId: String? = null,
     val configuredProviders: Set<String> = emptySet(),
@@ -91,6 +91,7 @@ interface SignalStation {
     val available: Boolean
     val state: StateFlow<SignalState>
     fun updateSettings(settings: SignalSettings)
+    fun saveProvider(model: String, endpoint: String, key: String)
     fun saveKey(provider: String, key: String)
     fun testProvider()
     fun ask(text: String, searchHistory: Boolean = false)

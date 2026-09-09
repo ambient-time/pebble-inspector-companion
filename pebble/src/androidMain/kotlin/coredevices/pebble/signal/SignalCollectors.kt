@@ -173,7 +173,15 @@ class SignalCollectors(private val context: Context) {
         val locations = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
         if (!locationEnabled(locations)) return unavailable(keys, "location_services_disabled")
         val scanner = adapter.bluetoothLeScanner ?: return unavailable(keys, "unavailable")
-        val results = ConcurrentHashMap<String, ScanResult>()
+        data class Retained(val result: ScanResult, val metadata: SignalBeaconMetadata, val window: SignalRadioWindow)
+        fun metadata(result: ScanResult): SignalBeaconMetadata {
+            val data = result.scanRecord?.manufacturerSpecificData
+            val manufacturers = buildMap<Int, ByteArray> {
+                if (data != null) for (index in 0 until minOf(data.size(), 16)) put(data.keyAt(index), data.valueAt(index))
+            }
+            return SignalBeacon.describe(manufacturers, result.scanRecord?.serviceUuids.orEmpty().take(12).map { it.toString() })
+        }
+        val results = ConcurrentHashMap<String, Retained>()
         val failure = AtomicInteger(0)
         val seen = ConcurrentHashMap.newKeySet<String>()
         val callback = object : ScanCallback() {
@@ -183,8 +191,14 @@ class SignalCollectors(private val context: Context) {
                     // Bound local memory as well as the final model attachment.
                     if (seen.size < 4096) seen.add(key)
                     synchronized(results) {
-                        if (results.containsKey(key) || results.size < 64) results[key] = result
-                        else results.minByOrNull { it.value.rssi }?.let { weakest -> if (result.rssi > weakest.value.rssi) { results.remove(weakest.key); results[key] = result } }
+                        val previous = results[key]
+                        if (previous != null && result.timestampNanos <= previous.result.timestampNanos) return
+                        val advertised = metadata(result)
+                        val window = previous?.takeIf { it.metadata.identity == advertised.identity }?.window ?: SignalRadioWindow()
+                        window.add(result.timestampNanos / 1_000_000, result.rssi)
+                        val retained = Retained(result, advertised, window)
+                        if (previous != null || results.size < 64) results[key] = retained
+                        else results.minByOrNull { it.value.result.rssi }?.let { weakest -> if (result.rssi > weakest.value.result.rssi) { results.remove(weakest.key); results[key] = retained } }
                     }
                 } catch (_: SecurityException) { failure.set(-1) }
             }
@@ -194,15 +208,17 @@ class SignalCollectors(private val context: Context) {
         try { scanner.startScan(null, ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build(), callback); delay(5_000) }
         finally { runCatching { scanner.stopScan(callback) } }
         if (failure.get() != 0) return unavailable(keys, if (failure.get() == -1) "permission_denied" else "scan_failed_${failure.get()}")
-        val ordered = results.values.sortedByDescending { it.rssi }
+        val ordered = synchronized(results) { results.values.sortedByDescending { it.result.rssi } }
         if (ordered.isEmpty()) return keys.map { observation(it, "No advertisements observed in five seconds; this does not prove no devices are nearby.") }
-        val output = ordered.flatMapIndexed { index, result ->
+        val output = ordered.flatMapIndexed { index, retained ->
+            val result = retained.result
             val at = measured(result.timestampNanos)
+            val (count, median) = synchronized(results) { retained.window.summary(SystemClock.elapsedRealtime()) }
             buildList {
-                if ("bluetooth" in enabled) add(observation("bluetooth", "observation=$index; rssi=${result.rssi}; txPower=${result.scanRecord?.txPowerLevel?.takeUnless { it == Int.MIN_VALUE } ?: "unknown"}", "dBm", measuredAt = at))
+                if ("bluetooth" in enabled) add(observation("bluetooth", "observation=$index; rssi=${result.rssi}; samples=$count; medianRssi=${median ?: "unknown"}; txPower=${result.scanRecord?.txPowerLevel?.takeUnless { it == Int.MIN_VALUE } ?: "unknown"}", "dBm", measuredAt = at))
                 if ("bluetooth.names" in enabled) add(observation("bluetooth.names", "observation=$index; name=${result.scanRecord?.deviceName.orEmpty().take(100)}", measuredAt = at))
-                if ("bluetooth.identifiers" in enabled) add(observation("bluetooth.identifiers", "observation=$index; address=${result.device.address}", measuredAt = at))
-                if ("bluetooth.services" in enabled) add(observation("bluetooth.services", "observation=$index; services=${result.scanRecord?.serviceUuids.orEmpty().take(12)}", measuredAt = at))
+                if ("bluetooth.identifiers" in enabled) add(observation("bluetooth.identifiers", "observation=$index; address=${result.device.address}${retained.metadata.identity.takeIf { it.isNotBlank() }?.let { "; beacon=$it" }.orEmpty()}", measuredAt = at))
+                if ("bluetooth.services" in enabled) add(observation("bluetooth.services", "observation=$index; services=${result.scanRecord?.serviceUuids.orEmpty().take(12)}; metadata=${retained.metadata.description}", measuredAt = at))
             }
         }
         return output + keys.map { observation(it, "scanSeconds=5; retained=${ordered.size}; omittedAtLeast=${(seen.size - ordered.size).coerceAtLeast(0)}") }

@@ -15,8 +15,16 @@ import androidx.compose.ui.unit.dp
 import kotlin.time.Clock
 
 @Composable
-internal fun SignalPresencePage(station: SignalStation, state: SignalState) {
+internal fun SignalPresencePage(station: SignalStation, state: SignalState, onDetail: (String) -> Unit) {
     val settings = state.settings
+    var currentTime by remember { mutableStateOf(Clock.System.now().toEpochMilliseconds()) }
+    LaunchedEffect(state.records, settings) {
+        while (true) {
+            currentTime = Clock.System.now().toEpochMilliseconds()
+            kotlinx.coroutines.delay(1000)
+        }
+    }
+    val evidence = SignalPresenceTimeline.entries(settings, state.records, currentTime)
     val uriHandler = LocalUriHandler.current
     var candidate by remember { mutableStateOf<SignalRadioCandidate?>(null) }
     var deviceLabel by remember { mutableStateOf("") }
@@ -31,7 +39,7 @@ internal fun SignalPresencePage(station: SignalStation, state: SignalState) {
     var removePlace by remember { mutableStateOf<SignalPlaceFence?>(null) }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
-            Text("Presence", Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineMedium)
+            Text("Nearby", Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineMedium)
             Text("Keep a local record of your devices and familiar places. Radio activity can suggest changes around this phone; it cannot count people or reliably identify movement on its own.")
         }
         item {
@@ -55,8 +63,18 @@ internal fun SignalPresencePage(station: SignalStation, state: SignalState) {
         }
         items(settings.presenceTargets, key = { "target:${it.id}" }) { target ->
             Column {
-                SignalToggle(target.label, target.enabled, !state.busy, "${target.radio} · ${target.address}") { enabled ->
+                SignalToggle(target.label, target.enabled, !state.busy, "${target.radio} · ${if (target.beaconId.isBlank()) "saved address" else "saved beacon identity"}") { enabled ->
                     station.updateSettings(settings.copy(presenceTargets = settings.presenceTargets.map { if (it.id == target.id) it.copy(enabled = enabled) else it }))
+                }
+                evidence.firstOrNull { it.targetId == target.id }?.let { entry ->
+                    Text(when (entry.state) {
+                        "observed_repeatedly" -> "Seen in ${entry.freshCaptures} recent checks"
+                        "observed_once" -> "Seen in the latest check"
+                        "not_observed" -> "Not seen in the latest check · departure unknown"
+                        "ambiguous" -> "More than one matching signal · identity uncertain"
+                        else -> "Current presence unknown · check again"
+                    })
+                    entry.lastSeenAt?.let { Text("Last seen ${signalDateTime(it)}", style = MaterialTheme.typography.bodySmall) }
                 }
                 TextButton(onClick = { removeTarget = target }, enabled = !state.busy) { Text("Forget device") }
             }
@@ -68,8 +86,10 @@ internal fun SignalPresencePage(station: SignalStation, state: SignalState) {
                 Text(found.name.ifBlank { "Unnamed ${found.radio} device" }, style = MaterialTheme.typography.titleMedium)
                 Text("${found.radio} · ${found.address} · ${found.rssi} dBm")
                 Text("${found.measuredAt?.let { signalDateTime(it) } ?: "Time unavailable"} · ${found.status}", style = MaterialTheme.typography.bodySmall)
+                if (found.metadata.isNotBlank()) Text(found.metadata, style = MaterialTheme.typography.bodySmall)
+                if (found.sampleCount > 1) Text("${found.sampleCount} fresh samples · median ${found.medianRssi} dBm", style = MaterialTheme.typography.bodySmall)
                 if (found.security.isNotBlank()) Text("Network security: ${found.security}", style = MaterialTheme.typography.bodySmall)
-                if (settings.presenceTargets.none { it.radio == found.radio && it.address == found.address }) {
+                if (settings.presenceTargets.none { SignalPresence.matches(it, found) }) {
                     TextButton(onClick = { candidate = found; deviceLabel = found.name }, enabled = !state.busy) { Text("Name and save device") }
                 }
             }
@@ -113,7 +133,8 @@ internal fun SignalPresencePage(station: SignalStation, state: SignalState) {
         val recent = state.records.filter { it.sourceKeys.any { key -> key.startsWith("presence.") } }.sortedByDescending { it.createdAt }.take(10)
         if (recent.isEmpty()) item { Text("No saved presence readings yet.") }
         items(recent, key = { "record:${it.id}" }) { record ->
-            Text("${signalDateTime(record.createdAt)} · ${record.summary.ifBlank { record.question }}")
+            TextButton(onClick = { onDetail(record.id) }) { Text("${signalDateTime(record.createdAt)} · ${record.question}") }
+            Text(record.summary, style = MaterialTheme.typography.bodySmall)
         }
     }
     candidate?.let { found ->
@@ -121,7 +142,7 @@ internal fun SignalPresencePage(station: SignalStation, state: SignalState) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("${found.radio} · ${found.address}")
                 OutlinedTextField(deviceLabel, { deviceLabel = it.take(80) }, label = { Text("Your device name") }, singleLine = true)
-                Text("Addresses can change. Save only a device you recognize.")
+                Text(if (found.beaconId.isBlank()) "This device will be matched by its current address, which can change." else "This device will be matched by its advertised beacon identity. Duplicate beacon identities are marked uncertain.")
             }
         }, confirmButton = { TextButton(onClick = { station.enrollPresenceTarget(found, deviceLabel.trim()); candidate = null }, enabled = deviceLabel.isNotBlank()) { Text("Save device") } }, dismissButton = { TextButton(onClick = { candidate = null }) { Text("Cancel") } })
     }

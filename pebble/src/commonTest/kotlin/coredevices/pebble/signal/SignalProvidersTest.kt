@@ -88,6 +88,66 @@ class SignalProvidersTest {
         } finally { providers.close(); http.close() }
     }
 
+    @Test fun incompleteAnswersAreNotSavedAsCompleteTextOrMisreportedAsModelErrors() {
+        val fixtures = listOf(
+            "xai" to """{"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"output":[{"type":"reasoning","summary":[]}]}""",
+            "openai" to """{"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"output":[{"content":[{"type":"output_text","text":"Partial answer"}]}]}""",
+            "anthropic" to """{"stop_reason":"max_tokens","content":[{"type":"text","text":"Partial answer"}]}""",
+            "gemini" to """{"candidates":[{"finishReason":"MAX_TOKENS","content":{"parts":[{"text":"Partial answer"}]}}]}""",
+            "openrouter" to """{"choices":[{"finish_reason":"length","message":{"content":"Partial answer"}}]}""",
+            "custom" to """{"choices":[{"finish_reason":"length","message":{"content":"Partial answer"}}]}""",
+        )
+        fixtures.forEach { (provider, body) ->
+            val error = assertFailsWith<SignalProviderException> { SignalProviders.parseAnswer(provider, Json.parseToJsonElement(body).jsonObject) }
+            assertTrue(error.message.orEmpty().contains("output limit"), provider)
+            assertFalse(error.message.orEmpty().contains("Partial answer"), provider)
+        }
+    }
+
+    @Test fun blockedAnswersUseFixedMessagesWithoutProviderText() {
+        val fixtures = listOf(
+            "openai" to """{"status":"completed","output":[{"content":[{"type":"refusal","refusal":"private prompt"}]}]}""",
+            "xai" to """{"status":"incomplete","incomplete_details":{"reason":"content_filter","message":"private prompt"}}""",
+            "anthropic" to """{"stop_reason":"refusal","content":[{"type":"text","text":"private prompt"}]}""",
+            "gemini" to """{"promptFeedback":{"blockReason":"SAFETY","blockReasonMessage":"private prompt"}}""",
+            "gemini" to """{"candidates":[{"finishReason":"SAFETY","content":{"parts":[{"text":"private prompt"}]}}]}""",
+            "openrouter" to """{"choices":[{"finish_reason":"content_filter","message":{"content":"private prompt"}}]}""",
+        )
+        fixtures.forEach { (provider, body) ->
+            val error = assertFailsWith<SignalProviderException> { SignalProviders.parseAnswer(provider, Json.parseToJsonElement(body).jsonObject) }
+            assertTrue(error.message.orEmpty().contains("declined"), provider)
+            assertFalse(error.message.orEmpty().contains("private"), provider)
+        }
+    }
+
+    @Test fun unfinishedResponsesAndEmbeddedErrorsRemainErrors() {
+        for (status in listOf("incomplete", "failed", "cancelled", "in_progress", "queued")) {
+            val body = """{"status":"$status","output":[{"content":[{"type":"output_text","text":"Partial answer"}]}]}"""
+            assertFailsWith<SignalProviderException> { SignalProviders.parseAnswer("xai", Json.parseToJsonElement(body).jsonObject) }
+        }
+        val body = """{"error":{"code":"private-key-and-prompt","message":"private-key-and-prompt"}}"""
+        val error = assertFailsWith<SignalProviderException> { SignalProviders.parseAnswer("xai", Json.parseToJsonElement(body).jsonObject) }
+        assertFalse(error.message.orEmpty().contains("private"))
+    }
+
+    @Test fun httpDiagnosticsIncludeOnlyStatusAndAllowlistedCodesWithoutRetry() = runBlocking {
+        for ((status, code) in listOf(400 to "context_length_exceeded", 429 to "insufficient_quota", 404 to "model_not_found", 422 to "private-key-and-prompt")) {
+            var calls = 0
+            val http = HttpClient(MockEngine {
+                calls++
+                respond("""{"error":{"code":"$code","message":"private-key-and-prompt","param":"private-key-and-prompt"}}""", HttpStatusCode.fromValue(status))
+            })
+            val providers = SignalProviders(http, Keys())
+            try {
+                val error = assertFailsWith<SignalProviderException> { providers.answer(SignalSettings(), listOf("system" to "Return clear text.", "user" to "A question")) }
+                assertTrue(error.message.orEmpty().contains("HTTP $status"))
+                if (code != "private-key-and-prompt") assertTrue(error.message.orEmpty().contains(code))
+                assertFalse(error.message.orEmpty().contains("private"))
+                assertEquals(1, calls)
+            } finally { providers.close(); http.close() }
+        }
+    }
+
     @Test fun transcriptionUsesOnlyItsOwnKeyAndMultipartWav() = runBlocking {
         val keys = Keys()
         val http = HttpClient(MockEngine { request ->

@@ -1,6 +1,40 @@
 # Signal Station integration evidence
 
-By Luke Steuber. Checked September 8, 2026.
+By Luke Steuber. Current checks: September 9, 2026.
+
+## Current: lab 8 — September 9, 2026
+
+Measured: 182 companion host tests pass, including beacon formats, duplicate
+identities, scan sample bounds, repeated sightings, stale/disabled evidence, and
+provider completion/error formats. Eighteen package-verifier tests pass.
+Android assembly and lint pass; lint reports zero errors and eight warnings in
+existing configuration or upstream code. The package verifier used its aapt2
+fallback because apkanalyzer could not locate build tools.
+
+Observed on the Android 16 Field Inspector emulator after an in-place update:
+lab 8 opens Ask without a paired watch; a typed question survives Settings and
+return; saving provider setup exposes its saved state. A deliberately invalid
+smoke-test key produced a real HTTP 401 with the allowlisted invalid_api_key
+code. The question and failure explanation remained visible together, and the
+question stayed editable. The dummy key was removed after the check. This is
+controlled failure-path evidence, not a successful provider-account test.
+
+The optional first-launch question path requires no new source selection or
+permission prompt. Capture displays recent records ahead of its collapsed
+Capture tools and Watch setup sections. Screenshots are under
+`docs/signal-station/lab8/`. Watch 1.3.0 and its bundled digest are unchanged.
+
+The scoped watch handshake timeout now becomes an unavailable-watch result for
+capture instead of cancelling the entire operation. Host/source checks support
+this change; no physical watch handshake was available. Neo did not resolve and
+local ADB listed only the emulator. The owner's reported asking failure is not
+yet reproduced; exact error text and provider/model are still needed to identify
+its cause. TalkBack, physical radio accuracy, and successful real-account replies
+remain unverified. See [task flow and pairing](docs/signal-station/pairing-and-task-flow.md).
+
+The older sections below record earlier builds and are historical evidence.
+
+
 
 ## Verified locally
 

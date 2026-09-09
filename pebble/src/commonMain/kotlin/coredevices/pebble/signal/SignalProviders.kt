@@ -70,8 +70,9 @@ class SignalProviders(http: HttpClient, private val secrets: SignalSecrets) {
             bearerAuth(key)
             setBody(form)
         }.execute { response ->
-            checkStatus(response.status.value)
-            parseJson(readBounded(response.bodyAsChannel()))
+            val body = readBounded(response.bodyAsChannel())
+            checkStatus(response.status.value, body)
+            parseJson(body)
         }
         val text = result["text"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
         if (text.isBlank()) fail("No speech was recognized.")
@@ -88,8 +89,9 @@ class SignalProviders(http: HttpClient, private val secrets: SignalSecrets) {
             else bearerAuth(key)
             setBody(body)
         }.execute { response ->
-            checkStatus(response.status.value)
-            parseJson(readBounded(response.bodyAsChannel()))
+            val responseBody = readBounded(response.bodyAsChannel())
+            checkStatus(response.status.value, responseBody)
+            parseJson(responseBody)
         }
 
     private fun request(settings: SignalSettings, messages: List<Pair<String, String>>): Pair<String, JsonObject> {
@@ -151,7 +153,9 @@ class SignalProviders(http: HttpClient, private val secrets: SignalSecrets) {
         }
 
         internal fun parseAnswer(provider: String, root: JsonObject): String {
-            if (root["error"] != null && root["error"] != JsonNull) fail("The provider could not complete this request.")
+            if (root["error"] != null && root["error"] != JsonNull)
+                fail("The provider could not complete this request.${errorCode(root)?.let { " ($it)" }.orEmpty()}")
+            checkCompletion(provider, root)
             return when (provider) {
                 "openai", "xai" -> (root["output"] as? JsonArray).orEmpty().flatMap { item ->
                     ((item as? JsonObject)?.get("content") as? JsonArray).orEmpty()
@@ -175,6 +179,48 @@ class SignalProviders(http: HttpClient, private val secrets: SignalSecrets) {
             }
         }
 
+        private fun checkCompletion(provider: String, root: JsonObject) {
+            fun JsonObject.text(key: String) = (get(key) as? JsonPrimitive)?.contentOrNull
+            fun incomplete(): Nothing = fail("The model reached its output limit before finishing the answer. No automatic retry was made.")
+            fun declined(): Nothing = fail("The provider declined this question. Try rephrasing it.")
+            when (provider) {
+                "openai", "xai" -> {
+                    if (root.text("status") == "incomplete") {
+                        when ((root["incomplete_details"] as? JsonObject)?.text("reason")) {
+                            "max_output_tokens" -> incomplete()
+                            "content_filter" -> declined()
+                            else -> fail("The provider returned an unfinished answer. No automatic retry was made.")
+                        }
+                    }
+                    if (root.text("status") in setOf("failed", "cancelled", "in_progress", "queued"))
+                        fail("The provider did not complete the answer. No automatic retry was made.")
+                    if ((root["output"] as? JsonArray).orEmpty().any { item ->
+                        (((item as? JsonObject)?.get("content")) as? JsonArray).orEmpty().any { block ->
+                            (block as? JsonObject)?.text("type") == "refusal"
+                        }
+                    }) declined()
+                }
+                "anthropic" -> when (root.text("stop_reason")) {
+                    "max_tokens" -> incomplete()
+                    "refusal" -> declined()
+                    else -> Unit
+                }
+                "gemini" -> {
+                    val blocked = (root["promptFeedback"] as? JsonObject)?.text("blockReason")
+                    if (blocked != null && blocked != "BLOCK_REASON_UNSPECIFIED") declined()
+                    when (((root["candidates"] as? JsonArray)?.firstOrNull() as? JsonObject)?.text("finishReason")) {
+                        "MAX_TOKENS" -> incomplete()
+                        "SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII" -> declined()
+                    }
+                }
+                "openrouter", "custom" -> when (((root["choices"] as? JsonArray)?.firstOrNull() as? JsonObject)?.text("finish_reason")) {
+                    "length" -> incomplete()
+                    "content_filter" -> declined()
+                    else -> Unit
+                }
+            }
+        }
+
         internal fun truncateUtf8(value: String, maxBytes: Int): String {
             val bytes = value.encodeToByteArray()
             if (bytes.size <= maxBytes) return value
@@ -184,15 +230,30 @@ class SignalProviders(http: HttpClient, private val secrets: SignalSecrets) {
             return bytes.decodeToString(0, end) + suffix
         }
 
-        private fun checkStatus(status: Int) {
-            when {
-                status in 200..299 -> Unit
-                status == 401 || status == 403 -> fail("Provider authentication failed. Check the key and model access.")
-                status == 429 -> fail("Provider limit reached. Check usage before trying again.")
-                status in 300..399 -> fail("Provider redirect refused. Check the endpoint.")
-                status == 400 || status == 404 || status == 422 -> fail("Provider rejected the request. Check the model and endpoint.")
-                else -> fail("The provider is unavailable. Try again later.")
+        private fun errorCode(root: JsonObject): String? {
+            val error = root["error"] as? JsonObject ?: return null
+            val allowed = setOf("invalid_api_key", "authentication_error", "permission_error", "model_not_found",
+                "insufficient_quota", "rate_limit_exceeded", "rate_limit_error", "context_length_exceeded",
+                "invalid_request_error", "unsupported_parameter", "content_policy_violation", "server_error",
+                "overloaded_error", "INVALID_ARGUMENT", "UNAUTHENTICATED", "PERMISSION_DENIED", "NOT_FOUND",
+                "RESOURCE_EXHAUSTED", "UNAVAILABLE", "INTERNAL")
+            return listOf("code", "type", "status").mapNotNull { (error[it] as? JsonPrimitive)?.contentOrNull }
+                .firstOrNull { it in allowed }
+        }
+
+        private fun checkStatus(status: Int, body: String) {
+            if (status in 200..299) return
+            val code = runCatching { errorCode(Json.parseToJsonElement(body).jsonObject) }.getOrNull()
+            val message = when {
+                code == "context_length_exceeded" -> "The conversation exceeds this model's context limit. Start a new conversation."
+                code == "insufficient_quota" -> "Provider credit or quota is exhausted. Check billing and usage."
+                status == 401 || status == 403 -> "Provider authentication failed. Check the key and model access."
+                status == 429 -> "Provider limit reached. Check usage before trying again."
+                status in 300..399 -> "Provider redirect refused. Check the endpoint."
+                status == 400 || status == 404 || status == 422 -> "Provider rejected the request. Check the model and endpoint."
+                else -> "The provider is unavailable. Try again later."
             }
+            fail("$message (HTTP $status${code?.let { "; $it" }.orEmpty()})")
         }
 
         private fun parseJson(text: String): JsonObject = try { Json.parseToJsonElement(text).jsonObject }

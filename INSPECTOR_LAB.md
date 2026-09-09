@@ -17,16 +17,18 @@ remains in Git history; its choppy speaker playback is no longer part of this ap
 1. Install the Signal Station test APK. The package remains
    `coredevices.coreapp.inspectorlab`, so it updates Pebble Inspector Lab in place.
    Keep only one companion actively connected to the test watch.
-2. The first launch explains local captures, lets you choose individual sources,
-   and offers Android permission prompts for those choices. Every source is
-   optional; setup can be skipped and revisited in Settings.
-3. Open **Devices** to pair the watch. Select it on the Capture screen, then tap
+2. Choose **Start with a question** to open Ask immediately. Add your model and
+   key in Settings with **Save answer setup**, then return to your question.
+   Capture sources and their permissions can be configured later. No watch or
+   ESP32 is needed for phone questions and phone readings.
+3. Watch use is optional. Open **Watch** to manage pairing. In Capture, expand
+   **Watch setup (optional)**, select the watch, then tap
    **Install watch app** to install the bundled Signal Station 1.3.0 and verify
    its connection. Install with only the selected watch connected.
 4. Tap **Capture readings** to save enabled sources on the phone. No provider
    key is needed. Open the capture in History to inspect each reading and choose
    **Analyze readings** when you want to send it to a model.
-5. For analysis, choose a provider, model and key in Settings. OpenAI defaults to
+5. For analysis, choose a provider, model and key in Settings and save the setup. OpenAI defaults to
    `gpt-4.1-mini`; Anthropic, Gemini, xAI, OpenRouter and custom HTTPS
    OpenAI-compatible Chat Completions endpoints are supported. Provider testing
    sends a request only when tapped and may incur charges.
@@ -134,7 +136,7 @@ python3 tools/verify_inspector_apk.py androidApp/build/outputs/apk/inspectorLab/
 The companion's `tools/import-signal-watch.py` imports a reviewed PBW and pins its
 PKJS SHA-256. Repeat import after any watch JS change. From committed source,
 `bash tools/stage-inspector-lab.sh` builds and verifies a revision-named package
-under ignored `dist/`. Lab revision 7 increments the APK version code and retains
+under ignored `dist/`. Lab revision 8 increments the APK version code and retains
 the original runtime class namespace, separate PebbleKit provider authorities,
 fake Firebase configuration, and disabled analytics/Crashlytics.
 
@@ -151,7 +153,7 @@ watch, provider-account and pairing-recovery evidence are recorded separately in
 
 ## Go go gadget
 
-Open Ask and choose Start listening. Grant microphone access, say “go go gadget,”
+Open Ask, expand Voice, and choose Start listening. Grant microphone access, say “go go gadget,”
 wait for the phone vibration, then speak your question. The bundled English
 recognizer runs locally and needs no extra key. Review the draft and tap Send
 when ready; only the text goes to the selected provider.
@@ -163,7 +165,7 @@ checks remain important for this experiment.
 
 ## Nearby devices and familiar places
 
-Open Presence, enable the sources you want, review permissions, and choose Check
+Open Nearby, enable the sources you want, review permissions, and choose Check
 now. Wi-Fi rows show advertised security, with cached scans labeled. Open access
 does not guarantee working internet. Name devices you recognize to include their
 sightings in later captures. Unenrolled identifiers stay in the temporary scan
@@ -199,10 +201,36 @@ the phone; review never silently shortens the submitted question. Watch review
 expires after about 100 seconds. Install the matching bundled watchapp after
 updating the companion.
 
-Open **20-minute field trial** from Capture. Try ten wake requests and capture at
+Open **Capture tools** in Capture, then **20-minute field trial**. Try ten wake requests and capture at
 three stops. Record recognized/missed attempts and false triggers explicitly; blank
 entries mean unrecorded. Link the stop captures and optionally enter battery levels
 and a usefulness note. Save after each attempt or stop. Saved trials appear in
 History and can be exported with the other records; Resume latest saved trial
 continues one after reopening the app. These are your observations, not automatic
 accuracy or battery measurements.
+
+
+## Lab 8: clearer asking and nearby evidence
+
+Ask is the first screen. Voice and context controls have their own expandable
+sections. Questions stay in memory while switching tabs or fixing provider
+settings; failed questions also remain in encrypted History. A successful reply
+clears the submitted draft. Failure details appear beside the question. Sending
+again is always a deliberate action.
+
+The provider test uses the same system instructions as a conversation. It checks
+a short question; longer answers can still reach time or output limits. Error
+messages now distinguish incomplete answers, output limits, filtering, and HTTP
+status with recognized error codes. They do not echo provider error bodies.
+
+Nearby can enroll an advertised iBeacon or AltBeacon identity and show readable
+service metadata, fresh sample counts, and median signal strength. It derives
+last-seen time and repeated sightings from saved checks. A missed signal does
+not mean departure; old evidence becomes unknown. See
+[presence building blocks](docs/signal-station/presence-prior-art.md) for sources
+and the optional fixed-receiver direction.
+
+This test build still owns the watch connection. Keep an existing Signal Station
+pairing; no new pairing is required to update. A future Android add-on could use
+the regular Pebble companion's messaging bridge. That migration requires a new
+watch transport and a replacement for this fork's custom transcription hook.

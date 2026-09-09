@@ -25,7 +25,7 @@ class SignalPresenceCollector(private val context: Context) {
     private val collectors by lazy { SignalCollectors(context) }
     suspend fun collect(settings: SignalSettings): SignalPresenceResult = coroutineScope {
         val keys = buildSet {
-            if ("presence.bluetooth" in settings.enabled) addAll(listOf("bluetooth", "bluetooth.names", "bluetooth.identifiers"))
+            if ("presence.bluetooth" in settings.enabled) addAll(listOf("bluetooth", "bluetooth.names", "bluetooth.identifiers", "bluetooth.services"))
             if ("presence.wifi" in settings.enabled) addAll(listOf("wifi", "wifi.names", "wifi.identifiers"))
         }
         val location = async { if ("presence.places" in settings.enabled) locate() else null }
@@ -34,13 +34,18 @@ class SignalPresenceCollector(private val context: Context) {
             val rows = readings.filter { it.key == radio || it.key.startsWith("$radio.") }.groupBy { Regex("^observation=(\\d+);").find(it.value)?.groupValues?.get(1) }
             rows.filterKeys { it != null }.values.mapNotNull { group ->
                 val signal = group.firstOrNull { it.key == radio } ?: return@mapNotNull null
-                val identifier = group.firstOrNull { it.key == "$radio.identifiers" }?.value?.substringAfter(if (radio == "wifi") "; bssid=" else "; address=", "").orEmpty()
+                val identifierRow = group.firstOrNull { it.key == "$radio.identifiers" }?.value.orEmpty()
+                val identifier = identifierRow.substringAfter(if (radio == "wifi") "; bssid=" else "; address=", "").substringBefore(";")
                 if (identifier.isBlank()) return@mapNotNull null
                 val name = group.firstOrNull { it.key == "$radio.names" }?.value?.substringAfter(if (radio == "wifi") "; ssid=" else "; name=", "").orEmpty()
                 val rssi = Regex("; rssi=(-?\\d+)").find(signal.value)?.groupValues?.get(1)?.toIntOrNull() ?: return@mapNotNull null
                 val capabilities = signal.value.substringAfter("; capabilities=", "")
                 val security = if (radio == "wifi") SignalPresence.wifiSecurity(capabilities) else ""
-                SignalRadioCandidate(radio, identifier, name, rssi, signal.measuredAt, signal.status, security)
+                val beaconId = identifierRow.substringAfter("; beacon=", "").takeIf { SignalBeacon.validIdentity(it) }.orEmpty()
+                val metadata = group.firstOrNull { it.key == "$radio.services" }?.value?.substringAfter("; metadata=", "").orEmpty()
+                val count = Regex("; samples=(\\d+)").find(signal.value)?.groupValues?.get(1)?.toIntOrNull() ?: 1
+                val median = Regex("; medianRssi=(-?\\d+)").find(signal.value)?.groupValues?.get(1)?.toIntOrNull()
+                SignalRadioCandidate(radio, identifier, name, rssi, signal.measuredAt, signal.status, security, beaconId, metadata, count, median)
             }
         }
         val coverage = listOf("bluetooth", "wifi").associateWith { radio ->
