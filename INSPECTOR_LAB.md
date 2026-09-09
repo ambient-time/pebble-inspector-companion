@@ -138,7 +138,8 @@ The Android encrypted-storage test runs only on the lab variant with
 `coredevices.coreapp.signal.SignalStoreTest`. Use an emulator or designated test
 phone; it uses a unique test-only database and key namespace.
 
-The Pebble listing is being prepared as an unpublished draft. Installing the
+[Signal Station 1.1.0](https://developer.repebble.com/dashboard/apps/37360ca4d9764881bd1d6f4d/edit)
+is saved as an Unlisted listing with a Draft release. Installing the
 watchapp alone does not supply the experimental Android companion. Build, emulator, physical
 watch, provider-account and pairing-recovery evidence are recorded separately in
 [SIGNAL_VALIDATION.md](SIGNAL_VALIDATION.md).

@@ -60,9 +60,14 @@ frozen release keep their own checksums rather than claiming identical PBWs. Wea
 renderer and executable script are unchanged from the prior emulator captures.
 
 The new place-picker and weather controls still need an interactive phone check.
-The Mac was locked during packaging, so no new UI walkthrough or Pebble dashboard
-save is claimed here. Draft copy and the frozen watch/source files are staged
-locally; the dashboard receipt will identify an actual saved draft when available.
+Signal Station 1.1.0 is saved in the Pebble dashboard with an Unlisted listing
+and a Draft release. The saved description and three native emulator screenshots
+each for Chalk and Emery were verified after reopening the listing. The other
+four target media panels are empty.
+
+The new-app submission unexpectedly published immediately. The release was
+immediately returned to Draft and listing visibility disabled; both saved states
+were verified. [Open the saved draft](https://developer.repebble.com/dashboard/apps/37360ca4d9764881bd1d6f4d/edit).
 
 ## Physical and account checks still required
 
