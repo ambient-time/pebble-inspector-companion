@@ -97,7 +97,7 @@ def validate_manifest(root, labels):
     require(root.tag == "manifest", "APK XML root is not manifest")
     require(root.get("package") == PACKAGE, "APK package must be " + PACKAGE)
     version = root.get(ANDROID + "versionName", "")
-    require(version.endswith("-inspector-lab.2"), "APK version lacks -inspector-lab.2 suffix")
+    require(version.endswith("-inspector-lab.3"), "APK version lacks -inspector-lab.3 suffix")
     code = root.get(ANDROID + "versionCode", "")
     require(code.isdecimal() and int(code) > 0, "APK has no positive version code")
     require(labels and all(label == LABEL for label in labels), "APK has the wrong visible label")

@@ -14,7 +14,7 @@ class SignalPermissionActivity : Activity() {
         if (savedInstanceState != null) return
         val enabled = intent.getStringArrayExtra("sources").orEmpty().toSet()
         val wanted = buildList {
-            if (enabled.any { it == "location" || it.startsWith("wifi") || it.startsWith("bluetooth") }) {
+            if ((intent.getBooleanExtra("weatherDeviceLocation", false) && enabled.any { it in SignalWeather.keys }) || enabled.any { it == "location" || it.startsWith("wifi") || it.startsWith("bluetooth") }) {
                 add(Manifest.permission.ACCESS_COARSE_LOCATION); add(Manifest.permission.ACCESS_FINE_LOCATION)
             }
             if (enabled.any { it.startsWith("bluetooth") } && Build.VERSION.SDK_INT >= 31) { add(Manifest.permission.BLUETOOTH_SCAN); add(Manifest.permission.BLUETOOTH_CONNECT) }

@@ -1,9 +1,11 @@
 # Signal Station in Pebble Inspector Lab
 
-Signal Station is Luke Steuber's private Android and Pebble context experiment.
-The phone is the workbench: type a question, trigger watch dictation or a survey,
-read full reports, and explore local history. The watch collects selected signals
-and displays a short answer. Replies are text only.
+I built Signal Station to ask questions from a Pebble and give those questions
+a little context. Speak on the watch or type on the phone, choose the readings
+to include, and get a text reply. The phone keeps the full conversation and
+survey history; the watch collects signals and shows a short answer.
+
+By Luke Steuber. This is an experimental Android companion and Pebble watchapp.
 
 The Android fork preserves Core Devices' source, notices and history from
 `d52101ad3d8940c5aa392d6f224e774cb6f5ce84`. The [upstream README](README.md)
@@ -58,6 +60,36 @@ zero. Hardware capability, sampling age and wear gaps limit interpretation.
 Direct watch readings preserve watch provenance; the companion's merged health
 database is not used for these reports.
 
+## Weather and location
+
+In Settings, choose **A chosen place**, enter a city and country, tap **Find
+places**, then select a result. Search sends only that text to Open-Meteo.
+Alternatively, choose **Near this phone** and grant location permission.
+
+Current weather, the next six hours, daylight, air quality, and UV each have their
+own switch. They all start off. Survey fetches only the selected groups and saves
+the readings with the report. Changing the place starts a new conversation so a
+previous city's report does not quietly become the context for a new one.
+
+Device-based weather sends a position rounded to 0.01 degree (roughly a kilometre)
+to Open-Meteo. A cached fix must be no older than 15 minutes. The model receives
+the weather and a description of the location source, without the coordinates.
+The separate **Location** switch includes phone coordinates in model context when
+you want them. A manually chosen city's name appears in its weather report.
+
+Weather readings come from models, so they can differ from conditions outside.
+Reports preserve units, valid times, missing fields, and forecast coverage.
+Sunrise and sunset are calculated; polar dates can lack either event. Air-quality
+and UV estimates are regional, not measurements made by the watch.
+
+Data and attribution: [Open-Meteo weather](https://open-meteo.com/en/docs),
+[Open-Meteo / CAMS air quality and UV](https://open-meteo.com/en/docs/air-quality-api),
+and [GeoNames place data](https://www.geonames.org/) through
+[Open-Meteo geocoding](https://open-meteo.com/en/docs/geocoding-api).
+The lab uses Open-Meteo's free noncommercial service. See its
+[terms](https://open-meteo.com/en/terms) before repurposing the app commercially.
+Weather requests never include health readings, radio identifiers, or provider keys.
+
 ## History and privacy
 
 History stays on this phone until deleted. Room stores encrypted report payloads;
@@ -97,7 +129,7 @@ python3 tools/verify_inspector_apk.py androidApp/build/outputs/apk/inspectorLab/
 The companion's `tools/import-signal-watch.py` imports a reviewed PBW and pins its
 PKJS SHA-256. Repeat import after any watch JS change. From committed source,
 `bash tools/stage-inspector-lab.sh` builds and verifies a revision-named package
-under ignored `dist/`. Lab revision 2 increments the APK version code and retains
+under ignored `dist/`. Lab revision 3 increments the APK version code and retains
 the original runtime class namespace, separate PebbleKit provider authorities,
 fake Firebase configuration, and disabled analytics/Crashlytics.
 
@@ -106,6 +138,7 @@ The Android encrypted-storage test runs only on the lab variant with
 `coredevices.coreapp.signal.SignalStoreTest`. Use an emulator or designated test
 phone; it uses a unique test-only database and key namespace.
 
-No public store release is part of this experiment. Build, emulator, physical
+The Pebble listing is being prepared as an unpublished draft. Installing the
+watchapp alone does not supply the experimental Android companion. Build, emulator, physical
 watch, provider-account and pairing-recovery evidence are recorded separately in
 [SIGNAL_VALIDATION.md](SIGNAL_VALIDATION.md).

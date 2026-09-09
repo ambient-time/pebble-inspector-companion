@@ -31,6 +31,8 @@ class AndroidSignalStation(private val context: Context, private val pebble: () 
     private val collectors by lazy { SignalCollectors(context) }
     private val mutable = MutableStateFlow(SignalState())
     override val state: StateFlow<SignalState> = mutable.asStateFlow()
+    private var weatherSearch: Job? = null
+    private var weatherSearchGeneration = 0L
     private var operation: Job? = null
     private var feedbackJob: Job? = null
     private var generation = 0L
@@ -100,7 +102,7 @@ class AndroidSignalStation(private val context: Context, private val pebble: () 
                     if (generation != token) return@withLock
                     val old = mutable.value.settings
                     withContext(Dispatchers.IO) { store.settings(sanitized) }
-                    val newThread = old.provider != sanitized.provider || old.endpoint != sanitized.endpoint || old.model != sanitized.model
+                    val newThread = old.provider != sanitized.provider || old.endpoint != sanitized.endpoint || old.model != sanitized.model || old.weatherPlace != sanitized.weatherPlace || old.weatherLocation != sanitized.weatherLocation
                     if (newThread) attachments = emptySet()
                     mutable.update { it.copy(settings = sanitized, threadId = if (newThread) id() else it.threadId, status = "Settings saved. Collection runs only when requested.") }
                 } }
@@ -243,7 +245,7 @@ class AndroidSignalStation(private val context: Context, private val pebble: () 
         }
         val collectedReadings = if (survey) coroutineScope {
             status("Collecting selected sources…")
-            val phone = async { if (foreground()) collectors.collect(settings.enabled) else settings.enabled.filter { it !in watchKeys }.map { SignalObservation(it, "phone", collectedAt = now(), status = "background_unavailable") } }
+            val phone = async { if (foreground()) collectors.collect(settings) else settings.enabled.filter { it !in watchKeys }.map { SignalObservation(it, "phone", collectedAt = now(), status = "background_unavailable") } }
             val watch = async {
                 val enabledWatch = settings.enabled.intersect(watchKeys)
                 if (enabledWatch.isEmpty()) emptyList() else {
@@ -394,7 +396,21 @@ class AndroidSignalStation(private val context: Context, private val pebble: () 
             }
         }
     }
-    override fun requestPermissions() { context.startActivity(Intent(context, SignalPermissionActivity::class.java).putExtra("sources", mutable.value.settings.enabled.toTypedArray()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+    override fun searchWeatherPlaces(query: String) {
+        if (!available || query.trim().length !in 2..100) return
+        weatherSearch?.cancel()
+        val token = ++weatherSearchGeneration
+        mutable.update { it.copy(weatherSearching = true, weatherPlaces = emptyList(), weatherSearchStatus = "Searching Open-Meteo…") }
+        weatherSearch = scope.launch {
+            try {
+                val places = collectors.searchWeatherPlaces(query)
+                if (token == weatherSearchGeneration) mutable.update { it.copy(weatherPlaces = places, weatherSearchStatus = if (places.isEmpty()) "No matching places. Try a city and country." else "Choose the place to save.") }
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) { if (token == weatherSearchGeneration) mutable.update { it.copy(weatherSearchStatus = "Place search unavailable. Try again later.") } }
+            finally { if (token == weatherSearchGeneration) mutable.update { it.copy(weatherSearching = false) } }
+        }
+    }
+    override fun requestPermissions() { context.startActivity(Intent(context, SignalPermissionActivity::class.java).putExtra("sources", mutable.value.settings.enabled.toTypedArray()).putExtra("weatherDeviceLocation", mutable.value.settings.weatherLocation == "device").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
 
     override fun shouldIntercept(url: String) = available && url.startsWith(PREFIX)
     override suspend fun onIntercepted(url: String, method: String, body: String?, appUuid: Uuid) = InterceptResponse("{}", 403)

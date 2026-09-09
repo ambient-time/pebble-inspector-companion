@@ -5,16 +5,18 @@ By Luke Steuber. Checked September 8, 2026.
 ## Verified locally
 
 - Android `inspectorLab` compilation and APK assembly pass. Package identity is
-  `coredevices.coreapp.inspectorlab`; revision 2 is
-  `1.12.0.1-inspector-lab.2`, version code `11200002`.
-- Companion host suite: 115 tests, zero failures. Includes provider fixtures,
+  `coredevices.coreapp.inspectorlab`; revision 3 is
+  `1.12.0.1-inspector-lab.3`, version code `11200003`.
+- Companion host suite: 126 tests, zero failures. Includes provider fixtures,
   history dates/provenance/deduplication, actual C watch-payload normalization,
-  and invalid/disabled watch observations.
+  invalid/disabled watch observations, and eleven weather tests for independent
+  switches, missing/stale data, forecast coverage, polar daylight, place choices,
+  cancellation, request limits, migration, and history filtering.
 - Library voice checks: two targeted tests pass for app UUID routing and real
   VoiceSessionManager disconnection cleanup. Other library tests were not rerun.
 - Android lint: zero errors, six existing/upstream warnings (target SDK, upstream
   network security configuration, two PebbleKit providers, ignored upstream test).
-- Real Android Keystore/Room instrumentation: one test passes on the ARM64 Android
+- Real Android Keystore/Room instrumentation: one test passed on lab revision 2 on the ARM64 Android
   16 emulator. Verifies encrypted content at rest, restart persistence, independent
   answer/STT credentials, deletion, and clearing with an isolated test namespace.
   The first run timed out during app startup with a 2GB emulator under memory/disk
@@ -27,14 +29,14 @@ By Luke Steuber. Checked September 8, 2026.
   scrolling, duplicate delivery, and late reply cancellation were checked with
   synthetic messages. Watch evidence and screenshots live in the watch repository.
 
-The matching watch source is `991e6be02b10dd0a412e49138044ef246fc3e824`.
+The matching watch source is `dc37e48acfc6018b825c13fa5da045208c191097`.
 `androidApp/src/inspectorLab/assets/signal-station/watch-provenance.json` records
 its executable script and PBW SHA-256. The revision-specific staged APK metadata
 and checksum identify the exact installation package; rebuilds may change bytes.
 
 ## Companion walkthrough
 
-The Android 16 emulator completed watch-only onboarding with sign-in skipped and
+With lab revision 2, the Android 16 emulator completed watch-only onboarding with sign-in skipped and
 no watch paired. Conversation, provider settings, and individual source controls
 were inspected. Enabling only phone battery produced one fresh emulator battery
 reading, saved a clear missing-key failure without a provider request, and exposed
@@ -42,6 +44,25 @@ that reading through History after an APK update/restart. Confirmed deletion the
 returned History to zero records. Screenshots are under `docs/signal-station/`.
 The walkthrough also found and corrected the upstream uninstall warning/connection
 block for the lab: stock installations can remain, with one active connection.
+
+## Weather checks in lab revision 3
+
+Current weather, next-six-hour forecasts, daylight, air quality, and UV compile
+into the native companion with separate switches. The host fixtures pass, and
+live requests for the public city centre of Portland returned the expected
+weather, daylight, air-quality, UV, and geocoding fields. These HTTP checks did
+not use the phone's location, user keys, or health information.
+
+An independent source-archive build compiled all six watch targets and matched
+the frozen PKJS script byte for byte. Native differences were confined to the
+first 168 bytes; each remaining binary payload matched. The source archive and
+frozen release keep their own checksums rather than claiming identical PBWs. Weather runs in the companion; the watch
+renderer and executable script are unchanged from the prior emulator captures.
+
+The new place-picker and weather controls still need an interactive phone check.
+The Mac was locked during packaging, so no new UI walkthrough or Pebble dashboard
+save is claimed here. Draft copy and the frozen watch/source files are staged
+locally; the dashboard receipt will identify an actual saved draft when available.
 
 ## Physical and account checks still required
 

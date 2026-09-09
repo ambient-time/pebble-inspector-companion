@@ -37,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -376,10 +377,12 @@ private fun SignalDetail(
 @Composable
 private fun SignalConfiguration(state: SignalState, station: SignalStation, onConfirm: (SignalConfirmation) -> Unit) {
     val settings = state.settings
+    val uriHandler = LocalUriHandler.current
     var model by remember(settings.provider, settings.model) { mutableStateOf(settings.model) }
     var endpoint by remember(settings.provider, settings.endpoint) { mutableStateOf(settings.endpoint) }
     var key by remember(settings.provider) { mutableStateOf("") }
     var recognitionKey by remember { mutableStateOf("") }
+    var weatherQuery by remember { mutableStateOf("") }
     val pendingProfile = model != settings.model || endpoint != settings.endpoint
     LazyColumn(
         Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp),
@@ -436,6 +439,31 @@ private fun SignalConfiguration(state: SignalState, station: SignalStation, onCo
             SignalHeading("Selected watch")
             SignalChoice("Watch", settings.watchId, listOf("" to "No watch selected") + state.watches.map { it.id to "${it.name} · ${if (it.connected) "connected" else "disconnected"}" }, !state.busy) {
                 station.updateSettings(settings.copy(watchId = it))
+            }
+        }
+        item {
+            HorizontalDivider()
+            SignalHeading("Weather location")
+            SignalChoice("Weather for", settings.weatherLocation, listOf("place" to "A chosen place", "device" to "Near this phone"), !state.busy) {
+                station.updateSettings(settings.copy(weatherLocation = it))
+            }
+            Text("Weather switches below send a chosen place or your phone position rounded to about 1 km to Open-Meteo when you tap Survey. Coordinates stay out of model context unless Location is also enabled.")
+            if (settings.weatherLocation == "place") {
+                Text(settings.weatherPlace?.let { "Saved place: ${it.name}" } ?: "Choose a place before collecting weather.")
+                OutlinedTextField(weatherQuery, { weatherQuery = it.take(100) }, Modifier.fillMaxWidth(), label = { Text("City and country") }, singleLine = true, enabled = !state.busy)
+                OutlinedButton(onClick = { station.searchWeatherPlaces(weatherQuery) }, enabled = !state.busy && !state.weatherSearching && weatherQuery.trim().length >= 2) { Text("Find places") }
+                Text("Find places sends this search to Open-Meteo. It does not use phone location.", style = MaterialTheme.typography.bodySmall)
+                if (state.weatherSearchStatus.isNotBlank()) Text(state.weatherSearchStatus, Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                state.weatherPlaces.forEach { place ->
+                    TextButton(onClick = { station.updateSettings(settings.copy(weatherPlace = place)) }, enabled = !state.busy) { Text(place.name) }
+                }
+                if (settings.weatherPlace != null) TextButton(onClick = { station.updateSettings(settings.copy(weatherPlace = null)) }, enabled = !state.busy) { Text("Forget saved place") }
+            }
+            Text("Weather: Open-Meteo · air quality and UV: CAMS · place names: GeoNames. Modeled conditions may differ from your surroundings. Free service for this noncommercial experiment.", style = MaterialTheme.typography.bodySmall)
+            FlowRow {
+                TextButton(onClick = { uriHandler.openUri("https://open-meteo.com/") }) { Text("Open-Meteo") }
+                TextButton(onClick = { uriHandler.openUri("https://atmosphere.copernicus.eu/") }) { Text("CAMS") }
+                TextButton(onClick = { uriHandler.openUri("https://www.geonames.org/") }) { Text("GeoNames") }
             }
         }
         item {

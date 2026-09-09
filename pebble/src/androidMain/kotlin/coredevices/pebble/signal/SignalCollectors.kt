@@ -20,11 +20,16 @@ import android.net.wifi.WifiManager
 import android.os.*
 import kotlinx.coroutines.*
 import java.time.ZoneId
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.okhttp.OkHttp
+import kotlin.math.round
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
 /** Bounded foreground observations. Radio identifiers never appear in the base signal records. */
 class SignalCollectors(private val context: Context) {
+    private val weather by lazy { SignalWeather(HttpClient(OkHttp)) }
+    suspend fun searchWeatherPlaces(query: String) = weather.search(query)
     private val sensors = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     private fun locationEnabled(manager: LocationManager): Boolean = if (Build.VERSION.SDK_INT >= 28) manager.isLocationEnabled else manager.isProviderEnabled(LocationManager.GPS_PROVIDER) || manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
     private fun permitted(permission: String) = context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
@@ -45,16 +50,19 @@ class SignalCollectors(private val context: Context) {
         SignalSource("watch.motion", "Watch motion", "Watch"),
         SignalSource("watch.compass", "Watch compass", "Watch"),
         SignalSource("watch.battery", "Watch battery", "Watch"),
-    ) + listOf("steps", "active_seconds", "distance", "active_calories", "resting_calories", "sleep", "restful_sleep", "heart_rate", "activity")
+    ) + SignalWeather.sources + listOf("steps", "active_seconds", "distance", "active_calories", "resting_calories", "sleep", "restful_sleep", "heart_rate", "activity")
         .map { SignalSource("health.$it", it.replace('_', ' ').replaceFirstChar(Char::uppercase), "Health") } +
         sensors.getSensorList(Sensor.TYPE_ALL).distinctBy { it.type }.map { SignalSource("sensor.${it.type}", it.name, "Sensors") }
 
-    suspend fun collect(enabled: Set<String>): List<SignalObservation> = supervisorScope {
+    suspend fun collect(settings: SignalSettings): List<SignalObservation> = supervisorScope {
+        val enabled = settings.enabled
+        val locationResult = async { if ("location" in enabled || (settings.weatherLocation == "device" && enabled.any { it in SignalWeather.keys })) locate() else LocationResult(null, "disabled") }
         val probes = listOf(
             async { probe(enabled.filter { it.startsWith("sensor.") }) { sensorReadings(enabled) } },
             async { probe(enabled.filter { it == "bluetooth" || it.startsWith("bluetooth.") }) { bluetooth(enabled) } },
             async { probe(enabled.filter { it == "wifi" || it.startsWith("wifi.") }) { wifi(enabled) } },
-            async { probe(enabled.filter { it == "location" }) { location() } },
+            async { probe(enabled.filter { it == "location" }) { locationObservations(locationResult.await()) } },
+            async { environment(settings, locationResult) },
             async { probe(enabled.filter { it == "device" || it.startsWith("device.") }) { device(enabled) } },
         )
         probes.awaitAll().flatten().filter { it.key in enabled }
@@ -237,20 +245,42 @@ class SignalCollectors(private val context: Context) {
         } finally { if (registered) runCatching { context.unregisterReceiver(receiver) } }
     }
 
-    private suspend fun location(): List<SignalObservation> = withContext(Dispatchers.Main) {
-        if (!permitted(Manifest.permission.ACCESS_COARSE_LOCATION) && !permitted(Manifest.permission.ACCESS_FINE_LOCATION)) return@withContext unavailable(listOf("location"), "permission_denied")
+    private data class LocationResult(val location: Location?, val status: String, val measuredAt: Long? = null)
+    private fun locationObservations(result: LocationResult): List<SignalObservation> {
+        val location = result.location ?: return unavailable(listOf("location"), result.status)
+        return listOf(observation("location", "latitude=${location.latitude}; longitude=${location.longitude}; accuracy=${if (location.hasAccuracy()) location.accuracy else "unknown"}; provider=${location.provider}", "degrees; meters", result.status, result.measuredAt))
+    }
+    private suspend fun environment(settings: SignalSettings, location: Deferred<LocationResult>): List<SignalObservation> {
+        val keys = settings.enabled.intersect(SignalWeather.keys)
+        if (keys.isEmpty()) return emptyList()
+        var note = "chosen place"
+        val place = if (settings.weatherLocation == "device") {
+            val result = location.await()
+            val fix = result.location ?: return SignalWeather.missing(keys, result.status)
+            val at = result.measuredAt
+            if (at == null || System.currentTimeMillis() - at !in 0..900_000) return SignalWeather.missing(keys, "location_stale")
+            note = "phone position rounded to 0.01 degree; ${result.status}; location_time=$at; accuracy_m=${if (fix.hasAccuracy()) fix.accuracy else "unknown"}"
+            SignalPlace("Near this phone", round(fix.latitude * 100) / 100, round(fix.longitude * 100) / 100)
+        } else settings.weatherPlace ?: return SignalWeather.missing(keys, "choose_weather_place")
+        return weather.collect(keys, place, note)
+    }
+    private suspend fun locate(): LocationResult = withContext(Dispatchers.Main) {
+        if (!permitted(Manifest.permission.ACCESS_COARSE_LOCATION) && !permitted(Manifest.permission.ACCESS_FINE_LOCATION)) return@withContext LocationResult(null, "permission_denied")
         val manager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        if (!locationEnabled(manager)) return@withContext unavailable(listOf("location"), "location_services_disabled")
+        if (!locationEnabled(manager)) return@withContext LocationResult(null, "location_services_disabled")
         val available = manager.getProviders(true).filter { it == LocationManager.NETWORK_PROVIDER || (it == LocationManager.GPS_PROVIDER && permitted(Manifest.permission.ACCESS_FINE_LOCATION)) }
-        if (available.isEmpty()) return@withContext unavailable(listOf("location"), "provider_unavailable")
+        if (available.isEmpty()) return@withContext LocationResult(null, "provider_unavailable")
         val latest = CompletableDeferred<Location>()
         val listener = object : LocationListener { override fun onLocationChanged(location: Location) { latest.complete(Location(location)) } }
         try {
             available.forEach { manager.requestLocationUpdates(it, 1000L, 0f, listener, Looper.getMainLooper()) }
             val fresh = withTimeoutOrNull(8_000) { latest.await() }
             val result = fresh ?: available.mapNotNull { manager.getLastKnownLocation(it) }.maxByOrNull { it.elapsedRealtimeNanos }
-            if (result == null) unavailable(listOf("location"), "unavailable")
-            else listOf(observation("location", "latitude=${result.latitude}; longitude=${result.longitude}; accuracy=${if (result.hasAccuracy()) result.accuracy else "unknown"}; provider=${result.provider}", "degrees; meters", if (fresh != null) "fresh" else "cached", measured(result.elapsedRealtimeNanos) ?: result.time))
-        } finally { runCatching { manager.removeUpdates(listener) } }
+            if (result == null) LocationResult(null, "unavailable")
+            else LocationResult(result, if (fresh != null) "fresh" else "cached", measured(result.elapsedRealtimeNanos) ?: result.time)
+        } catch (e: CancellationException) { throw e }
+        catch (_: SecurityException) { LocationResult(null, "permission_denied") }
+        catch (_: Exception) { LocationResult(null, "unavailable") }
+        finally { runCatching { manager.removeUpdates(listener) } }
     }
 }

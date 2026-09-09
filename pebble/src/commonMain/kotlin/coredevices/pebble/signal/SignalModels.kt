@@ -13,7 +13,12 @@ data class SignalSettings(
     val enabled: Set<String> = emptySet(),
     val confirmTranscript: Boolean = true,
     val reducedMotion: Boolean = false,
+    val weatherLocation: String = "place",
+    val weatherPlace: SignalPlace? = null,
 )
+
+@Serializable
+data class SignalPlace(val name: String, val latitude: Double, val longitude: Double)
 
 @Serializable
 data class SignalObservation(
@@ -61,6 +66,9 @@ data class SignalState(
     val threadId: String = "",
     val selectedRecordId: String? = null,
     val configuredProviders: Set<String> = emptySet(),
+    val weatherPlaces: List<SignalPlace> = emptyList(),
+    val weatherSearchStatus: String = "",
+    val weatherSearching: Boolean = false,
 )
 
 interface SignalStation {
@@ -83,6 +91,7 @@ interface SignalStation {
     fun clearHistory()
     fun shareHistory(format: String)
     fun requestPermissions()
+    fun searchWeatherPlaces(query: String)
     suspend fun exportHistory(): String
 }
 
