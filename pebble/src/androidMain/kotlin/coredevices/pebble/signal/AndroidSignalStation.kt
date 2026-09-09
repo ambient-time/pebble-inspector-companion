@@ -29,8 +29,10 @@ class AndroidSignalStation(private val context: Context, private val pebble: () 
     private val store by lazy { SignalStore(context) }
     private val providers by lazy { SignalProviders(HttpClient(OkHttp), store) }
     private val collectors by lazy { SignalCollectors(context) }
+    private val presenceCollector by lazy { SignalPresenceCollector(context) }
     private val mutable = MutableStateFlow(SignalState())
     override val state: StateFlow<SignalState> = mutable.asStateFlow()
+    private var presenceCheckedAt = 0L
     private var weatherSearch: Job? = null
     private var weatherSearchGeneration = 0L
     private var operation: Job? = null
@@ -77,6 +79,7 @@ class AndroidSignalStation(private val context: Context, private val pebble: () 
                 }
                 VoiceProviderOverrides.resolve = { uuid -> if (uuid == APP_UUID && available && mutable.value.settings.recognition == "openai") recognition else null }
                 initialized.complete(Unit)
+                SignalWakeRuntime.state.onEach { wake -> mutable.update { it.copy(wakePhase = wake.phase, wakeStatus = wake.status, wakeDraft = wake.draft) } }.launchIn(scope)
                 yield()
                 // Deferred until graph construction completes; LibPebble injects this interceptor itself.
                 pebble().watches.collect { watches ->
@@ -97,7 +100,9 @@ class AndroidSignalStation(private val context: Context, private val pebble: () 
     private suspend fun configured(): Set<String> = providerNames.filter { !store.get(it).isNullOrBlank() }.toSet()
     override fun updateSettings(settings: SignalSettings) {
         if (!available) return
-        val sanitized = settings.copy(enabled = settings.enabled.intersect(mutable.value.sources.map { it.key }.toSet()))
+        val sanitized = settings.copy(enabled = settings.enabled.intersect(mutable.value.sources.map { it.key }.toSet()),
+            presenceTargets = settings.presenceTargets.filter { it.radio in setOf("bluetooth", "wifi") && it.address.matches(Regex("[A-Fa-f0-9]{2}(:[A-Fa-f0-9]{2}){5}")) && it.label.isNotBlank() }.distinctBy { it.id }.take(32).map { it.copy(label = it.label.trim().take(100), id = it.id.take(64)) },
+            placeFences = settings.placeFences.filter { it.label.isNotBlank() && it.latitude.isFinite() && it.longitude.isFinite() && it.latitude in -90.0..90.0 && it.longitude in -180.0..180.0 }.distinctBy { it.id }.take(16).map { it.copy(label = it.label.trim().take(100), id = it.id.take(64), radiusMeters = it.radiusMeters.coerceIn(25, 10000), wifiSsid = it.wifiSsid.take(100)) })
         cancel()
         val token = generation
         mutable.update { it.copy(busy = true) }
@@ -108,9 +113,9 @@ class AndroidSignalStation(private val context: Context, private val pebble: () 
                     if (generation != token) return@withLock
                     val old = mutable.value.settings
                     withContext(Dispatchers.IO) { store.settings(sanitized) }
-                    val newThread = old.provider != sanitized.provider || old.endpoint != sanitized.endpoint || old.model != sanitized.model || old.weatherPlace != sanitized.weatherPlace || old.weatherLocation != sanitized.weatherLocation
+                    val newThread = old.provider != sanitized.provider || old.endpoint != sanitized.endpoint || old.model != sanitized.model || old.weatherPlace != sanitized.weatherPlace || old.weatherLocation != sanitized.weatherLocation || old.presenceTargets != sanitized.presenceTargets || old.placeFences != sanitized.placeFences
                     if (newThread) attachments = emptySet()
-                    mutable.update { it.copy(settings = sanitized, threadId = if (newThread) id() else it.threadId, status = "Settings saved. Collection runs only when requested.") }
+                    mutable.update { it.copy(settings = sanitized, presenceCandidates = it.presenceCandidates.filter { candidate -> "presence.${candidate.radio}" in sanitized.enabled }, placeLookup = null, threadId = if (newThread) id() else it.threadId, status = "Settings saved. Collection runs only when requested.") }
                 } }
                 if (generation == token) refreshWatchSettings()
             } catch (_: Exception) { status("Settings could not be saved.") }
@@ -148,6 +153,55 @@ class AndroidSignalStation(private val context: Context, private val pebble: () 
     override fun ask(text: String, searchHistory: Boolean) {
         if (text.isBlank()) return
         startOperation { settings, token -> execute(text.take(8000), settings, token, searchHistory, false) }
+    }
+    override fun startWakeListening() {
+        if (!available || !mutable.value.initialized) return
+        if (SignalWakeRuntime.state.value.draft.isNotEmpty()) { status("Review or discard the voice draft before listening again."); return }
+        if (!foreground()) { status("Open Signal Station before starting wake listening."); return }
+        if (SignalWakeRuntime.state.value.phase !in setOf("stopped", "error", "draft")) return
+        val token = SignalWakeRuntime.begin()
+        context.startActivity(Intent(context, SignalPermissionActivity::class.java).putExtra("wakeToken", token).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+    override fun stopWakeListening() { SignalWakeRuntime.stop(); context.stopService(Intent(context, SignalWakeService::class.java)) }
+    override fun dismissWakeDraft() { stopWakeListening(); SignalWakeRuntime.dismiss(); context.getSystemService(android.app.NotificationManager::class.java).cancel(6103) }
+    override fun scanPresence() {
+        startOperation { settings, token ->
+            if (!foreground()) throw SignalProviderException("Open Signal Station to check nearby signals.")
+            if (settings.enabled.none { it.startsWith("presence.") }) throw SignalProviderException("Choose a presence source before checking.")
+            mutable.update { it.copy(presenceStatus = "Checking selected signals…", presenceCandidates = emptyList()) }
+            val result = presenceCollector.collect(settings)
+            ensureActiveToken(token)
+            presenceCheckedAt = now()
+            val summary = result.observations.joinToString("\n") { it.value }
+            val record = SignalRecord(id(), id(), now(), "Presence check", answer = summary, summary = SignalProviders.truncateUtf8(summary, 900), provider = "local", model = "", state = "ready", observations = result.observations, sourceKeys = result.observations.map { it.key }.toSet(), kind = "presence")
+            save(record, token)
+            ensureActiveToken(token)
+            mutable.update { it.copy(presenceCandidates = result.candidates, presenceStatus = "Check saved in History. Signals are observations, not proof of occupancy.", selectedRecordId = record.id) }
+        }
+    }
+    override fun enrollPresenceTarget(candidate: SignalRadioCandidate, label: String) {
+        if (mutable.value.busy || candidate !in mutable.value.presenceCandidates || label.isBlank() || "presence.${candidate.radio}" !in mutable.value.settings.enabled) return
+        if (now() - presenceCheckedAt !in 0..300_000) { status("Check nearby signals again before enrolling this device."); return }
+        val settings = mutable.value.settings
+        if (settings.presenceTargets.size >= 32 && settings.presenceTargets.none { it.radio == candidate.radio && it.address.equals(candidate.address, true) }) { status("Up to 32 devices can be enrolled."); return }
+        val target = SignalPresenceTarget(id(), candidate.radio, candidate.address, label.trim().take(100))
+        updateSettings(settings.copy(presenceTargets = settings.presenceTargets.filterNot { it.radio == target.radio && it.address.equals(target.address, true) } + target))
+    }
+    override fun removePresenceTarget(id: String) { updateSettings(mutable.value.settings.copy(presenceTargets = mutable.value.settings.presenceTargets.filterNot { it.id == id })) }
+    override fun savePlaceFence(fence: SignalPlaceFence) {
+        val settings = mutable.value.settings
+        if (settings.placeFences.size >= 16 && settings.placeFences.none { it.id == fence.id }) { status("Up to 16 places can be saved."); return }
+        updateSettings(settings.copy(placeFences = settings.placeFences.filterNot { it.id == fence.id } + fence.copy(id = fence.id.ifBlank { id() })))
+    }
+    override fun removePlaceFence(id: String) { updateSettings(mutable.value.settings.copy(placeFences = mutable.value.settings.placeFences.filterNot { it.id == id })) }
+    override fun lookupNearbyPlace() {
+        startOperation { _, token ->
+            if (!foreground()) throw SignalProviderException("Open Signal Station to look up a nearby place.")
+            mutable.update { it.copy(presenceStatus = "Finding an address near this phone…", placeLookup = null) }
+            val place = presenceCollector.locatePlace()
+            ensureActiveToken(token)
+            mutable.update { it.copy(placeLookup = place, presenceStatus = "Review this map result before saving a place.") }
+        }
     }
     override fun capture() { startOperation { settings, token -> execute("Capture current context", settings, token, false, true, captureOnly = true) } }
     override fun analyzeRecord(id: String) {
@@ -296,7 +350,7 @@ class AndroidSignalStation(private val context: Context, private val pebble: () 
         }
         val collectedReadings = if (survey) coroutineScope {
             status("Collecting selected sources…")
-            val phone = async { if (foreground()) collectors.collect(settings) else settings.enabled.filter { it !in watchKeys }.map { SignalObservation(it, "phone", collectedAt = now(), status = "background_unavailable") } }
+            val phone = async { if (foreground()) { collectors.collect(settings) + if (settings.enabled.any { it.startsWith("presence.") }) presenceCollector.collect(settings).observations else emptyList() } else settings.enabled.filter { it !in watchKeys }.map { SignalObservation(it, "phone", collectedAt = now(), status = "background_unavailable") } }
             val watch = async {
                 val enabledWatch = settings.enabled.intersect(watchKeys)
                 if (enabledWatch.isEmpty()) emptyList() else {

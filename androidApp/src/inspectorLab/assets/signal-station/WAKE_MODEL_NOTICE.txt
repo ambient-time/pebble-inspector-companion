@@ -1,0 +1,16 @@
+Signal Station offline English speech recognition
+
+Vosk Android 0.3.75 and vosk-model-small-en-us-0.15 are by Alpha Cephei Inc.
+The speech model is Copyright 2020 Alpha Cephei Inc.
+Vosk and this model are distributed under the Apache License, Version 2.0.
+Model catalog: https://alphacephei.com/vosk/models
+Library source: https://github.com/alphacep/vosk-api
+Model: https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip
+Model SHA-256: 30f26242c4eb449f948e42cb302dd7a686cb29a3423a8367f99ff41780942498
+
+The model is bundled with the app. Wake detection and question recognition run
+on the phone. No microphone audio is saved or uploaded by wake listening.
+A recognized question becomes a local draft; sending that text is a separate action.
+
+JNA 5.18.1 is by the Java Native Access project, used under Apache License 2.0.
+JNA source: https://github.com/java-native-access/jna

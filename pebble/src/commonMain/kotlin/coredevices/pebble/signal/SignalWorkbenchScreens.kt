@@ -48,7 +48,7 @@ internal fun SignalSetup(station: SignalStation, state: SignalState) {
                 }
                 item {
                     Text("You choose each source. Captures are stored on this phone until you delete them. Model analysis uses your own provider key and only happens when requested.")
-                    Text("Weather sources contact their data services when enabled. Phone and watch measurements are collected only for a requested capture.")
+                    Text("Weather sources contact their data services when enabled. Phone and watch measurements are collected for requested captures and presence checks. Optional wake listening runs locally until stopped and is off by default.")
                 }
                 item {
                     Button(onClick = { step = 1 }) { Text("Choose sources") }

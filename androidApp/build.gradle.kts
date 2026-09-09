@@ -1,3 +1,8 @@
+import java.io.File as SignalModelFile
+import java.security.MessageDigest
+import java.net.URI
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.util.Properties
 
 plugins {
@@ -113,6 +118,7 @@ dependencies {
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.rules)
     androidTestImplementation(libs.ktor.client.okhttp)
+    androidTestImplementation("com.alphacephei:vosk-android:0.3.75")
     androidTestImplementation(libs.koin.core)
     androidTestImplementation(libs.koin.android)
     androidTestImplementation(libs.coroutines)
@@ -131,9 +137,9 @@ dependencies {
 androidComponents {
     onVariants { variant ->
         val isInspectorLab = variant.buildType == "inspectorLab"
-        val suffix = if (isInspectorLab) "-inspector-lab.5" else ""
+        val suffix = if (isInspectorLab) "-inspector-lab.6" else ""
         variant.outputs.forEach {
-            it.versionCode.set(gitVersionCode.map { code -> if (isInspectorLab) code + 4 else code })
+            it.versionCode.set(gitVersionCode.map { code -> if (isInspectorLab) code + 5 else code })
             it.versionName.set(gitVersionName.map { version -> version + suffix })
         }
     }
@@ -202,3 +208,31 @@ tasks.register("buildTestAppPbws") {
 // model of the source sets — has to run after they land.
 tasks.matching { it.name.contains("Assets") || it.name.contains("lint", ignoreCase = true) }
     .configureEach { dependsOn(testAppPbws) }
+
+// Only the experiment bundles the offline English model. Pin downloaded bytes before packaging.
+val signalWakeAssets = layout.buildDirectory.dir("generated/signalWakeAssets")
+val prepareSignalWakeModel by tasks.registering {
+    val output = signalWakeAssets.map { it.file("signal-station/wake-model.zip") }
+    outputs.file(output)
+    doLast {
+        val expected = "30f26242c4eb449f948e42cb302dd7a686cb29a3423a8367f99ff41780942498"
+        val target = output.get().asFile
+        fun digest(file: SignalModelFile) = MessageDigest.getInstance("SHA-256").let { hash ->
+            file.inputStream().use { input -> val buffer = ByteArray(8192); while (true) { val count = input.read(buffer); if (count < 0) break; hash.update(buffer, 0, count) } }
+            hash.digest().joinToString("") { "%02x".format(it) }
+        }
+        if (!target.isFile || digest(target) != expected) {
+            target.parentFile.mkdirs()
+            val temporary = SignalModelFile(target.parentFile, "wake-model.download")
+            try {
+                URI("https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip").toURL().openConnection().apply {
+                    connectTimeout = 15000; readTimeout = 60000
+                }.getInputStream().use { input -> temporary.outputStream().use { output -> input.copyTo(output) } }
+                check(digest(temporary) == expected) { "Offline speech model checksum mismatch" }
+                Files.move(temporary.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            } finally { temporary.delete() }
+        }
+    }
+}
+android.sourceSets.getByName("inspectorLab").assets.directories.add(signalWakeAssets.get().asFile.absolutePath)
+tasks.matching { it.name.contains("InspectorLab") && (it.name.contains("Assets") || it.name.contains("Lint") || it.name.startsWith("lint")) }.configureEach { dependsOn(prepareSignalWakeModel) }

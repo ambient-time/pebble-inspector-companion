@@ -1,0 +1,4 @@
+Synthetic speech fixtures generated with macOS Samantha, converted to 16 kHz mono PCM16 WAV.
+Positive: Go go gadget.
+Negative: Please make a cup of coffee.
+These test packaged recognition, not physical microphone accuracy or speaker identity.

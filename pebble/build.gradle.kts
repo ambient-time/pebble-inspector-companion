@@ -135,6 +135,7 @@ kotlin {
                 implementation(libs.androidx.activity.compose)
                 implementation(libs.room.runtime)
                 implementation(libs.ktor.client.okhttp)
+                implementation("com.alphacephei:vosk-android:0.3.75")
                 // gitlive's compile variant declares com.google.firebase:* without versions.
                 implementation(project.dependencies.platform(libs.firebase.bom))
             }

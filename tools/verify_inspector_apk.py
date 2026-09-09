@@ -97,7 +97,7 @@ def validate_manifest(root, labels):
     require(root.tag == "manifest", "APK XML root is not manifest")
     require(root.get("package") == PACKAGE, "APK package must be " + PACKAGE)
     version = root.get(ANDROID + "versionName", "")
-    require(version.endswith("-inspector-lab.5"), "APK version lacks -inspector-lab.5 suffix")
+    require(version.endswith("-inspector-lab.6"), "APK version lacks -inspector-lab.6 suffix")
     code = root.get(ANDROID + "versionCode", "")
     require(code.isdecimal() and int(code) > 0, "APK has no positive version code")
     require(labels and all(label == LABEL for label in labels), "APK has the wrong visible label")
@@ -121,6 +121,10 @@ def validate_manifest(root, labels):
             "MainActivity must keep its original class name")
     require({"coredevices.coreapp.PebbleService", "coredevices.coreapp.BugReportService"}
             <= set(components["service"]), "PebbleService and BugReportService must keep their class names")
+    wake_services = [item for item in app.findall("service") if class_name(item.get(ANDROID + "name", ""), PACKAGE) == "coredevices.pebble.signal.SignalWakeService"]
+    require(len(wake_services) == 1, "Lab wake service is missing or duplicated")
+    require(wake_services[0].get(ANDROID + "exported") == "false", "Wake service must not be exported")
+    require(wake_services[0].get(ANDROID + "foregroundServiceType") in ("microphone", "0x00000080", "128", "0x80"), "Wake service must declare microphone type")
     for alias in app.findall("activity-alias"):
         require(class_name(alias.get(ANDROID + "targetActivity", ""), PACKAGE)
                 in components["activity"], "Activity alias targets an undeclared activity")
@@ -230,6 +234,10 @@ def verify(apk, sdk=None):
     with zipfile.ZipFile(apk) as archive:
         entries = archive.namelist()
         signal_metadata = validate_signal_assets(archive)
+        model_name = "assets/signal-station/wake-model.zip"
+        require(model_name in entries, "Offline wake model is missing")
+        require(hashlib.sha256(archive.read(model_name)).hexdigest() == "30f26242c4eb449f948e42cb302dd7a686cb29a3423a8367f99ff41780942498", "Offline wake model checksum mismatch")
+        require("assets/signal-station/LICENSE-vosk.txt" in entries, "Speech model license is missing")
         for attribute, name, extraction in (
             ("fullBackupContent", "inspector_backup_rules", False),
             ("dataExtractionRules", "inspector_data_extraction_rules", True),

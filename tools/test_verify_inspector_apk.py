@@ -11,12 +11,13 @@ from verify_inspector_apk import (
 def manifest():
     return ET.fromstring('''<manifest xmlns:android="http://schemas.android.com/apk/res/android"
       package="coredevices.coreapp.inspectorlab" android:versionCode="11100003"
-      android:versionName="1.11.0.3-inspector-lab.5">
+      android:versionName="1.11.0.3-inspector-lab.6">
       <application android:name="coredevices.coreapp.MainApplication"
         android:debuggable="true" android:allowBackup="false" android:label="@string/app_name">
         <activity android:name="coredevices.coreapp.MainActivity" />
         <activity-alias android:name="ViewPermissionUsageActivity"
           android:targetActivity="coredevices.coreapp.MainActivity" />
+        <service android:name="coredevices.pebble.signal.SignalWakeService" android:exported="false" android:foregroundServiceType="microphone" />
         <service android:name="coredevices.coreapp.PebbleService" />
         <service android:name="coredevices.coreapp.BugReportService" />
         <provider android:name="androidx.core.content.FileProvider"
@@ -30,6 +31,13 @@ class ManifestTests(unittest.TestCase):
         result = validate_manifest(manifest(), [LABEL])
         self.assertEqual(result["package"], PACKAGE)
         self.assertEqual(result["version_code"], 11100003)
+
+    def test_wake_service_cannot_be_exported_or_lose_microphone_type(self):
+        for attribute, value in (("exported", "true"), ("foregroundServiceType", "connectedDevice")):
+            root = manifest()
+            root.find("application/service").set(ANDROID + attribute, value)
+            with self.assertRaises(VerificationError):
+                validate_manifest(root, [LABEL])
 
     def test_stock_package_rejected(self):
         root = manifest()

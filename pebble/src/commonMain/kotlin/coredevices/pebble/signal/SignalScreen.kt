@@ -57,7 +57,7 @@ import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Instant
 
 private enum class SignalPage(val title: String) {
-    Capture("Capture"), Conversation("Ask"), History("History"), Settings("Settings")
+    Capture("Capture"), Conversation("Ask"), History("History"), Presence("Presence"), Settings("Settings")
 }
 
 private data class SignalConfirmation(val title: String, val message: String, val action: () -> Unit)
@@ -123,6 +123,14 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
             Column(Modifier.weight(1f)) { SignalStatus(state) }
             if (state.busy) TextButton(onClick = station::cancel) { Text("Cancel request") }
         }
+        if (state.wakePhase !in setOf("stopped", "error", "draft")) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(state.wakeStatus, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = station::stopWakeListening) { Text("Stop listening") }
+            }
+        } else if (state.wakeDraft.isNotBlank() && page != SignalPage.Conversation) {
+            TextButton(onClick = { page = SignalPage.Conversation; detailId = null }) { Text("Review voice draft") }
+        }
         if (selected != null) {
             SignalDetail(
                 record = selected,
@@ -182,6 +190,7 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
                 },
                 onConfirm = { confirmation = it },
             )
+            SignalPage.Presence -> SignalPresencePage(station, state)
             SignalPage.Settings -> SignalConfiguration(state, station, onManageWatch) { confirmation = it }
         }
     }
@@ -223,6 +232,7 @@ private fun SignalConversation(
                 TextButton(onClick = onSettings) { Text("Set up a provider") }
             }
         }
+        item { SignalWakeControls(station, state) { voice -> draft = if (draft.isBlank()) voice else "$draft\n\n$voice" } }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(

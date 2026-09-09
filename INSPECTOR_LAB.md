@@ -34,7 +34,7 @@ remains in Git history; its choppy speaker playback is no longer part of this ap
    key, or explicitly choose the stock recognizer. OpenAI requests `gpt-transcribe`;
    the account must support that model. There is no automatic fallback. App-specific
    dictation requires exactly one connected watch because the upstream speech hook
-   identifies the app but not the watch. Ordinary dictation is the only audio input.
+   identifies the app but not the watch. Phone wake listening is a separate opt-in mode.
 
 On the watch home screen, **Up captures**, **Select asks**, and **Down opens
 recent history**. Up and Down scroll reports; Back returns home or cancels an
@@ -51,7 +51,8 @@ is acknowledged only after the phone saves the record.
 Phone sources include individually selected Android sensors, location, device
 status, Wi-Fi scans, and Bluetooth advertisements. Names and identifiers are
 separate switches. Radio scans are bounded; there are no connections to nearby
-peripherals, packet capture, ambient microphone sampling, camera use, or video.
+peripherals, packet capture, camera use, or video. Optional wake listening processes
+ambient sound locally without saving or uploading audio.
 Background restrictions can prevent fresh phone readings; cached or unavailable
 results are labeled. Enabling a switch does not bypass operating-system consent.
 
@@ -147,3 +148,31 @@ is maintained as an Unlisted listing with a Draft release. Installing the
 watchapp alone does not supply the experimental Android companion. Build, emulator, physical
 watch, provider-account and pairing-recovery evidence are recorded separately in
 [SIGNAL_VALIDATION.md](SIGNAL_VALIDATION.md).
+
+## Go go gadget
+
+Open Ask and choose Start listening. Grant microphone access, say “go go gadget,”
+wait for the phone vibration, then speak your question. The bundled English
+recognizer runs locally and needs no extra key. Review the draft and tap Send
+when ready; only the text goes to the selected provider.
+
+Listening has a Stop button in the app and its notification. A session ends after
+one hour or when a question is ready. It does not restart after reboot. Wake
+listening uses battery; physical microphone, lock-screen and false-activation
+checks remain important for this experiment.
+
+## Nearby devices and familiar places
+
+Open Presence, enable the sources you want, review permissions, and choose Check
+now. Wi-Fi rows show advertised security, with cached scans labeled. Open access
+does not guarantee working internet. Name devices you recognize to include their
+sightings in later captures. Unenrolled identifiers stay in the temporary scan
+list; saved observations contain your chosen labels. Radio counts are a partial
+view of signals, not a count of people.
+
+Save a coordinate boundary or look up a nearby address. That explicit lookup
+sends the phone location to OpenStreetMap; scans do not perform a lookup. Confirm
+the map result before naming the place. An optional familiar Wi-Fi name adds a
+clue, but does not prove an address. Boundary checks run on demand; this version
+does not issue automatic arrival or departure alerts. Settings can stop future
+observations; delete existing records separately in History.

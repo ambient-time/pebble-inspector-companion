@@ -187,3 +187,34 @@ cutoffs. It passed after the transport change; existing provider wire-format,
 redaction and cancellation tests also passed. This reproduces a cause consistent
 with the report, not a confirmed round trip with the owner's xAI account. No
 physical phone is attached; the exact reported error/model remain unconfirmed.
+
+## Lab revision 6: wake phrase and presence
+
+The opt-in microphone foreground service recognizes “go go gadget” and a following
+English question locally with Vosk Android 0.3.75 and the pinned small English
+0.15 model. It produces a memory-only review draft, never automatically submits
+a provider request, and never saves or uploads microphone audio. Start requires
+a visible permission flow. Stop invalidates late callbacks; reads are nonblocking.
+Sessions stop after one hour or draft completion, and never restart on boot.
+
+Presence provides bounded, on-demand Bluetooth/Wi-Fi scans and enrolled-device
+sightings, conservative advertised Wi-Fi security, anonymous partial radio counts,
+and accuracy-aware saved-place boundary checks. Explicit nearby-address lookup
+uses Nominatim with attribution, caching and request spacing. SSIDs are clues,
+not verified addresses. Continuous geofencing and occupancy detection are not
+implemented; device/room/movement interpretations remain observations.
+
+Measured: 141 companion host tests pass, including generation cancellation,
+phrase filtering, presence freshness/coverage and geofence boundaries. One real
+Android instrumentation test loaded the packaged Vosk weights/JNI and recognized
+synthetic positive speech while rejecting unrelated speech. Assembly and lint
+passed. Eighteen package verifier tests pass; the verifier requires the private
+microphone service and exact speech model hash.
+
+Observed on the Android 16 ARM64 emulator: lab 6 upgraded the existing installation,
+retained captures, displayed the new controls, requested microphone permission,
+started the microphone foreground service, kept it active after Home, and removed
+it when Stop was tapped. Screenshot: docs/signal-station/lab6/wake-listening.png.
+The emulator ran without host audio, so this is not physical microphone evidence.
+Physical recognition accuracy, false activations, locked-screen battery behavior,
+real radio/location sightings and live provider accounts remain unverified.

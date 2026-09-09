@@ -16,6 +16,8 @@ data class SignalSettings(
     val reducedMotion: Boolean = false,
     val weatherLocation: String = "place",
     val weatherPlace: SignalPlace? = null,
+    val presenceTargets: List<SignalPresenceTarget> = emptyList(),
+    val placeFences: List<SignalPlaceFence> = emptyList(),
 )
 
 @Serializable
@@ -74,6 +76,12 @@ data class SignalState(
     val weatherPlaces: List<SignalPlace> = emptyList(),
     val weatherSearchStatus: String = "",
     val weatherSearching: Boolean = false,
+    val wakePhase: String = "stopped",
+    val wakeStatus: String = "Wake listening is off.",
+    val wakeDraft: String = "",
+    val presenceCandidates: List<SignalRadioCandidate> = emptyList(),
+    val presenceStatus: String = "Check nearby signals when ready.",
+    val placeLookup: SignalPlaceLookup? = null,
 )
 
 interface SignalStation {
@@ -101,6 +109,15 @@ interface SignalStation {
     fun shareHistory(format: String)
     fun requestPermissions()
     fun searchWeatherPlaces(query: String)
+    fun startWakeListening()
+    fun stopWakeListening()
+    fun dismissWakeDraft()
+    fun scanPresence()
+    fun enrollPresenceTarget(candidate: SignalRadioCandidate, label: String)
+    fun removePresenceTarget(id: String)
+    fun savePlaceFence(fence: SignalPlaceFence)
+    fun removePlaceFence(id: String)
+    fun lookupNearbyPlace()
     suspend fun exportHistory(): String
 }
 
