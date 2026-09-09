@@ -13,6 +13,7 @@ data class SignalSettings(
     val watchId: String = "",
     val enabled: Set<String> = emptySet(),
     val confirmTranscript: Boolean = true,
+    val reviewWakeOnWatch: Boolean = false,
     val reducedMotion: Boolean = false,
     val weatherLocation: String = "place",
     val weatherPlace: SignalPlace? = null,
@@ -36,6 +37,7 @@ data class SignalObservation(
     val period: String = "current",
     val windowStart: Long? = null,
     val windowEnd: Long? = null,
+    val identity: String = "",
 )
 
 @Serializable
@@ -56,6 +58,7 @@ data class SignalRecord(
     val delivered: Boolean = false,
     val kind: String = "analysis",
     val endpoint: String = "",
+    val fieldTest: SignalFieldTest? = null,
 )
 
 data class SignalSource(val key: String, val name: String, val group: String, val available: Boolean = true)
@@ -111,6 +114,9 @@ interface SignalStation {
     fun searchWeatherPlaces(query: String)
     fun startWakeListening()
     fun stopWakeListening()
+    fun reviewWakeOnWatch()
+    fun saveFieldTest(trial: SignalFieldTest)
+    fun summarizeChanges(id: String)
     fun dismissWakeDraft()
     fun scanPresence()
     fun enrollPresenceTarget(candidate: SignalRadioCandidate, label: String)

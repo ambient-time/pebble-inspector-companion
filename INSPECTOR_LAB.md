@@ -21,7 +21,7 @@ remains in Git history; its choppy speaker playback is no longer part of this ap
    and offers Android permission prompts for those choices. Every source is
    optional; setup can be skipped and revisited in Settings.
 3. Open **Devices** to pair the watch. Select it on the Capture screen, then tap
-   **Install watch app** to install the bundled Signal Station 1.2.0 and verify
+   **Install watch app** to install the bundled Signal Station 1.3.0 and verify
    its connection. Install with only the selected watch connected.
 4. Tap **Capture readings** to save enabled sources on the phone. No provider
    key is needed. Open the capture in History to inspect each reading and choose
@@ -134,7 +134,7 @@ python3 tools/verify_inspector_apk.py androidApp/build/outputs/apk/inspectorLab/
 The companion's `tools/import-signal-watch.py` imports a reviewed PBW and pins its
 PKJS SHA-256. Repeat import after any watch JS change. From committed source,
 `bash tools/stage-inspector-lab.sh` builds and verifies a revision-named package
-under ignored `dist/`. Lab revision 4 increments the APK version code and retains
+under ignored `dist/`. Lab revision 7 increments the APK version code and retains
 the original runtime class namespace, separate PebbleKit provider authorities,
 fake Firebase configuration, and disabled analytics/Crashlytics.
 
@@ -176,3 +176,33 @@ the map result before naming the place. An optional familiar Wi-Fi name adds a
 clue, but does not prove an address. Boundary checks run on demand; this version
 does not issue automatic arrival or departure alerts. Settings can stop future
 observations; delete existing records separately in History.
+
+## Compare, choose context, and try it outside
+
+Capture offers Walking, At home and Travel presets. Preview the complete source
+list before Apply; applying replaces the current switches, starts a new
+conversation, and clears attachments. It does not collect readings, grant
+permissions, or start listening. Individual sources remain configurable.
+
+After two captures with the same sources and watch, choose **Summarize changes
+locally**. The summary links both captures and reports comparable numeric or
+saved-device/place observations. Cached, missing or ambiguous values stay unknown.
+It does not call a provider or infer arrivals between checks. Deleting a source
+capture also deletes summaries and trial reports that depend on it.
+
+In Ask, **Review wake drafts on watch** can present a short phone-created question
+on the selected watch automatically. You can also choose **Review on watch** for
+an existing draft. Read the question and provider, scroll with Up/Down, and press
+Select to Send. Back leaves the draft on the phone. This starts a new question-only
+conversation without saved readings or earlier messages. Long questions stay on
+the phone; review never silently shortens the submitted question. Watch review
+expires after about 100 seconds. Install the matching bundled watchapp after
+updating the companion.
+
+Open **20-minute field trial** from Capture. Try ten wake requests and capture at
+three stops. Record recognized/missed attempts and false triggers explicitly; blank
+entries mean unrecorded. Link the stop captures and optionally enter battery levels
+and a usefulness note. Save after each attempt or stop. Saved trials appear in
+History and can be exported with the other records; Resume latest saved trial
+continues one after reopening the app. These are your observations, not automatic
+accuracy or battery measurements.

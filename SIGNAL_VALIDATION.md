@@ -218,3 +218,35 @@ it when Stop was tapped. Screenshot: docs/signal-station/lab6/wake-listening.png
 The emulator ran without host audio, so this is not physical microphone evidence.
 Physical recognition accuracy, false activations, locked-screen battery behavior,
 real radio/location sightings and live provider accounts remain unverified.
+
+## Lab revision 7 and watch 1.3.0
+
+Implemented local comparisons over compatible capture/presence records, with exact
+source references and freshness/identity guards. Presets preview sources before
+Apply and reset conversation context when sources change. Manual field-trial
+records retain optional results, stop references and build identity in encrypted
+history. Legacy saved-place Wi-Fi source dependencies are repaired on load,
+including dependent reports.
+
+Watch review binds an immutable short phone wake draft to its current runtime
+token, selected watch, trusted runner and settings. Select confirms once; Back,
+disconnect, timeout, settings changes and phone dismissal invalidate consent.
+Long text stays on the phone without truncation. The disclosed send begins a
+question-only conversation. No live provider request was used for verification.
+
+Measured: 165 companion host tests passed, including 24 new comparison, preset,
+manual-trial, provenance migration and one-use consent tests. Eighteen APK verifier
+tests pass. Android assembly/lint passed. Watch 1.3.0 passed 32 protocol tests,
+production C request/button harnesses and all six native targets. Integrated
+physical runner replacement/cancellation interleavings remain a device test gap.
+
+Observed on the Android emulator: lab 7 upgraded in place and retained earlier
+captures. Walking preview showed its exact source list while current source count
+remained unchanged. An unrecorded field trial survived Ask/Capture navigation,
+saved in History, and offered Resume after force-stop/relaunch. A new local capture
+and What changed summary saved without a provider key; battery was unchanged and
+denied location stayed unknown. No physical trial results were entered.
+
+Physical watch confirmation/delivery, wake recognition accuracy, false activations,
+radio usefulness, battery cost and live provider accounts still require testing.
+The field-trial UI provides a way to record those results without fabricating them.

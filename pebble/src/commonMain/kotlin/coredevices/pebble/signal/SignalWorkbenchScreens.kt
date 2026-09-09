@@ -119,6 +119,7 @@ internal fun SignalCapturePage(
     onDetail: (String) -> Unit,
     onSources: () -> Unit,
     onManageWatch: (() -> Unit)?,
+    onFieldTest: () -> Unit,
 ) {
     val watch = state.watches.firstOrNull { it.id == state.settings.watchId }
     val recent = state.records.filter { it.observations.isNotEmpty() || it.kind == "capture" }.sortedByDescending { it.createdAt }.take(5)
@@ -132,6 +133,17 @@ internal fun SignalCapturePage(
             Text("${signalCount(state.settings.enabled.size, "source")} enabled · saved on this phone", style = MaterialTheme.typography.bodyMedium)
             if (state.settings.enabled.isEmpty()) Text("Choose at least one source to capture.")
             TextButton(onClick = onSources) { Text("Choose sources") }
+        }
+        item { SignalContextControls(state, station) }
+        item {
+            Text("What changed?", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge)
+            Text("Compare the latest capture with the previous capture using the same sources and watch. Missing or cached readings stay unknown.")
+            val latest = state.records.firstOrNull { it.kind in setOf("capture", "presence") && it.state == "ready" }
+            Button(onClick = { latest?.let { station.summarizeChanges(it.id) } }, enabled = !state.busy && latest?.let { SignalChanges.baseline(it, state.records, state.settings.enabled) != null } == true) { Text("Summarize changes locally") }
+            state.records.firstOrNull { it.kind == "changes" }?.let { record ->
+                TextButton(onClick = { onDetail(record.id) }) { Text("Read latest change summary") }
+            }
+            TextButton(onClick = onFieldTest) { Text("20-minute field trial") }
         }
         item {
             HorizontalDivider()

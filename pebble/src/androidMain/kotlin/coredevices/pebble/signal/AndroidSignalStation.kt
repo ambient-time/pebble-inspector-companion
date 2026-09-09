@@ -32,6 +32,9 @@ class AndroidSignalStation(private val context: Context, private val pebble: () 
     private val presenceCollector by lazy { SignalPresenceCollector(context) }
     private val mutable = MutableStateFlow(SignalState())
     override val state: StateFlow<SignalState> = mutable.asStateFlow()
+    private val wakeReview = SignalWakeReview()
+    private var wakeReviewRunner: JsRunner? = null
+    private var automaticReviewToken = -1L
     private var presenceCheckedAt = 0L
     private var weatherSearch: Job? = null
     private var weatherSearchGeneration = 0L
@@ -66,9 +69,14 @@ class AndroidSignalStation(private val context: Context, private val pebble: () 
                     File(context.cacheDir, "signal-export").listFiles()?.forEach(File::delete)
                     store.settings()
                 }
-                val records = withContext(Dispatchers.IO) { store.records().map { record ->
-                    if (record.state in setOf("working", "recording")) record.copy(state = "interrupted", summary = "Interrupted; no request was retried.").also { store.save(it) } else record
-                } }
+                val records = withContext(Dispatchers.IO) {
+                    val loaded = store.records()
+                    SignalPresenceProvenance.repair(loaded).mapIndexed { index, record ->
+                        val restored = if (record.state in setOf("working", "recording")) record.copy(state = "interrupted", summary = "Interrupted; no request was retried.") else record
+                        if (restored != loaded[index]) store.save(restored)
+                        restored
+                    }
+                }
                 mutable.value = SignalState(initialized = true, buildVersion = buildVersion(), settings = settings, records = records, sources = collectors.sources(), threadId = id(), configuredProviders = configured())
                 val recognition = SignalWatchTranscription(providers) {
                     withContext(Dispatchers.Main.immediate) {
@@ -79,12 +87,21 @@ class AndroidSignalStation(private val context: Context, private val pebble: () 
                 }
                 VoiceProviderOverrides.resolve = { uuid -> if (uuid == APP_UUID && available && mutable.value.settings.recognition == "openai") recognition else null }
                 initialized.complete(Unit)
-                SignalWakeRuntime.state.onEach { wake -> mutable.update { it.copy(wakePhase = wake.phase, wakeStatus = wake.status, wakeDraft = wake.draft) } }.launchIn(scope)
+                SignalWakeRuntime.state.onEach { wake ->
+                    mutable.update { it.copy(wakePhase = wake.phase, wakeStatus = wake.status, wakeDraft = wake.draft) }
+                    val pending = wakeReview.pending
+                    if (pending != null && (pending.wakeToken != wake.token || pending.text != wake.draft)) cancel()
+                    if (wake.phase == "draft" && wake.draft.isNotBlank() && mutable.value.settings.reviewWakeOnWatch && automaticReviewToken != wake.token && !mutable.value.busy) {
+                        automaticReviewToken = wake.token
+                        reviewWakeOnWatch()
+                    }
+                }.launchIn(scope)
                 yield()
                 // Deferred until graph construction completes; LibPebble injects this interceptor itself.
                 pebble().watches.collect { watches ->
                     val connected = watches.filterIsInstance<ConnectedPebbleDevice>()
                     runners.entries.removeAll { (serial, runner) -> connected.none { it.serial == serial && it.identifier == runner.device.identifier } }
+                    if (phase == "reviewing" && wakeReviewRunner != null && connected.none { it.serial == activeWatch && it.identifier == wakeReviewRunner?.device?.identifier }) cancel()
                     if (phase == "collecting" && connected.none { it.serial == activeWatch }) watchDone.complete(Unit)
                     mutable.update { it.copy(watches = watches.filterIsInstance<KnownPebbleDevice>().map { watch -> SignalWatch(watch.serial, watch.name, watch is ConnectedPebbleDevice) }) }
                 }
@@ -113,7 +130,7 @@ class AndroidSignalStation(private val context: Context, private val pebble: () 
                     if (generation != token) return@withLock
                     val old = mutable.value.settings
                     withContext(Dispatchers.IO) { store.settings(sanitized) }
-                    val newThread = old.provider != sanitized.provider || old.endpoint != sanitized.endpoint || old.model != sanitized.model || old.weatherPlace != sanitized.weatherPlace || old.weatherLocation != sanitized.weatherLocation || old.presenceTargets != sanitized.presenceTargets || old.placeFences != sanitized.placeFences
+                    val newThread = old.enabled != sanitized.enabled || old.watchId != sanitized.watchId || old.provider != sanitized.provider || old.endpoint != sanitized.endpoint || old.model != sanitized.model || old.weatherPlace != sanitized.weatherPlace || old.weatherLocation != sanitized.weatherLocation || old.presenceTargets != sanitized.presenceTargets || old.placeFences != sanitized.placeFences
                     if (newThread) attachments = emptySet()
                     mutable.update { it.copy(settings = sanitized, presenceCandidates = it.presenceCandidates.filter { candidate -> "presence.${candidate.radio}" in sanitized.enabled }, placeLookup = null, threadId = if (newThread) id() else it.threadId, status = "Settings saved. Collection runs only when requested.") }
                 } }
@@ -163,7 +180,51 @@ class AndroidSignalStation(private val context: Context, private val pebble: () 
         context.startActivity(Intent(context, SignalPermissionActivity::class.java).putExtra("wakeToken", token).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
     override fun stopWakeListening() { SignalWakeRuntime.stop(); context.stopService(Intent(context, SignalWakeService::class.java)) }
-    override fun dismissWakeDraft() { stopWakeListening(); SignalWakeRuntime.dismiss(); context.getSystemService(android.app.NotificationManager::class.java).cancel(6103) }
+    override fun dismissWakeDraft() { if (wakeReview.pending != null) cancel(); stopWakeListening(); SignalWakeRuntime.dismiss(); context.getSystemService(android.app.NotificationManager::class.java).cancel(6103) }
+    override fun reviewWakeOnWatch() {
+        val wake = SignalWakeRuntime.state.value
+        if (wake.draft.isBlank() || mutable.value.busy) return
+        val settings = mutable.value.settings
+        if (settings.provider !in mutable.value.configuredProviders) { status("Add a provider before reviewing a question on the watch."); return }
+        val request = nextId()
+        if (!wakeReview.offer(request, wake.token, wake.draft, settings, now())) {
+            status("This question or model name is too long for watch review. Review and send it on the phone."); return
+        }
+        startOperation { snapshot, token ->
+            activeRequest = request
+            activeWatch = snapshot.watchId
+            claimedRequests += activeWatch to request
+            phase = "reviewing"
+            try {
+                val runner = launchWatch(selectedWatch(snapshot))
+                ensureActiveToken(token)
+                val pending = wakeReview.pending ?: throw CancellationException()
+                if (pending.settings != snapshot || SignalWakeRuntime.state.value.token != pending.wakeToken) throw CancellationException()
+                activeRunner = runner
+                wakeReviewRunner = runner
+                runner.sendConfigMessage(buildJsonObject {
+                    put("kind", "review"); put("request_id", request); put("prompt", pending.text)
+                    put("review_context", SignalWakeReview.context(snapshot))
+                }.toString())
+                status("Review the question on your watch. Select sends a new question-only conversation; Back keeps it on the phone.")
+                while (now() < pending.expiresAt) { delay(200); ensureActiveToken(token) }
+                cancel()
+                status("Watch review expired. The voice draft remains on this phone.")
+            } finally {
+                if (generation == token) { wakeReview.invalidate(); wakeReviewRunner = null }
+            }
+        }
+    }
+    override fun saveFieldTest(trial: SignalFieldTest) {
+        if (!trial.valid()) { status("Check the field trial entries before saving."); return }
+        startOperation { _, token ->
+            if (mutable.value.records.any { it.id == trial.id && it.kind != "field_test" }) throw SignalProviderException("Choose a new field trial.")
+            val record = trial.record(mutable.value.records)
+            save(record, token)
+            ensureActiveToken(token)
+            mutable.update { it.copy(selectedRecordId = record.id, status = "Field trial saved locally. Results are your recorded observations.") }
+        }
+    }
     override fun scanPresence() {
         startOperation { settings, token ->
             if (!foreground()) throw SignalProviderException("Open Signal Station to check nearby signals.")
@@ -201,6 +262,16 @@ class AndroidSignalStation(private val context: Context, private val pebble: () 
             val place = presenceCollector.locatePlace()
             ensureActiveToken(token)
             mutable.update { it.copy(placeLookup = place, presenceStatus = "Review this map result before saving a place.") }
+        }
+    }
+    override fun summarizeChanges(id: String) {
+        startOperation { settings, token ->
+            val current = mutable.value.records.firstOrNull { it.id == id } ?: throw SignalProviderException("Capture unavailable.")
+            val summary = SignalChanges.create(current, mutable.value.records, settings.enabled, id(), now())
+                ?: throw SignalProviderException("Capture again with the same sources and watch to compare. Cached or missing readings remain unknown.")
+            save(summary, token)
+            ensureActiveToken(token)
+            mutable.update { it.copy(selectedRecordId = summary.id, status = "Local change summary saved in History. No provider request was made.") }
         }
     }
     override fun capture() { startOperation { settings, token -> execute("Capture current context", settings, token, false, true, captureOnly = true) } }
@@ -421,6 +492,7 @@ class AndroidSignalStation(private val context: Context, private val pebble: () 
         }
     }
     override fun cancel() {
+        wakeReview.invalidate(); wakeReviewRunner = null
         val request = activeRequest; val watch = activeWatch; val recordId = activeRecord
         val readings = watchReadings.toList()
         ++generation; operation?.cancel(); operation = null; feedbackJob?.cancel(); feedbackJob = null; activeRequest = null; activeRecord = null; activeRunner = null
@@ -562,6 +634,25 @@ class AndroidSignalStation(private val context: Context, private val pebble: () 
                 response { put("state", if (record == null || record.state == "working") "working" else if (record.state == "ready") "ready" else "error");
                     put("text", record?.summary.orEmpty()); put("status", if (record == null || record.state == "working") phase else record.state) }
             }
+            "confirm-wake" -> {
+                if (request == null || connected.runningApp.value != APP_UUID) return@withContext InterceptResponse("{}", 409)
+                if (wakeReview.pending == null && (wireResults[request]?.first == watch || (activeRequest == request && activeWatch == watch && phase != "reviewing")))
+                    return@withContext response { put("state", "working") }
+                if (phase != "reviewing" || activeRequest != request || activeWatch != watch || activeRunner !== caller.runner || wakeReviewRunner !== caller.runner)
+                    return@withContext InterceptResponse("{}", 409)
+                val wake = SignalWakeRuntime.state.value
+                val pending = wakeReview.claim(request, wake.token, wake.draft, mutable.value.settings, now()) ?: return@withContext InterceptResponse("{}", 409)
+                ++generation; operation?.cancel(); operation = null; wakeReviewRunner = null
+                mutable.update { it.copy(busy = false, threadId = id()) }
+                attachments = emptySet()
+                SignalWakeRuntime.dismiss()
+                context.getSystemService(android.app.NotificationManager::class.java).cancel(6103)
+                startOperation(ownerIsPhone = false) { settings, token ->
+                    activeRunner = caller.runner
+                    execute(pending.text, settings, token, false, false, request, watch)
+                }
+                response { put("state", "working") }
+            }
             "start" -> {
                 val kind = primitive("kind")?.contentOrNull.orEmpty()
                 val prompt = primitive("prompt")?.contentOrNull.orEmpty()
@@ -616,7 +707,7 @@ class AndroidSignalStation(private val context: Context, private val pebble: () 
             "cancel" -> {
                 if (request == activeRequest && watch == activeWatch) {
                     if (phoneOwned && phase == "collecting") watchDone.complete(Unit)
-                    else if (!phoneOwned || phase == "recording") cancel()
+                    else if (!phoneOwned || phase in setOf("recording", "reviewing")) cancel()
                 }
                 response { put("state", "cancelled") }
             }

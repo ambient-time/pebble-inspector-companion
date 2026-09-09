@@ -75,6 +75,8 @@ fun SignalScreen(station: SignalStation, standalone: Boolean = false, onManageWa
 private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onManageWatch: (() -> Unit)?) {
     val state by station.state.collectAsState()
     var page by remember { mutableStateOf(SignalPage.Capture) }
+    var fieldTestOpen by remember { mutableStateOf(false) }
+    val fieldTestDraft = remember { SignalFieldTestDraft() }
     var detailId by remember { mutableStateOf<String?>(null) }
     var confirmation by remember { mutableStateOf<SignalConfirmation?>(null) }
     var historyQuestion by remember { mutableStateOf(false) }
@@ -92,8 +94,8 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
         SignalSetup(station, state)
         return
     }
-    BackHandler(enabled = detailId != null || page != SignalPage.Capture) {
-        if (detailId != null) detailId = null else page = SignalPage.Capture
+    BackHandler(enabled = fieldTestOpen || detailId != null || page != SignalPage.Capture) {
+        if (fieldTestOpen) fieldTestOpen = false else if (detailId != null) detailId = null else page = SignalPage.Capture
     }
     LaunchedEffect(state.threadId) { attachmentId = null }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).then(if (standalone) Modifier.statusBarsPadding().navigationBarsPadding() else Modifier).imePadding()) {
@@ -114,7 +116,7 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
             SignalPage.entries.forEach { item ->
                 FilterChip(
                     selected = page == item,
-                    onClick = { page = item; detailId = null },
+                    onClick = { page = item; detailId = null; fieldTestOpen = false },
                     label = { Text(item.title) },
                 )
             }
@@ -131,7 +133,9 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
         } else if (state.wakeDraft.isNotBlank() && page != SignalPage.Conversation) {
             TextButton(onClick = { page = SignalPage.Conversation; detailId = null }) { Text("Review voice draft") }
         }
-        if (selected != null) {
+        if (fieldTestOpen) {
+            SignalFieldTestPage(state, station, fieldTestDraft) { fieldTestOpen = false }
+        } else if (selected != null) {
             SignalDetail(
                 record = selected,
                 state = state,
@@ -149,6 +153,7 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
                     page = SignalPage.Conversation
                     historyQuestion = false
                 },
+                onChanges = { station.summarizeChanges(selected.id) },
                 onAnalyze = { station.analyzeRecord(selected.id); detailId = null; page = SignalPage.Conversation },
                 onSettings = { detailId = null; page = SignalPage.Settings },
                 onReference = { detailId = it },
@@ -170,6 +175,7 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
                 onDetail = { detailId = it; station.selectRecord(it) },
                 onSources = { page = SignalPage.Settings },
                 onManageWatch = onManageWatch,
+                onFieldTest = { fieldTestOpen = true },
             )
             SignalPage.Conversation -> SignalConversation(
                 state, station, historyQuestion,
@@ -270,6 +276,8 @@ private fun SignalConversation(
                     else "Capture & analyze sends ${state.settings.enabled.size} enabled ${if (state.settings.enabled.size == 1) "source" else "sources"} to ${providerLabel(state.settings.provider)}. Inspect and change sources in Settings.",
                     style = MaterialTheme.typography.bodySmall,
                 )
+                SignalSourcePreview(state.sources, state.settings.enabled, "Sources for Capture & analyze")
+                Text("Send uses your question, attached records and eligible conversation history. It does not collect new readings.", style = MaterialTheme.typography.bodySmall)
                 if (state.watches.none { it.id == state.settings.watchId && it.connected }) {
                     Text("No selected watch connected. Phone chat and available phone readings still work.", style = MaterialTheme.typography.bodySmall)
                 }
@@ -375,6 +383,7 @@ private fun SignalDetail(
     onBack: () -> Unit,
     onAttach: () -> Unit,
     onResume: () -> Unit,
+    onChanges: () -> Unit,
     onAnalyze: () -> Unit,
     onSettings: () -> Unit,
     onReference: (String) -> Unit,
@@ -389,12 +398,13 @@ private fun SignalDetail(
             TextButton(onClick = onBack) { Text("Back to records") }
             Text(signalDateTime(record.createdAt), style = MaterialTheme.typography.labelLarge)
             SignalHeading(record.question)
-            Text(if (record.kind == "capture") "Saved on this phone · ${record.state}" else "${providerLabel(record.provider)} · ${record.model} · ${record.state}")
+            Text(if (record.provider == "local") "Saved on this phone · ${record.state}" else "${providerLabel(record.provider)} · ${record.model} · ${record.state}")
             if (record.watchId.isNotBlank()) Text("Watch: ${state.watches.firstOrNull { it.id == record.watchId }?.name ?: record.watchId}")
         }
         item { SelectionContainer { Text(record.answer.ifBlank { record.summary.ifBlank { "No answer saved." } }) } }
         item {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (record.kind in setOf("capture", "presence")) OutlinedButton(onClick = onChanges, enabled = !state.busy && SignalChanges.baseline(record, state.records, state.settings.enabled) != null) { Text("What changed? · local") }
                 Button(onClick = onAnalyze, enabled = !state.busy && record.state == "ready" && record.observations.isNotEmpty() && state.settings.provider in state.configuredProviders && state.settings.model.isNotBlank() && SignalHistory.allowed(record, state.settings.enabled)) { Text("Analyze readings") }
                 OutlinedButton(onClick = onAttach, enabled = !state.busy && record.state == "ready" && SignalHistory.allowed(record, state.settings.enabled)) { Text("Attach to conversation") }
                 if (record.kind != "capture" && record.provider != "local") OutlinedButton(onClick = onResume, enabled = !state.busy) { Text("Resume conversation") }

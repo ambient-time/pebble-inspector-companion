@@ -29,7 +29,7 @@ object SignalPresence {
             targets.filter { it.enabled && it.radio == radio }.take(32).forEach { target ->
                 val sample = rows.filter { it.address.equals(target.address, true) }.maxByOrNull { it.measuredAt ?: 0 }
                 val state = when { sample != null && fresh(sample, now) -> "observed"; sample != null -> "cached"; status == "fresh" -> "not_observed"; else -> "unknown" }
-                add(SignalObservation(key, "phone", "${target.label.take(100)}: $state${sample?.let { "; rssi=${it.rssi} dBm" }.orEmpty()}; observation does not establish a person's presence or distance", collectedAt = now, measuredAt = sample?.measuredAt, status = state))
+                add(SignalObservation(key, "phone", "${target.label.take(100)}: $state${sample?.let { "; rssi=${it.rssi} dBm" }.orEmpty()}; observation does not establish a person's presence or distance", collectedAt = now, measuredAt = sample?.measuredAt, status = state, identity = "target:${target.id}"))
             }
         }
         if ("presence.places" in enabled && fences.none { it.enabled }) add(SignalObservation("presence.places", "phone", "No enabled saved places; place coverage unknown", collectedAt = now, status = "unknown"))
@@ -39,7 +39,8 @@ object SignalPresence {
                 val matches = samples.filter { it.radio == "wifi" && it.name == fence.wifiSsid && fresh(it, now) }.distinctBy { it.address }
                 when { matches.size > 1 -> "; Wi-Fi name ambiguous"; matches.size == 1 -> "; chosen Wi-Fi name observed (name alone does not verify a place)"; else -> "; chosen Wi-Fi name not observed" }
             } else ""
-            add(SignalObservation("presence.places", "phone", "${fence.label.take(100)}: $state$wifi", collectedAt = now, measuredAt = fix?.measuredAt, status = state))
+            add(SignalObservation("presence.places", "phone", "${fence.label.take(100)}: $state", collectedAt = now, measuredAt = fix?.measuredAt, status = state, identity = "fence:${fence.id}"))
+            if (wifi.isNotEmpty()) add(SignalObservation("presence.wifi", "phone", "${fence.label.take(100)}$wifi", collectedAt = now, status = "unknown", identity = "fence:${fence.id}:wifi"))
         }
     }
     fun wifiSecurity(capabilities: String): String {

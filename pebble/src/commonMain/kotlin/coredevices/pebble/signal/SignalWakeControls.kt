@@ -27,10 +27,15 @@ internal fun SignalWakeControls(station: SignalStation, state: SignalState, onUs
             TextButton(onClick = station::openPermissionSettings) { Text("Microphone permissions") }
         }
         Text("While active, the microphone processes sound locally and Android shows a notification. Stop listening whenever you like. Sessions end after one hour or when a voice draft is ready.", style = MaterialTheme.typography.bodySmall)
+        SignalToggle("Review wake drafts on watch", state.settings.reviewWakeOnWatch, !state.busy,
+            "Shows short drafts on the selected watch automatically. Select sends a new question-only conversation; no saved context is included. Long drafts stay on the phone.") {
+            station.updateSettings(state.settings.copy(reviewWakeOnWatch = it))
+        }
         if (state.wakeDraft.isNotBlank()) {
             Text("Voice draft", style = MaterialTheme.typography.titleMedium)
             Text(state.wakeDraft)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = station::reviewWakeOnWatch, enabled = !state.busy && state.watches.any { it.id == state.settings.watchId && it.connected }) { Text("Review on watch") }
                 Button(onClick = { onUseDraft(state.wakeDraft); station.dismissWakeDraft() }, enabled = !state.busy) { Text("Review in question field") }
                 TextButton(onClick = station::dismissWakeDraft) { Text("Discard voice draft") }
             }
