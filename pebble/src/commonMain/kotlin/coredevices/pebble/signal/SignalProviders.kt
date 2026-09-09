@@ -3,6 +3,7 @@ package coredevices.pebble.signal
 import coredevices.speex.SpeexCodec
 import coredevices.speex.SpeexDecodeResult
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.*
 import io.ktor.client.request.forms.*
 import io.ktor.client.statement.bodyAsChannel
@@ -20,7 +21,16 @@ class SignalProviderException(message: String) : Exception(message)
 class SignalProviders(http: HttpClient, private val secrets: SignalSecrets) {
     // Redirects must never forward credentials or private prompts to a different destination.
     // Reuse only transport, not upstream logging, authentication, retries or default headers.
-    private val client = HttpClient(http.engine) { followRedirects = false; expectSuccess = false }
+    private val client = HttpClient(http.engine) {
+        followRedirects = false
+        expectSuccess = false
+        // Non-streaming model replies may remain silent while reasoning. Override the
+        // transport's short default read timeout; the operation still has a hard deadline.
+        install(HttpTimeout) {
+            connectTimeoutMillis = 15_000
+            socketTimeoutMillis = 60_000
+        }
+    }
 
     fun close() = client.close()
 
@@ -29,7 +39,7 @@ class SignalProviders(http: HttpClient, private val secrets: SignalSecrets) {
         catch (_: Exception) { false }
 
     suspend fun answer(settings: SignalSettings, messages: List<Pair<String, String>>): SignalReply =
-        guarded("Answer request", 30_000) {
+        guarded("Answer request", 60_000) {
             if (messages.isEmpty() || messages.any { it.first !in setOf("system", "user", "assistant") })
                 fail("Conversation is invalid.")
             if (messages.sumOf { it.second.encodeToByteArray().size.toLong() } > 256 * 1024)

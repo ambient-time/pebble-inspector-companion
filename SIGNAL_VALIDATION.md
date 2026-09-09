@@ -171,3 +171,19 @@ watch release 1.2.0 remains Draft, with required Android companion metadata,
 custom icons and native Emery/Chalk/Diorite screenshots. CloudPebble still waited
 for a phone connection. Physical pairing, installation, sensors and paid
 provider/dictation round trips remain unverified.
+
+## Lab revision 5: slow chat transport
+
+The real OkHttp transport reproduced a successful short endpoint test followed
+by a failed slow chat at 10.36 seconds. Its inherited read timeout expired before
+the application-level 30-second deadline. The adapter now explicitly allows a
+60-second socket wait and total answer deadline, with a 15-second connection
+limit. Transcription retains its separate 14-second deadline. This keeps normal
+collection plus inference within the current watch polling window.
+
+`SignalProviderTransportTest` uses a loopback HTTP server, the Android transport,
+and a synthetic key. Its second response waits 31 seconds, exercising both old
+cutoffs. It passed after the transport change; existing provider wire-format,
+redaction and cancellation tests also passed. This reproduces a cause consistent
+with the report, not a confirmed round trip with the owner's xAI account. No
+physical phone is attached; the exact reported error/model remain unconfirmed.

@@ -11,7 +11,7 @@ from verify_inspector_apk import (
 def manifest():
     return ET.fromstring('''<manifest xmlns:android="http://schemas.android.com/apk/res/android"
       package="coredevices.coreapp.inspectorlab" android:versionCode="11100003"
-      android:versionName="1.11.0.3-inspector-lab.4">
+      android:versionName="1.11.0.3-inspector-lab.5">
       <application android:name="coredevices.coreapp.MainApplication"
         android:debuggable="true" android:allowBackup="false" android:label="@string/app_name">
         <activity android:name="coredevices.coreapp.MainActivity" />
