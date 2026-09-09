@@ -13,7 +13,7 @@ class SignalPermissionActivity : Activity() {
     private var resumed = false
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (!packageName.endsWith(".inspectorlab")) { finish(); return }
+        if (!signalPackageEnabled(packageName)) { finish(); return }
         wakeToken = intent.getLongExtra("wakeToken", -1)
         if (savedInstanceState != null) { startReady = savedInstanceState.getBoolean("startReady"); return }
         val enabled = intent.getStringArrayExtra("sources").orEmpty().toSet()

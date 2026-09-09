@@ -28,3 +28,82 @@ checks; standalone dependency and manifest audits; isolated emulator walkthrough
 UI completion time and TalkBack usability remain unmeasured. A new adapter is
 not proof of physical-watch safety. Keep the published installation hold and
 preserve old package data until migration and capability parity are verified.
+
+## Implemented boundary
+
+- `:signal` contains the existing models, providers, encrypted store, collectors,
+  presence tools, weather, history, wake listening and shared Compose screens.
+  It has no LibPebble dependency. Class names and encrypted storage identifiers
+  are preserved. Initialization is explicit and idempotent.
+- `SignalWatchLink` exposes watch status, a session message channel, refresh and
+  app launch, plus capability reporting. It exposes no pairing, firmware, reset,
+  notification synchronization or watch-database operations. Installation remains
+  blocked by both current adapters while the wipe investigation is open.
+- `:pebble` retains `LegacySignalStation` and `SignalWatchTranscription`. The old
+  transcription hook, including caller checks and the separate recognition key,
+  is preserved there. Its Android source compiles against the extracted module.
+- `:signalApp` is a separate Android package, `com.lukesteuber.signalstation`.
+  The user explicitly selects an existing Pebble app. The lab companion is not
+  offered as a host. PebbleKit2 1.1.0 carries app messages and app-open events;
+  the listener checks the selected host using Binder caller identity. This was
+  checked in SDK source tag `1.1.0`, commit `6905823c5adb8fb6f32571f3ea62ae3fe5916362`.
+- The independent app runs the existing credential-free protocol in a local
+  WebView with network, file access, content access and navigation disabled.
+  Session identity and delayed-open invalidation protect reconnect and host
+  changes. Acknowledgement requires successful JavaScript dispatch and serial
+  transport acknowledgement. Closing a session cancels pending work.
+- The optional 1.4.0 watch preview declares only the new Android package and
+  contains no PKJS. `scripts/build-signal-addon-watch.py WATCH_CHECKOUT` builds it
+  separately; it does not replace the released 1.3.0 package. Its C source
+  includes the non-recursive collector correction.
+
+## Capability preservation and remaining acceptance
+
+| Capability | Independent app | Existing adapter |
+| --- | --- | --- |
+| BYOK chat and text responses | Shared implementation retained; provider mocks pass | Retained |
+| Phone sensors, location, weather, presence, places, beacons | Shared implementation retained | Retained |
+| Local history, comparisons, exports, source switches, field trials | Retained | Retained |
+| Go go gadget, local wake recognition and draft review | Retained; model bundled | Retained |
+| Watch readings, health, buttons, history and quick feedback | Message adapter and package built; stock-host exchange still requires validation | Retained |
+| Watch dictation through Pebble | Uses the selected Pebble app's service; not yet validated end to end | Retained |
+| Custom BYOK watch transcription | Not exposed by the public client API; not advertised as available | Preserved in the legacy adapter |
+| Pairing, firmware and full watch synchronization | Owned by the existing Pebble app | Existing host responsibilities; not part of the extracted feature module |
+
+The new package starts with empty private storage. It does not read, overwrite,
+uninstall or migrate the old package. Export/import and recognition capability
+parity are release gates, not implied by this extraction. The shared UI/domain
+remain multiplatform; the Android-specific sensors and new PebbleKit adapter do
+not establish an iOS implementation.
+
+## Verification on September 9
+
+- Independent debug APK builds; Android lint reports zero errors and four
+  warnings (target SDK, available newer SDK library, exported SDK listener, and
+  version catalog placement). The exported listener's caller check was reviewed.
+- 96 feature tests pass, including three delayed-session lifecycle regressions.
+  The local protocol adapter test covers readiness, native request routing,
+  serialized sends and duplicate acknowledgements. A real Android WebView
+  instrumentation test also passes for startup, key translation, refresh,
+  incoming dispatch and rejection after session closure. It uses an isolated
+  sender double, not a stock Pebble host or physical watch.
+- The retained legacy Android adapter compiles. This is not a physical watch or
+  real provider-account test.
+- All six watch targets build. Inspection confirms the new companion package
+  registration and absence of embedded PKJS.
+- The standalone runtime dependency report excludes LibPebble, the parent
+  companion, ring modules and Firebase. Packaged manifest inspection confirms
+  the app listener and user-started wake service, with backup disabled.
+- A read-only Android emulator overlay opens the app without pairing or sensor
+  prompts. Ask, Activity and Settings are visible. A five-source local capture
+  saves without a watch or provider key; missing permission/enrollment inputs
+  remain represented separately. An in-place development APK update preserves
+  its saved settings and capture. No owner hardware was connected.
+- Grok 4.5 reviewed the new adapter through the CLI. Its delayed-open race and
+  JavaScript-result findings were checked and corrected. The advisory
+  response (whitespace normalized) is retained in `separation-evidence/grok-review.txt`.
+
+UI path evidence establishes discoverability in the emulator. Completion time,
+TalkBack, battery impact, background watch delivery, migration and physical
+watch behavior remain unmeasured. Public downloads and the existing hold are
+unchanged.

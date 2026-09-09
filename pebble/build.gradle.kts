@@ -75,6 +75,7 @@ kotlin {
         commonMain {
             dependencies {
                 implementation(project(":libpebble3"))
+                api(project(":signal"))
                 implementation(libs.health.kmp)
                 implementation(compose.runtime)
                 implementation(compose.foundation)

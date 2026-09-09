@@ -1,0 +1,52 @@
+{
+  "date": "2026-09-09",
+  "android_package": "com.lukesteuber.signalstation",
+  "android_version": "0.1.0-separation-dev",
+  "watch_version": "1.4.0",
+  "public_release": false,
+  "feature_tests": {
+    "tests": 96,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "lint_errors": 0,
+  "lint_warnings": 4,
+  "review_provider": "xai",
+  "review_model": "grok-4.5",
+  "review_transport": "craft-ask CLI",
+  "files": {
+    "apk": {
+      "path": "signalApp/build/outputs/apk/debug/signalApp-debug.apk",
+      "sha256": "341511b8bfd2549557323920f6b47b60165c7e8f04dcf25c67296212cb1321f8"
+    },
+    "pbw": {
+      "path": "signalApp/build/watch-preview/signal-station-addon-1.4.0.pbw",
+      "sha256": "12c3053c9985de2e7481a950459c48f9ec4530b789a01d750d8e5a83c5991748"
+    },
+    "protocol": {
+      "path": "signalApp/src/main/assets/signal-station/protocol.js",
+      "sha256": "ef358f4e72e9a6b33231b3f8880cd832033f2540e97546575d2e2664c43f00a2"
+    },
+    "review": {
+      "path": "docs/signal-station/separation-evidence/grok-review.txt",
+      "sha256": "77f72720f01596fa133992953832a2c097818d3ec537e65505551bc899e444cb"
+    },
+    "activity": {
+      "path": "docs/signal-station/separation-evidence/activity.png",
+      "sha256": "1d9afa397cc96d5159b1102b627572f2158e22c96a8a709a9abf4136833bef10"
+    }
+  },
+  "limitations": [
+    "Stock-host watch exchange unvalidated",
+    "Custom BYOK watch speech remains in legacy adapter",
+    "Cross-package migration unimplemented",
+    "No physical device validation or new public release"
+  ],
+  "review_format": "Trailing whitespace normalized; wording preserved",
+  "android_runtime_tests": {
+    "tests": 1,
+    "failures": 0,
+    "host": "Android API 36.1 emulator; PebbleSender double"
+  }
+}

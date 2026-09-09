@@ -1,0 +1,76 @@
+## Review (read-only): session separation
+
+### 1. **Critical — `opened()` races `closed()` / `selectApp()` (stale sessions + dead sender)**
+`opened` is fire-and-forget on `scope` and is **not** cancelled by `watchJob`, `closed()`, or `selectApp()`.
+
+```kotlin
+// after selectApp cleared sessions + sender.close()
+sessions[watchId] = session  // can still run
+session.start()
+```
+Session can be installed with a **closed** `sender`, after disconnect, or after package switch. `isTrusted` only helps once `ready` is true; IPC `send` still runs on the stale instance.
+
+**Minimal fix:** Per-watch `Job` (or generation/`epoch` captured at start of `opened`); `cancelAndJoin` in `closed`/`selectApp`; after `watches.first {…}` re-check `epoch` + selected package + “still want open” before `sessions[watchId] = …`. Pass `sender` only after that check (or read current sender under the same guard).
+
+---
+
+### 2. **High — `ready` before protocol load (trust / lifecycle)**
+```kotlin
+ready = true
+web.evaluateJavascript(script) { if (alive) loaded.complete(Unit) }
+```
+`isTrusted` is `sessions[…] === session && session.ready`, so the station can treat the session as live **before** `protocol.js`/`adapter.js` finish. `sendConfig`/`receive` wait on `loaded`, but any other `ready`-gated path does not.
+
+**Minimal fix:** Set `ready = true` only in the inject callback (and only if `alive`); keep `ready = false` in `close()`.
+
+---
+
+### 3. **High — WebView thread affinity**
+`WebView(context)`, `start()`, `evaluateJavascript`, `destroy()` must run on the main looper. Construction/`start()` run on whatever `scope` is; `close()` from `refresh`/`selectApp`/`listener`; only `receive` forces `Main.immediate`. Cross-thread use → flaky destroy, dropped JS, hard-to-repro stale UI.
+
+**Minimal fix:** Create/start/evaluate/destroy WebView only on `Dispatchers.Main.immediate` (session factory + `close()` + `evaluate`).
+
+---
+
+### 4. **Medium — Parent cancel without `close()` leaks WebView**
+Session `scope` is tied to parent `Job`, but **only** `close()` destroys the WebView / drops the JS bridge. Parent cancellation alone leaves a live WebView.
+
+**Minimal fix:** `sessionJob.invokeOnCompletion { … main { destroy path } }` or always route teardown through `close()`.
+
+---
+
+### 5. **Medium — `mutable.value = known.map` stale snapshot**
+`opened`/`closed` assign from a snapshot or full rewrite and can clobber concurrent `refresh` updates (other watches’ `connectionId` / `appOpen`).
+
+**Minimal fix:** `mutable.update { list -> list.map { … } }` (and don’t reuse pre-await `known` as the full list).
+
+---
+
+### 6. **Medium — `evaluate` ignores JS result (false Ack / config “success”)**
+```kotlin
+continuation.resume(alive, …)  // discards evaluateJavascript result string
+```
+`receive` → Ack whenever the call completes while `alive`, even if JS threw/`false`. Breaks failure signaling vs old behavior.
+
+**Minimal fix:** Resume on parsed JS result (`"true"` / non-null success); treat other results as failure; `invokeOnCancellation` optional with timeout already present.
+
+---
+
+### 7. **Low — `loaded` + cancel edge**
+`close()` cancels `loaded` and `scope`. Good for in-flight Host work (`CancellationException` rethrown). Ensure main-thread `destroy` happens **after** cancelling launches that might still call `evaluateJavascript` (order is OK if everything is main-ordered).
+
+---
+
+### IPC identity (as constrained)
+App-side `SignalListener` only UUID-filters; package binding is assumed in SDK (`Binder` caller vs `picker` selection) + `selectApp` recreating `DefaultPebbleSender`. No extra package check in these files. **Preserve that:** don’t accept watch I/O until `selectApp` completed and epoch guard passed (defect 1). `isTrusted` reference equality is the right stale-session gate once `ready` is fixed.
+
+---
+
+### What looks sound
+- `connectionId` ≈ `epoch:watchId` invalidation on replace/close/select
+- Shared `sender` rebuilt on app switch
+- Host payload size guards; `alive` before `reply`
+- `receive` size limits; Bytes → hard fail
+- Install still intentionally blocked; launch via selected app path
+
+**Priority order to fix:** (1) open/cancel generation + sender, (2) `ready` after inject, (3) main-thread WebView, (4) `mutable.update`, (5) JS result → Ack/config. No edits/runs performed.

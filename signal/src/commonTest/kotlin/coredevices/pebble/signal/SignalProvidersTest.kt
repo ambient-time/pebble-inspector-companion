@@ -161,7 +161,7 @@ class SignalProvidersTest {
         })
         val providers = SignalProviders(http, keys)
         try {
-            assertEquals("A short question", providers.transcribe(SignalWatchTranscription.wave(byteArrayOf(0, 0), 16000)))
+            assertEquals("A short question", providers.transcribe(SignalAudio.wave(byteArrayOf(0, 0), 16000)))
             assertEquals(listOf("transcription"), keys.requested)
         } finally { providers.close(); http.close() }
     }
@@ -191,7 +191,7 @@ class SignalProvidersTest {
             assertFalse(value.contains('\uFFFD'))
             assertTrue(value.endsWith("…"))
         }
-        val wav = SignalWatchTranscription.wave(byteArrayOf(1, 2, 3, 4), 16000)
+        val wav = SignalAudio.wave(byteArrayOf(1, 2, 3, 4), 16000)
         assertEquals(48, wav.size)
         assertEquals("RIFF", wav.decodeToString(0, 4))
         assertEquals("WAVEfmt ", wav.decodeToString(8, 16))

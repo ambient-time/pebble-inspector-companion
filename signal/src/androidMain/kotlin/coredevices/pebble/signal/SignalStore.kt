@@ -25,7 +25,7 @@ interface SignalDao {
 @Database(entities = [SignalRow::class], version = 1, exportSchema = false)
 abstract class SignalDatabase : RoomDatabase() { abstract fun records(): SignalDao }
 
-class SignalStore(context: Context, private val namespace: String = "signal") : SignalSecrets {
+class SignalStore(context: Context, private val namespace: String = "signal", private val defaultSettings: SignalSettings = SignalSettings()) : SignalSecrets {
     init { require(namespace.matches(Regex("[a-z0-9-]+"))) }
     private val prefs = context.getSharedPreferences("${namespace}_private", Context.MODE_PRIVATE)
     private val database = Room.databaseBuilder(context, SignalDatabase::class.java, "${namespace}-history.db").build()
@@ -56,7 +56,7 @@ class SignalStore(context: Context, private val namespace: String = "signal") : 
         if (key.isBlank()) editor.remove("key:$provider") else editor.putString("key:$provider", encrypt(key.trim(), "key:$provider"))
         check(editor.commit())
     }
-    fun settings(): SignalSettings = prefs.getString("settings", null)?.let { json.decodeFromString(decrypt(it, "settings")) } ?: SignalSettings()
+    fun settings(): SignalSettings = prefs.getString("settings", null)?.let { json.decodeFromString(decrypt(it, "settings")) } ?: defaultSettings
     fun settings(value: SignalSettings) { check(prefs.edit().putString("settings", encrypt(json.encodeToString(value), "settings")).commit()) }
     suspend fun records(): List<SignalRecord> = database.records().all().map { json.decodeFromString<SignalRecord>(decrypt(it.payload, it.id)) }.sortedByDescending { it.createdAt }
     suspend fun save(record: SignalRecord) = database.records().put(SignalRow(record.id, encrypt(json.encodeToString(record), record.id)))

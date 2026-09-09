@@ -14,13 +14,13 @@ intercepts the Signal Station watch script's native requests, and provides a
 custom watch transcription hook. An update preserves the existing package,
 credentials, history and pairing.
 
-A regular Android add-on is feasible through PebbleKit2. The next architecture
-prototype should register the Android companion package in the watch manifest,
-replace the intercepted HTTP bridge with PebbleKit2 messaging, and validate
-routing, acknowledgement and cancellation against the installed Pebble app.
-Stock dictation is the initial speech candidate. The current custom OpenAI
-transcription hook is private to the fork and needs a separate replacement.
-Existing users need a reviewed migration path before switching packages.
+The independent Android development shell now lives in `:signalApp`, backed by
+the extracted `:signal` feature module and a PebbleKit2 message adapter. It uses
+the existing Pebble app's pairing. The optional watch preview declares the new
+Android package and carries no PKJS. The custom OpenAI watch-transcription hook
+is retained in the legacy adapter; stock-host exchange, custom speech parity,
+and cross-package migration remain release gates. See [the separation record](separation.md).
+Public installation remains paused following the settings-wipe report.
 
 ## Task paths
 

@@ -62,7 +62,7 @@ data class SignalRecord(
 )
 
 data class SignalSource(val key: String, val name: String, val group: String, val available: Boolean = true)
-data class SignalWatch(val id: String, val name: String, val connected: Boolean)
+data class SignalWatch(val id: String, val name: String, val connected: Boolean, val connectionId: String = id, val appOpen: Boolean = false)
 data class SignalState(
     val initialized: Boolean = false,
     val buildVersion: String = "",
@@ -71,6 +71,7 @@ data class SignalState(
     val records: List<SignalRecord> = emptyList(),
     val sources: List<SignalSource> = emptyList(),
     val watches: List<SignalWatch> = emptyList(),
+    val watchCapabilities: SignalWatchCapabilities = SignalWatchCapabilities(),
     val busy: Boolean = false,
     val status: String = "Ask a question, or capture readings to explore later.",
     val threadId: String = "",

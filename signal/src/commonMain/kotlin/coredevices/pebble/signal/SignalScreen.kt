@@ -123,14 +123,19 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
             Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            SignalPage.entries.forEach { item ->
-                FilterChip(
-                    selected = page == item,
-                    onClick = { page = item; detailId = null; fieldTestOpen = false },
-                    label = { Text(item.title) },
-                )
+            listOf(SignalPage.Conversation to "Ask", SignalPage.History to "Activity", SignalPage.Settings to "Settings").forEach { (destination, title) ->
+                val selected = if (destination == SignalPage.History) page in listOf(SignalPage.History, SignalPage.Capture, SignalPage.Presence) else page == destination
+                FilterChip(selected = selected, onClick = { page = destination; detailId = null; fieldTestOpen = false }, label = { Text(title) })
             }
         }
+        if (page in listOf(SignalPage.History, SignalPage.Capture, SignalPage.Presence) && detailId == null && !fieldTestOpen) {
+            FlowRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(SignalPage.History to "Saved activity", SignalPage.Capture to "Capture", SignalPage.Presence to "Nearby").forEach { (destination, title) ->
+                    FilterChip(selected = page == destination, onClick = { page = destination }, label = { Text(title) })
+                }
+            }
+        }
+
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) { SignalStatus(state) }
             if (state.busy) TextButton(onClick = station::cancel) { Text("Cancel request") }
@@ -332,6 +337,7 @@ private fun SignalHistory(
     var to by remember { mutableStateOf("") }
     var source by remember { mutableStateOf("") }
     var selected by remember { mutableStateOf(setOf<String>()) }
+    var toolsOpen by remember { mutableStateOf(false) }
     val fromDate = from.takeIf { it.isNotBlank() }?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
     val toDate = to.takeIf { it.isNotBlank() }?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
     val dateError = (from.isNotBlank() && fromDate == null) || (to.isNotBlank() && toDate == null) || (fromDate != null && toDate != null && fromDate > toDate)
@@ -352,12 +358,16 @@ private fun SignalHistory(
             OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), label = { Text("Search questions, answers, and readings") })
         }
         item {
+            TextButton(onClick = { toolsOpen = !toolsOpen }) { Text(if (toolsOpen) "Hide history tools" else "Filter, compare & export") }
+            if (!toolsOpen && (from.isNotBlank() || to.isNotBlank() || source.isNotBlank())) Text("Date or source filters are active.")
+        }
+        if (toolsOpen) item {
             OutlinedTextField(from, { from = it }, Modifier.fillMaxWidth(), label = { Text("From date · YYYY-MM-DD") }, singleLine = true, isError = from.isNotBlank() && fromDate == null)
             OutlinedTextField(to, { to = it }, Modifier.fillMaxWidth(), label = { Text("Through date · YYYY-MM-DD") }, singleLine = true, isError = to.isNotBlank() && toDate == null)
             if (dateError) Text("Use valid dates with the start on or before the end.", color = MaterialTheme.colorScheme.error)
             SignalChoice("Source", source, listOf("" to "All sources") + state.sources.map { it.key to it.name }) { source = it }
         }
-        item {
+        if (toolsOpen) item {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onAskHistory, enabled = !state.busy && state.records.isNotEmpty()) { Text("Ask about history") }
                 OutlinedButton(onClick = { val ids = selected.toList(); onCompare(ids[0], ids[1]) }, enabled = selected.size == 2 && !state.busy) { Text("Compare ${selected.size}/2") }
@@ -378,7 +388,7 @@ private fun SignalHistory(
         items(records, key = { it.id }) { record ->
             HorizontalDivider()
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(
+                if (toolsOpen) Checkbox(
                     checked = record.id in selected,
                     onCheckedChange = { checked -> selected = if (checked) selected + record.id else selected - record.id },
                     enabled = !state.busy && record.observations.isNotEmpty() && (record.id in selected || selected.size < 2),
@@ -475,6 +485,7 @@ private fun SignalConfiguration(state: SignalState, station: SignalStation, onMa
     var key by remember(settings.provider) { mutableStateOf("") }
     var recognitionKey by remember { mutableStateOf("") }
     var weatherQuery by remember { mutableStateOf("") }
+    var expandedGroups by remember { mutableStateOf(emptySet<String>()) }
     val pendingProfile = model != settings.model || endpoint != settings.endpoint
     LazyColumn(
         Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp),
@@ -485,9 +496,10 @@ private fun SignalConfiguration(state: SignalState, station: SignalStation, onMa
             Text("Capture works without a provider key. Add a key when you want model analysis.")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = { station.updateSettings(settings.copy(onboardingComplete = false)) }, enabled = !state.busy) { Text("Revisit setup guide") }
-                onManageWatch?.let { TextButton(onClick = it) { Text("Pair or manage watch") } }
-                OutlinedButton(onClick = station::installWatchApp, enabled = !state.busy && state.watches.any { it.id == settings.watchId && it.connected }) { Text("Install watch app") }
+                onManageWatch?.let { TextButton(onClick = it) { Text("Watch connection") } }
+                OutlinedButton(onClick = station::installWatchApp, enabled = !state.busy && state.watchCapabilities.install && state.watches.any { it.id == settings.watchId && it.connected }) { Text("Install watch app") }
             }
+            Text(state.watchCapabilities.description)
             if (state.installStatus.isNotBlank()) Text(state.installStatus)
             SignalHeading("Answer provider")
         }
@@ -516,9 +528,10 @@ private fun SignalConfiguration(state: SignalState, station: SignalStation, onMa
         item {
             HorizontalDivider()
             SignalHeading("Speech recognition")
-            SignalChoice("Recognition", settings.recognition, listOf("openai" to "OpenAI transcription", "stock" to "Companion dictation"), !state.busy) {
+            SignalChoice("Recognition", settings.recognition, listOf("stock" to "Pebble app dictation") + if (state.watchCapabilities.customTranscription) listOf("openai" to "OpenAI transcription") else emptyList(), !state.busy) {
                 station.updateSettings(settings.copy(recognition = it))
             }
+            if (settings.recognition == "openai" && !state.watchCapabilities.customTranscription) Text("Your custom transcription setting is preserved. This connection uses the Pebble app speech service; select Pebble app dictation to use it.")
             if (settings.recognition == "openai") {
                 Text("Uses gpt-transcribe. The recognition key is separate from the answer key.")
                 Text(if ("transcription" in state.configuredProviders) "Recognition key saved" else "Recognition key not configured")
@@ -574,13 +587,16 @@ private fun SignalConfiguration(state: SignalState, station: SignalStation, onMa
         }
         state.sources.groupBy { it.group }.forEach { (group, sources) ->
             item(key = "group:$group") {
-                SignalHeading(group)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                val expanded = group in expandedGroups
+                TextButton(onClick = { expandedGroups = if (expanded) expandedGroups - group else expandedGroups + group }) {
+                    Text("$group · ${sources.count { it.key in settings.enabled }} selected · ${if (expanded) "Hide" else "Choose"}")
+                }
+                if (expanded) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(onClick = { station.updateSettings(settings.copy(enabled = settings.enabled + sources.filter { it.available }.map { it.key })) }, enabled = !state.busy) { Text("Enable $group") }
                     TextButton(onClick = { station.updateSettings(settings.copy(enabled = settings.enabled - sources.map { it.key }.toSet())) }, enabled = !state.busy) { Text("Disable $group") }
                 }
             }
-            items(sources, key = { it.key }) { source ->
+            if (group in expandedGroups) items(sources, key = { it.key }) { source ->
                 SignalToggle(source.name, source.key in settings.enabled, !state.busy, if (source.available) null else "Unavailable on this device or permission not granted") { enabled ->
                     station.updateSettings(settings.copy(enabled = if (enabled) settings.enabled + source.key else settings.enabled - source.key))
                 }

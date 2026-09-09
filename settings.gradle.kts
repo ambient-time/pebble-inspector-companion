@@ -39,3 +39,6 @@ include(":cactus-native")
 include(":libindex")
 include(":experimental")
 include(":krisp-stubs")
+
+include(":signal")
+include(":signalApp")

@@ -49,7 +49,7 @@ class SignalWakeService : Service() {
             return START_NOT_STICKY
         }
         val requested = intent?.getLongExtra("wakeToken", -1) ?: -1
-        if (!packageName.endsWith(".inspectorlab") || !SignalWakeRuntime.valid(requested)) {
+        if (!signalPackageEnabled(packageName) || !SignalWakeRuntime.valid(requested)) {
             stopSelfResult(startId); return START_NOT_STICKY
         }
         if (work?.isActive == true && token == requested) return START_NOT_STICKY

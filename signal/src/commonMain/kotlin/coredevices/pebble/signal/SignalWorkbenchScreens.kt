@@ -102,7 +102,7 @@ internal fun SignalSetup(station: SignalStation, state: SignalState) {
                 item {
                     Text("Give selected sources access", style = MaterialTheme.typography.headlineMedium)
                     Text("Android may ask for nearby-device, location, or sensor permissions for the sources you selected. You can decline individual permissions and continue with partial captures.")
-                    Text("Watch pairing and watch-health access are available from Devices after setup. Add a provider later in Settings to analyze a saved capture.")
+                    Text("Choose an already paired watch from Watch connection after setup. Add a provider later in Settings to analyze a saved capture.")
                 }
                 item {
                     if (state.settings.enabled.isNotEmpty()) OutlinedButton(onClick = station::requestPermissions) { Text("Review requested permissions") }
@@ -194,7 +194,7 @@ internal fun SignalCapturePage(
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 onManageWatch?.let { OutlinedButton(onClick = it, modifier = Modifier.heightIn(min = 48.dp)) { Text("Manage watch connection") } }
-                OutlinedButton(onClick = station::installWatchApp, enabled = !state.busy && watch?.connected == true, modifier = Modifier.heightIn(min = 48.dp)) { Text("Install watch app") }
+                OutlinedButton(onClick = station::installWatchApp, enabled = !state.busy && state.watchCapabilities.install && watch?.connected == true, modifier = Modifier.heightIn(min = 48.dp)) { Text("Install watch app") }
             }
         }
     }

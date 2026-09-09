@@ -1,7 +1,5 @@
 package coredevices.pebble.signal
 
-import coredevices.speex.SpeexCodec
-import coredevices.speex.SpeexDecodeResult
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.*
@@ -9,10 +7,7 @@ import io.ktor.client.request.forms.*
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.*
 import io.ktor.utils.io.readAvailable
-import io.rebble.libpebblecommon.voice.*
 import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.collect
 import kotlinx.serialization.json.*
 
 /** Error messages are deliberately fixed: upstream bodies and URLs may contain private input. */
@@ -279,60 +274,5 @@ class SignalProviders(http: HttpClient, private val secrets: SignalSecrets) {
         } catch (_: Exception) { fail("$label failed. Check your connection and provider settings.") }
 
         private fun fail(message: String): Nothing = throw SignalProviderException(message)
-    }
-}
-
-/** Only selected by the native caller-UUID override; ordinary watch dictation stays upstream. */
-class SignalWatchTranscription(
-    private val providers: SignalProviders,
-    private val enabled: suspend () -> Boolean,
-) : TranscriptionProvider {
-    override suspend fun canServeSession(): Boolean = enabled() && providers.transcriptionConfigured()
-
-    @OptIn(ExperimentalUnsignedTypes::class)
-    override suspend fun transcribe(encoderInfo: VoiceEncoderInfo, audioFrames: Flow<UByteArray>, isNotificationReply: Boolean): TranscriptionResult {
-        if (!canServeSession()) return TranscriptionResult.Disabled
-        val info = encoderInfo as? VoiceEncoderInfo.Speex ?: return TranscriptionResult.Error("Unsupported watch audio format.")
-        if (info.frameSize !in 1..8192 || info.sampleRate !in 8000..48000)
-            return TranscriptionResult.Error("Unsupported watch audio format.")
-        return try {
-            val pcm = withContext(Dispatchers.Default) {
-                val codec = SpeexCodec(info.sampleRate, info.bitRate, info.frameSize)
-                val frame = ByteArray(info.frameSize * 2)
-                // Bound memory and recording duration independently of provider upload timeout.
-                val buffer = ByteArray(2 * 1024 * 1024)
-                var size = 0
-                withTimeout(60_000) {
-                    audioFrames.collect { encoded ->
-                        ensureActive()
-                        if (size + frame.size > buffer.size) throw SignalProviderException("Recording is too long.")
-                        if (codec.decodeFrame(encoded.asByteArray(), frame, hasHeaderByte = true) != SpeexDecodeResult.Success)
-                            throw SignalProviderException("Watch audio could not be decoded.")
-                        frame.copyInto(buffer, size); size += frame.size
-                    }
-                }
-                wave(buffer.copyOf(size), info.sampleRate.toInt())
-            }
-            val text = providers.transcribe(pcm)
-            TranscriptionResult.Success(text.split(Regex("\\s+")).filter { it.isNotEmpty() }.map { TranscriptionWord(it, 1f) })
-        } catch (_: TimeoutCancellationException) { TranscriptionResult.Error("Recording timed out.")
-        } catch (e: CancellationException) { throw e
-        } catch (e: SignalProviderException) { TranscriptionResult.Error(e.message ?: "Transcription failed.")
-        } catch (_: Exception) { TranscriptionResult.Error("Transcription failed.") }
-    }
-
-    companion object {
-        internal fun wave(pcm: ByteArray, rate: Int): ByteArray {
-            require(rate > 0 && rate <= 192000 && pcm.size % 2 == 0)
-            val result = ByteArray(44 + pcm.size)
-            fun word(at: Int, value: Int, bytes: Int) { repeat(bytes) { result[at + it] = (value ushr (it * 8)).toByte() } }
-            "RIFF".encodeToByteArray().copyInto(result); word(4, pcm.size + 36, 4)
-            "WAVEfmt ".encodeToByteArray().copyInto(result, 8)
-            word(16, 16, 4); word(20, 1, 2); word(22, 1, 2); word(24, rate, 4)
-            word(28, rate * 2, 4); word(32, 2, 2); word(34, 16, 2)
-            "data".encodeToByteArray().copyInto(result, 36); word(40, pcm.size, 4)
-            pcm.copyInto(result, 44)
-            return result
-        }
     }
 }

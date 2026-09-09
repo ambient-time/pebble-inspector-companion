@@ -1,0 +1,27 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const requests = [], sends = [];
+const world = {module:{exports:{}}, JSON, setTimeout, clearTimeout,
+  SignalHost: {request:(...args)=>requests.push(args), send:(...args)=>sends.push(args)}};
+world.window = world;
+vm.createContext(world);
+for (const name of ['protocol.js','adapter.js']) vm.runInContext(fs.readFileSync(`${__dirname}/../src/main/assets/signal-station/${name}`, 'utf8'), world);
+assert.equal(requests.length, 0, 'Loading must not race native readiness');
+world.startProtocol();
+assert.equal(requests.length, 1);
+assert.equal(requests[0][1], 'GET');
+assert.ok(requests[0][2].endsWith('/capabilities'));
+world.nativeReply(requests[0][0], true, {configured:true,enabled:['watch.battery']});
+assert.equal(sends.length, 1);
+assert.equal(JSON.parse(sends[0][1]).BridgeReady, 1);
+world.configureWatch({kind:'refresh'});
+world.nativeReply(requests[1][0], true, {configured:false,enabled:[]});
+assert.equal(sends.length, 1, 'Wait for PebbleKit transport ACK before next packet');
+world.nativeReply(sends[0][0], true, null);
+assert.equal(sends.length, 2);
+assert.equal(JSON.parse(sends[1][1]).Configured, 0);
+world.nativeReply(sends[1][0], true, null);
+world.nativeReply(sends[1][0], true, null);
+assert.equal(sends.length, 2, 'Duplicate callbacks must not resend');
+console.log('PASS local protocol readiness, native routing, serialized delivery and duplicate ACK');
