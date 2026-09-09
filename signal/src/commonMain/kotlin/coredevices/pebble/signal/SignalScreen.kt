@@ -290,7 +290,7 @@ private fun SignalConversation(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 HorizontalDivider()
                 Text(record.question, style = MaterialTheme.typography.titleMedium)
-                SelectionContainer { Text(record.answer.ifBlank { record.summary.ifBlank { if (record.state == "working") "Waiting for ${providerLabel(record.provider)}…" else record.state } }) }
+                SignalResponse(record.answer, record.summary.ifBlank { if (record.state == "working") "Waiting for ${providerLabel(record.provider)}…" else record.state })
                 if (record.state in setOf("error", "interrupted", "cancelled")) {
                     Text("Your question is saved. Review it before sending again.", style = MaterialTheme.typography.bodySmall)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -430,7 +430,7 @@ private fun SignalDetail(
             Text(if (record.provider == "local") "Saved on this phone · ${record.state}" else "${providerLabel(record.provider)} · ${record.model} · ${record.state}")
             if (record.watchId.isNotBlank()) Text("Watch: ${state.watches.firstOrNull { it.id == record.watchId }?.name ?: record.watchId}")
         }
-        item { SelectionContainer { Text(record.answer.ifBlank { record.summary.ifBlank { "No answer saved." } }) } }
+        item { SignalResponse(record.answer, record.summary.ifBlank { "No answer saved." }) }
         item {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (record.kind in setOf("capture", "presence")) OutlinedButton(onClick = onChanges, enabled = !state.busy && SignalChanges.baseline(record, state.records, state.settings.enabled) != null) { Text("What changed? · local") }
@@ -552,6 +552,12 @@ private fun SignalConfiguration(state: SignalState, station: SignalStation, onMa
             SignalChoice("Watch", settings.watchId, listOf("" to "No watch selected") + state.watches.map { it.id to "${it.name} · ${if (it.connected) "connected" else "disconnected"}" }, !state.busy) {
                 station.updateSettings(settings.copy(watchId = it))
             }
+            val watch = state.watches.firstOrNull { it.id == settings.watchId }
+            Text(watch?.connectionStatus?.takeIf { it.isNotBlank() }
+                ?: "Select a connected watch, then check its Signal Station connection.",
+                Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+            OutlinedButton(onClick = station::checkWatchConnection, enabled = !state.busy && watch?.connected == true) { Text("Check connection") }
+            Text("This opens the watch app and checks its link. It does not start dictation or capture readings.", style = MaterialTheme.typography.bodySmall)
         }
         item {
             HorizontalDivider()

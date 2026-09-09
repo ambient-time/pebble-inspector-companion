@@ -29,7 +29,7 @@ function createClient(options) {
     if (!valid(a)) return;
     if (a.timer) clear(a.timer);
     a.terminal = true;
-    send({RequestId:a.id, StatusText:message || 'Open Signal Station in the lab companion.', Complete:1});
+    send({RequestId:a.id, StatusText:message || 'Open Signal Station on your phone.', Complete:1});
   }
   function deliver(a) {
     if (!valid(a) || a.delivered) return;
@@ -89,7 +89,7 @@ function createClient(options) {
   }
   function sync() {
     native('GET', 'capabilities', null, function (err, cfg) {
-      if (err || !cfg) return send({BridgeReady:0, Configured:0, StatusText:'Open Signal Station in the lab companion.'});
+      if (err || !cfg) return send({BridgeReady:0, Configured:0, StatusText:'Open Signal Station on your phone.'});
       send({BridgeReady:1, Configured:cfg.configured ? 1 : 0, Enabled:JSON.stringify(cfg.enabled || []),
         ConfirmTranscript:cfg.confirmTranscript ? 1 : 0, ReducedMotion:cfg.reducedMotion ? 1 : 0});
     });

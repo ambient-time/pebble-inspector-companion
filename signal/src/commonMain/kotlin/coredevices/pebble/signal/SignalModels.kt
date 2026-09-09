@@ -62,7 +62,7 @@ data class SignalRecord(
 )
 
 data class SignalSource(val key: String, val name: String, val group: String, val available: Boolean = true)
-data class SignalWatch(val id: String, val name: String, val connected: Boolean, val connectionId: String = id, val appOpen: Boolean = false)
+data class SignalWatch(val id: String, val name: String, val connected: Boolean, val connectionId: String = id, val appOpen: Boolean = false, val connectionStatus: String = "")
 data class SignalState(
     val initialized: Boolean = false,
     val buildVersion: String = "",
@@ -101,6 +101,7 @@ interface SignalStation {
     fun installWatchApp()
     fun openPermissionSettings()
     fun survey()
+    fun checkWatchConnection() {}
     fun recordOnWatch()
     fun cancel()
     fun newThread()

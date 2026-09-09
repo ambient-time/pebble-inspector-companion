@@ -53,7 +53,7 @@ class PebbleAppLink(
                     removed.forEach { appJobs.remove(it)?.cancel(); closed(it) }
                     mutable.value = connected.map {
                         val session = sessions[it.id.value]
-                        SignalWatch(it.id.value, it.name, true, session?.connectionId ?: "$epoch:${it.id.value}", session != null)
+                        SignalWatch(it.id.value, it.name, true, session?.connectionId ?: "$epoch:${it.id.value}", session != null, mutable.value.firstOrNull { old -> old.id == it.id.value }?.connectionStatus.orEmpty())
                     }
                     connected.forEach { watch ->
                         if (watch.id.value !in appJobs) {
@@ -77,7 +77,9 @@ class PebbleAppLink(
             withTimeoutOrNull(3000) { watches.first { all -> all.any { it.id == watchId && it.connected } } } ?: return@launch
             if (!gate.accepts(watchId, ticket)) return@launch
             sessions.remove(watchId)?.close()
-            val session = LocalProtocolSession(context, watchId, "${++epoch}:$watchId", scope, sender) { url, method, body, caller -> request(url, method, body, caller) }
+            val session = LocalProtocolSession(context, watchId, "${++epoch}:$watchId", scope, sender, onStatus = { message ->
+                if (gate.accepts(watchId, ticket)) mutable.update { all -> all.map { if (it.id == watchId) it.copy(connectionStatus = message) else it } }
+            }) { url, method, body, caller -> request(url, method, body, caller) }
             sessions[watchId] = session
             mutable.update { all -> all.map { if (it.id == watchId) it.copy(connectionId = session.connectionId, appOpen = true) else it } }
             session.start()
@@ -86,7 +88,7 @@ class PebbleAppLink(
     fun closed(watchId: String) {
         gate.close(watchId); pendingOpen.remove(watchId)?.cancel()
         sessions.remove(watchId)?.close()
-        mutable.value = mutable.value.map { if (it.id == watchId) it.copy(appOpen = false, connectionId = "${++epoch}:$watchId") else it }
+        mutable.value = mutable.value.map { if (it.id == watchId) it.copy(appOpen = false, connectionId = "${++epoch}:$watchId", connectionStatus = "Open Signal Station on the watch, then tap Check connection.") else it }
     }
     suspend fun receive(watchId: String, data: PebbleDictionary): ReceiveResult = withContext(Dispatchers.Main.immediate) {
         val session = sessions[watchId] ?: return@withContext ReceiveResult.Nack
@@ -96,7 +98,14 @@ class PebbleAppLink(
     override suspend fun isTrusted(session: SignalWatchSession) = sessions[session.watchId] === session && session.ready
     override suspend fun refresh(watchId: String) { sessions[watchId]?.sendConfigMessage("{\"kind\":\"refresh\"}") }
     override suspend fun launch(watchId: String) {
-        if (sessions[watchId]?.ready == true) { refresh(watchId); return }
+        sessions[watchId]?.let { session ->
+            if (session.awaitReady()) { refresh(watchId); return }
+            // An existing session came from an observed open app. Recreate only
+            // that local runtime; pairing and the watch installation are untouched.
+            if (sessions[watchId] === session) { closed(watchId); opened(watchId) }
+            return
+        }
+        if (pendingOpen[watchId]?.isActive == true) return
         val id = WatchIdentifier(watchId)
         if (sender.startAppOnTheWatch(UUID.fromString(AndroidSignalStation.APP_UUID), listOf(id))?.get(id) != TransmissionResult.Success)
             throw SignalProviderException("Open Signal Station on your watch using the Pebble app.")

@@ -20,6 +20,7 @@ internal class LocalProtocolSession(
     override val connectionId: String,
     parent: CoroutineScope,
     private val sender: PebbleSender,
+    private val onStatus: (String) -> Unit = {},
     private val request: suspend (String, String, String?, SignalWatchSession) -> SignalWatchResponse,
 ) : SignalWatchSession {
     private val scope = CoroutineScope(parent.coroutineContext + SupervisorJob(parent.coroutineContext[Job]))
@@ -32,6 +33,10 @@ internal class LocalProtocolSession(
     private val keys = Json.parseToJsonElement(assets.open("signal-station/message-keys.json").bufferedReader().use { it.readText() }).jsonObject.mapValues { it.value.jsonPrimitive.int }
     fun start() {
         check(Looper.myLooper() == Looper.getMainLooper())
+        onStatus("Starting the phone link…")
+        scope.launch {
+            if (!awaitReady()) onStatus("Phone link could not start. Tap Check connection to retry.")
+        }
         scope.coroutineContext[Job]?.invokeOnCompletion { Handler(Looper.getMainLooper()).post { close() } }
         web.settings.javaScriptEnabled = true
         web.settings.allowFileAccess = false
@@ -48,6 +53,7 @@ internal class LocalProtocolSession(
                 web.evaluateJavascript(script + "\ntrue;") { result ->
                     if (alive && result == "true") {
                         ready = true; loaded.complete(Unit)
+                        onStatus("Phone runtime ready; checking the selected watch…")
                         web.evaluateJavascript("startProtocol(); true", null)
                     } else if (alive) loaded.completeExceptionally(IllegalStateException("Protocol unavailable"))
                 }
@@ -60,6 +66,10 @@ internal class LocalProtocolSession(
         alive = false; ready = false; scope.cancel(); loaded.cancel()
         web.removeJavascriptInterface("SignalHost"); web.destroy()
     }
+    suspend fun awaitReady(): Boolean = try {
+        withTimeoutOrNull(10_000) { loaded.await(); alive && ready } ?: false
+    } catch (e: CancellationException) { throw e } catch (_: Exception) { false }
+
     private suspend fun evaluate(script: String): Boolean {
         if (!alive) return false
         return withTimeoutOrNull(3000) {
@@ -96,23 +106,39 @@ internal class LocalProtocolSession(
             scope.launch {
                 try {
                     val response = request(url, method, body, this@LocalProtocolSession)
+                    if (url.endsWith("/capabilities")) onStatus(when (response.status) {
+                        in 200..299 -> "Phone ready; waiting for watch acknowledgement…"
+                        403 -> "Phone rejected the link. Check the selected watch, then retry."
+                        else -> "Phone connection check failed. Tap Check connection to retry."
+                    })
                     reply(id, response.status in 200..299, Json.parseToJsonElement(response.result))
-                } catch (e: CancellationException) { throw e } catch (_: Exception) { reply(id, false) }
+                } catch (e: CancellationException) { throw e } catch (_: Exception) {
+                    if (url.endsWith("/capabilities")) onStatus("Phone connection check failed. Tap Check connection to retry.")
+                    reply(id, false)
+                }
             }
         }
         @JavascriptInterface fun send(id: Int, packet: String) {
             if (packet.length > 4096 || id <= 0) return
             scope.launch {
+                val payload = runCatching { Json.parseToJsonElement(packet).jsonObject }.getOrNull()
+                val handshake = (payload?.get("BridgeReady") as? JsonPrimitive)?.intOrNull == 1
                 try {
-                    val dictionary = Json.parseToJsonElement(packet).jsonObject.map { (key, value) ->
+                    val dictionary = requireNotNull(payload).map { (key, value) ->
                         val wireKey = keys[key] ?: error("Unknown message key")
                         val item = value.jsonPrimitive
                         wireKey.toUInt() to if (item.isString) PebbleDictionaryItem.Text(item.content) else PebbleDictionaryItem.Int32(item.int)
                     }.toMap()
                     val watch = WatchIdentifier(watchId)
                     val result = withTimeoutOrNull(10000) { sender.sendDataToPebble(UUID.fromString(AndroidSignalStation.APP_UUID), dictionary, listOf(watch)) }
-                    reply(id, result?.get(watch) == TransmissionResult.Success)
-                } catch (e: CancellationException) { throw e } catch (_: Exception) { reply(id, false) }
+                    val acknowledged = result?.get(watch) == TransmissionResult.Success
+                    if (handshake) onStatus(if (acknowledged) "Watch acknowledged the connection."
+                        else "Watch did not acknowledge. Open Signal Station on the watch and tap Check connection.")
+                    reply(id, acknowledged)
+                } catch (e: CancellationException) { throw e } catch (_: Exception) {
+                    if (handshake) onStatus("Watch check failed. Open Signal Station on the watch and retry.")
+                    reply(id, false)
+                }
             }
         }
     }

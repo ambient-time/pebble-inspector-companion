@@ -315,6 +315,16 @@ open class AndroidSignalStation(private val context: Context, protected val watc
         context.startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:${context.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
     override fun survey() { startOperation { settings, token -> execute("Summarize my current context.", settings, token, false, true) } }
+    override fun checkWatchConnection() {
+        startOperation { settings, token ->
+            val watch = selectedWatch(settings)
+            status("Checking the selected watch…")
+            val runner = launchWatch(watch)
+            runner.sendConfigMessage("{\"kind\":\"refresh\"}")
+            ensureActiveToken(token)
+            status("Phone link ready. See Selected watch for acknowledgement from the watch.")
+        }
+    }
     override fun recordOnWatch() {
         if (mutable.value.settings.recognition == "openai" && !watchLink.capabilities.customTranscription) { status("Select Pebble app dictation in Settings for this watch connection. Your custom recognition key is preserved."); return }
         startOperation { settings, token ->
@@ -371,17 +381,13 @@ open class AndroidSignalStation(private val context: Context, protected val watc
         ?: throw SignalProviderException("Select a connected watch in Settings.")
     private suspend fun launchWatch(watch: SignalWatch): SignalWatchSession {
         val existing = runners[watch.id]
-        if (existing?.connectionId != watch.connectionId || !watch.appOpen) {
+        if (existing?.connectionId != watch.connectionId || !watch.appOpen || !existing.ready) {
             runners.remove(watch.id); watchLink.launch(watch.id)
         }
-        return withTimeoutOrNull(12_000) {
-            while (true) {
-                val runner = runners[watch.id]
-                if (runner != null && runner.connectionId == watch.connectionId && runner.ready) return@withTimeoutOrNull runner
-                delay(100)
-            }
-            @Suppress("UNREACHABLE_CODE") error("Watch handshake unavailable")
-        } ?: throw SignalProviderException("The watch did not connect to Signal Station. Open the watch app and try again.")
+        return awaitSignalWatchSession(watch.id,
+            currentWatch = { watchLink.watches.value.firstOrNull { it.id == watch.id } },
+            currentSession = { runners[watch.id] },
+        ) ?: throw SignalProviderException("The watch did not connect to Signal Station. Open the watch app and try again.")
     }
     private fun command(kind: String, request: Int, settings: SignalSettings) = buildJsonObject {
         put("kind", kind); put("request_id", request); put("enabled", JsonArray(settings.enabled.map(::JsonPrimitive))); put("confirmTranscript", settings.confirmTranscript)
