@@ -105,5 +105,19 @@ not establish an iOS implementation.
 
 UI path evidence establishes discoverability in the emulator. Completion time,
 TalkBack, battery impact, background watch delivery, migration and physical
-watch behavior remain unmeasured. Public downloads and the existing hold are
-unchanged.
+watch behavior remain unmeasured.
+
+## Development distribution
+
+Luke requested uploading the separated previews on September 9. Android
+0.1.0-separation-dev (1) and watch 1.4.0 from `504e3792` are now available at
+https://dr.eamer.dev/downloads/apps/signal-station/ with matching source and
+checksums. The Android package is separate and debug-signed. The old lab 8
+companion remains withdrawn; the settings-wipe cause is unresolved. Publication
+does not establish migration, stock-host exchange or physical-watch behavior.
+
+Next connection check: recover the protocol when the chosen Pebble app already
+reports Signal Station open, including after Android recreates the process.
+The current adapter only starts a session on an app-open event, so it can miss
+an already-open watch app. Validate recovery through the read-only active-app
+provider and retain host-selection and disconnect boundaries.
