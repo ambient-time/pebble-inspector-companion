@@ -1,0 +1,148 @@
+package coredevices.pebble.signal
+
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.mock.*
+import io.ktor.http.*
+import io.ktor.http.content.TextContent
+import kotlinx.coroutines.*
+import kotlinx.serialization.json.*
+import kotlin.test.*
+
+class SignalProvidersTest {
+    private class Keys : SignalSecrets {
+        val requested = mutableListOf<String>()
+        override suspend fun get(provider: String): String { requested += provider; return "private-test-key" }
+        override suspend fun put(provider: String, key: String) = Unit
+    }
+
+    @Test fun allProviderFixturesUseTheirNativeWireFormat() = runBlocking {
+        for (provider in listOf("openai", "xai", "anthropic", "gemini", "openrouter", "custom")) {
+            val keys = Keys()
+            val engine = MockEngine { request ->
+                assertEquals(URLProtocol.HTTPS, request.url.protocol)
+                val payload = Json.parseToJsonElement((request.body as TextContent).text).jsonObject
+                assertEquals("test-model", payload["model"]?.jsonPrimitive?.content ?: "test-model")
+                when (provider) {
+                    "openai", "xai" -> {
+                        assertTrue(request.url.encodedPath.endsWith("/responses"))
+                        assertEquals(false, payload["store"]?.jsonPrimitive?.boolean)
+                        assertNotNull(payload["input"])
+                    }
+                    "anthropic" -> {
+                        assertEquals("private-test-key", request.headers["x-api-key"])
+                        assertEquals("2023-06-01", request.headers["anthropic-version"])
+                        assertEquals("system instruction", payload["system"]?.jsonPrimitive?.content)
+                        assertEquals(2, payload["messages"]?.jsonArray?.size)
+                    }
+                    "gemini" -> {
+                        assertEquals("private-test-key", request.headers["x-goog-api-key"])
+                        assertTrue(request.url.parameters.isEmpty())
+                        assertNotNull(payload["systemInstruction"])
+                        assertEquals("model", payload["contents"]?.jsonArray?.last()?.jsonObject?.get("role")?.jsonPrimitive?.content)
+                    }
+                    else -> assertTrue(request.url.encodedPath.endsWith("/chat/completions"))
+                }
+                respond(fixture(provider), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+            }
+            val http = HttpClient(engine)
+            val providers = SignalProviders(http, keys)
+            try {
+                val reply = providers.answer(SignalSettings(provider = provider, model = "test-model", endpoint = "https://example.test/v1"),
+                    listOf("system" to "system instruction", "user" to "question", "assistant" to "earlier answer"))
+                assertEquals("Visible answer", reply.text)
+                assertEquals(listOf(provider), keys.requested)
+            } finally { providers.close(); http.close() }
+        }
+    }
+
+    @Test fun errorsDoNotEchoProviderBodyOrRetry() = runBlocking {
+        for (status in listOf(302, 401, 403, 429, 500)) {
+            var calls = 0
+            val http = HttpClient(MockEngine {
+                calls++
+                respond("private-test-key private medical prompt", HttpStatusCode.fromValue(status), headersOf(HttpHeaders.Location, "https://other.test"))
+            })
+            val providers = SignalProviders(http, Keys())
+            try {
+                val error = assertFailsWith<SignalProviderException> {
+                    providers.answer(SignalSettings(), listOf("user" to "question"))
+                }
+                assertFalse(error.message.orEmpty().contains("private"))
+                assertEquals(1, calls)
+            } finally { providers.close(); http.close() }
+        }
+    }
+
+    @Test fun cancellationPropagatesToTransport() = runBlocking {
+        val entered = CompletableDeferred<Unit>()
+        val stopped = CompletableDeferred<Unit>()
+        val http = HttpClient(MockEngine {
+            entered.complete(Unit)
+            try { awaitCancellation() } finally { stopped.complete(Unit) }
+        })
+        val providers = SignalProviders(http, Keys())
+        try {
+            val job = launch { providers.answer(SignalSettings(), listOf("user" to "question")) }
+            entered.await(); job.cancelAndJoin(); stopped.await()
+            assertTrue(job.isCancelled)
+        } finally { providers.close(); http.close() }
+    }
+
+    @Test fun transcriptionUsesOnlyItsOwnKeyAndMultipartWav() = runBlocking {
+        val keys = Keys()
+        val http = HttpClient(MockEngine { request ->
+            assertEquals("https://api.openai.com/v1/audio/transcriptions", request.url.toString())
+            assertEquals("Bearer private-test-key", request.headers[HttpHeaders.Authorization])
+            val body = request.body.toByteArray().decodeToString()
+            assertTrue(body.contains("gpt-transcribe"))
+            assertTrue(body.contains("audio/wav"))
+            assertTrue(body.contains("RIFF"))
+            respond("""{"text":"A short question"}""", HttpStatusCode.OK)
+        })
+        val providers = SignalProviders(http, keys)
+        try {
+            assertEquals("A short question", providers.transcribe(SignalWatchTranscription.wave(byteArrayOf(0, 0), 16000)))
+            assertEquals(listOf("transcription"), keys.requested)
+        } finally { providers.close(); http.close() }
+    }
+
+    @Test fun oversizedAndMalformedResponsesFailClosed() = runBlocking {
+        for (body in listOf("x".repeat(128 * 1024 + 2), "{", "{}")) {
+            val http = HttpClient(MockEngine { respond(body) })
+            val providers = SignalProviders(http, Keys())
+            try { assertFailsWith<SignalProviderException> {
+                providers.answer(SignalSettings(), listOf("user" to "question"))
+            } } finally { providers.close(); http.close() }
+        }
+    }
+
+    @Test fun customEndpointRejectsCredentialsAndCleartext() {
+        for (url in listOf("http://example.test/v1", "https://user:secret@example.test/v1", "https://example.test/v1?key=secret", "https://example.test/v1#fragment"))
+            assertFailsWith<SignalProviderException> { SignalProviders.customEndpoint(url) }
+        assertEquals("https://example.test/v1/chat/completions", SignalProviders.customEndpoint("https://example.test/v1/"))
+        assertEquals("https://example.test/v1/chat/completions", SignalProviders.customEndpoint("https://example.test/v1/chat/completions"))
+    }
+
+    @Test fun unicodeBoundsAndWavHeaderAreValid() {
+        val original = "🛰️ café 漢字 ".repeat(3000)
+        for (limit in listOf(900, 16384)) {
+            val value = SignalProviders.truncateUtf8(original, limit)
+            assertTrue(value.encodeToByteArray().size <= limit)
+            assertFalse(value.contains('\uFFFD'))
+            assertTrue(value.endsWith("…"))
+        }
+        val wav = SignalWatchTranscription.wave(byteArrayOf(1, 2, 3, 4), 16000)
+        assertEquals(48, wav.size)
+        assertEquals("RIFF", wav.decodeToString(0, 4))
+        assertEquals("WAVEfmt ", wav.decodeToString(8, 16))
+        assertEquals("data", wav.decodeToString(36, 40))
+        assertContentEquals(byteArrayOf(1, 2, 3, 4), wav.copyOfRange(44, 48))
+    }
+
+    private fun fixture(provider: String): String = when (provider) {
+        "openai", "xai" -> """{"output":[{"type":"reasoning","summary":[]},{"type":"message","content":[{"type":"output_text","text":"Visible answer"}]}]}"""
+        "anthropic" -> """{"content":[{"type":"thinking","thinking":"hidden"},{"type":"text","text":"Visible answer"}]}"""
+        "gemini" -> """{"candidates":[{"content":{"parts":[{"thought":true,"text":"hidden"},{"text":"Visible answer"}]}}]}"""
+        else -> """{"choices":[{"message":{"content":"Visible answer"}}]}"""
+    }
+}

@@ -134,6 +134,8 @@ import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.ui.tooling.preview.Preview
 import org.koin.compose.koinInject
+import org.koin.compose.getKoin
+import coredevices.pebble.signal.SignalStation
 import org.koin.compose.viewmodel.koinViewModel
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -222,6 +224,8 @@ fun WatchHomeScreen(
 ) {
     Box(modifier = Modifier.background(MaterialTheme.colorScheme.background)) {
         val scope = rememberCoroutineScope()
+        val koin = getKoin()
+        val signalStation = remember(koin) { koin.getOrNull<SignalStation>() }
         val viewModel = koinViewModel<WatchHomeViewModel>()
         val indexEnabled = viewModel.indexEnabled.collectAsState()
         val healthEnabledValue = viewModel.healthTrackingEnabled.collectAsState()
@@ -570,6 +574,13 @@ fun WatchHomeScreen(
                                 )
                             },
                             actions = {
+                                if (signalStation?.available == true && params.title != "Signal Station") {
+                                    TextButton(onClick = {
+                                        pebbleNavHostController.navigate(PebbleNavBarRoutes.SignalStationRoute) {
+                                            launchSingleTop = true
+                                        }
+                                    }) { Text("Signal Station") }
+                                }
                                 params.actions(this)
                                 if (params.searchState != null) {
                                     TopBarIconButtonWithToolTip(

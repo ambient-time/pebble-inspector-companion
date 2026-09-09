@@ -32,6 +32,7 @@ val gitVersionCode = gitVersionName.map { name ->
 
 android {
     namespace = "coredevices.coreapp"
+    if (providers.gradleProperty("signalTests").orNull == "true") testBuildType = "inspectorLab"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
     if (!localReleaseBuild) {
@@ -104,6 +105,7 @@ dependencies {
     implementation(project(":util"))
     // The lab manifest overrides both PebbleKit providers' authorities.
     add("inspectorLabImplementation", project(":libpebble3"))
+    add("inspectorLabImplementation", project(":pebble"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.health.kmp)
 
@@ -118,6 +120,7 @@ dependencies {
     androidTestImplementation(libs.firebase.auth)
     androidTestImplementation(project(":cactus"))
     androidTestImplementation(project(":experimental"))
+    androidTestImplementation(project(":pebble"))
     androidTestImplementation(project(":libindex"))
     androidTestImplementation(project(":index-ai"))
     androidTestImplementation(project(":mcp"))
@@ -127,9 +130,10 @@ dependencies {
 // configuration cache.
 androidComponents {
     onVariants { variant ->
-        val suffix = if (variant.buildType == "inspectorLab") "-inspector-lab.1" else ""
+        val isInspectorLab = variant.buildType == "inspectorLab"
+        val suffix = if (isInspectorLab) "-inspector-lab.2" else ""
         variant.outputs.forEach {
-            it.versionCode.set(gitVersionCode)
+            it.versionCode.set(gitVersionCode.map { code -> if (isInspectorLab) code + 1 else code })
             it.versionName.set(gitVersionName.map { version -> version + suffix })
         }
     }

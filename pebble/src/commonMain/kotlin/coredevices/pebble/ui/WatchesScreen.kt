@@ -205,6 +205,8 @@ import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.ui.tooling.preview.Preview
+import org.koin.compose.getKoin
+import coredevices.pebble.signal.SignalStation
 import org.koin.compose.koinInject
 import org.koin.dsl.module
 import theme.coreOrange
@@ -228,6 +230,7 @@ sealed interface ScanningStatus {
 
 @Composable
 fun WatchesScreen(navBarNav: NavBarNav, topBarParams: TopBarParams) {
+    val signalLab = getKoin().getOrNull<SignalStation>()?.available == true
     val libPebble = rememberLibPebble()
     val libIndex = koinInject<LibIndex>()
     val pebbleFeatures = koinInject<PebbleFeatures>()
@@ -481,7 +484,8 @@ fun WatchesScreen(navBarNav: NavBarNav, topBarParams: TopBarParams) {
                     ) {
                         val otherAppNames = otherPebbleAppsInstalled.joinToString { it.name }
                         Text(
-                            text = "One or more other PebbleOS companions apps are installed. Please " +
+                            text = if (signalLab) "Keep your stock companion and its data. Before connecting this lab, disconnect the test watch from $otherAppNames. Keep only one companion connected."
+                            else "One or more other PebbleOS companions apps are installed. Please " +
                                     "uninstall them ($otherAppNames) to avoid connectivity problems.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onErrorContainer,
@@ -598,7 +602,7 @@ fun WatchesScreen(navBarNav: NavBarNav, topBarParams: TopBarParams) {
                             is DeviceListEntry.Watch -> WatchItem(
                                 watch = entry.device,
                                 bluetoothState = bluetoothEnabled,
-                                allowedToConnect = !showOtherPebbleAppsWarningAndPreventConnection,
+                                allowedToConnect = signalLab || !showOtherPebbleAppsWarningAndPreventConnection,
                                 navBarNav = navBarNav,
                             )
                             is DeviceListEntry.Ring -> RingItem(

@@ -155,7 +155,7 @@ val watchModule = module {
         listOf(
             get<OpenWeather25Interceptor>(),
             get<YahooWeatherInterceptor>(),
-        )
+        ) + listOfNotNull(getOrNull<coredevices.pebble.signal.SignalStation>() as? io.rebble.libpebblecommon.js.HttpInterceptor)
     ) }
     factory { p ->
         AppstoreService(get(), get(), p.get(), get(), get(), get(), get(), get(), get())

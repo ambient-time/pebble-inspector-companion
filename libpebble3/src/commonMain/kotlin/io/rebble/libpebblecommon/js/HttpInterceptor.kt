@@ -3,9 +3,12 @@ package io.rebble.libpebblecommon.js
 import io.rebble.libpebblecommon.js.InterceptResponse.Companion.ERROR
 import kotlin.uuid.Uuid
 
+data class HttpCallerContext(val runner: JsRunner)
+
 interface HttpInterceptor {
     fun shouldIntercept(url: String): Boolean
     suspend fun onIntercepted(url: String, method: String, body: String?, appUuid: Uuid): InterceptResponse
+    suspend fun onIntercepted(url: String, method: String, body: String?, appUuid: Uuid, caller: HttpCallerContext): InterceptResponse = onIntercepted(url, method, body, appUuid)
 }
 
 data class InterceptResponse(
@@ -34,11 +37,12 @@ class HttpInterceptorManager(
         return interceptors.any { it.shouldIntercept(url) }
     }
 
-    suspend fun onIntercepted(url: String, method: String, body: String?, appUuid: Uuid): InterceptResponse {
+    suspend fun onIntercepted(url: String, method: String, body: String?, appUuid: Uuid, caller: HttpCallerContext? = null): InterceptResponse {
         val interceptor = interceptors.firstOrNull { it.shouldIntercept(url) }
         if (interceptor == null) {
             return ERROR
         }
-        return interceptor.onIntercepted(url, method, body, appUuid)
+        return if (caller == null) interceptor.onIntercepted(url, method, body, appUuid)
+        else interceptor.onIntercepted(url, method, body, appUuid, caller)
     }
 }

@@ -5,11 +5,21 @@
     <permission android:name="io.rebble.pebblekit2.permission.SEND_DATA_TO_WATCH" tools:node="remove" />
     <permission android:name="io.rebble.pebblekit2.permission.RECEIVE_DATA_FROM_WATCH" tools:node="remove" />
     <permission android:name="io.rebble.pebblekit2.permission.READ_PROVIDER" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" tools:remove="android:usesPermissionFlags" />
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" tools:node="replace" />
+    <uses-permission android:name="android.permission.BODY_SENSORS" android:maxSdkVersion="35" />
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
     <application
         android:allowBackup="false"
         android:fullBackupContent="@xml/inspector_backup_rules"
         android:dataExtractionRules="@xml/inspector_data_extraction_rules"
         tools:replace="android:allowBackup,android:fullBackupContent,android:dataExtractionRules">
+        <activity android:name="coredevices.pebble.signal.SignalPermissionActivity" android:exported="false" android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+        <provider android:name="coredevices.pebble.signal.SignalExportProvider" android:authorities="${applicationId}.signal-export" android:exported="false" android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/signal_export_paths" />
+        </provider>
         <meta-data
             android:name="firebase_crashlytics_collection_enabled"
             android:value="false"

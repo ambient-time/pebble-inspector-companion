@@ -4,6 +4,7 @@
 import argparse
 import hashlib
 import json
+import io
 import os
 from pathlib import Path
 import re
@@ -96,7 +97,7 @@ def validate_manifest(root, labels):
     require(root.tag == "manifest", "APK XML root is not manifest")
     require(root.get("package") == PACKAGE, "APK package must be " + PACKAGE)
     version = root.get(ANDROID + "versionName", "")
-    require(version.endswith("-inspector-lab.1"), "APK version lacks -inspector-lab.1 suffix")
+    require(version.endswith("-inspector-lab.2"), "APK version lacks -inspector-lab.2 suffix")
     code = root.get(ANDROID + "versionCode", "")
     require(code.isdecimal() and int(code) > 0, "APK has no positive version code")
     require(labels and all(label == LABEL for label in labels), "APK has the wrong visible label")
@@ -185,6 +186,26 @@ def run(command):
     return result.stdout
 
 
+def validate_signal_assets(archive):
+    base = "assets/signal-station/"
+    try:
+        provenance = json.loads(archive.read(base + "watch-provenance.json"))
+        pin = archive.read(base + "pkjs.sha256").decode().strip()
+        pbw = archive.read(base + "signal-station.pbw")
+        require(hashlib.sha256(pbw).hexdigest() == provenance["pbw_sha256"], "Bundled watch PBW digest mismatch")
+        with zipfile.ZipFile(io.BytesIO(pbw)) as watch:
+            script_digest = hashlib.sha256(watch.read("pebble-js-app.js")).hexdigest()
+            info = json.loads(watch.read("appinfo.json"))
+            require(info["uuid"] == "e2fd86ec-dfb8-460c-afc1-ebe4d071657a", "Wrong bundled watch UUID")
+            require(info["versionLabel"] == "1.1.0", "Wrong bundled watch version")
+            require(set(info["targetPlatforms"]) == {"basalt", "chalk", "diorite", "emery", "flint", "gabbro"}, "Bundled watch target mismatch")
+        require(script_digest == pin == provenance["pkjs_sha256"], "Native bridge script digest mismatch")
+        require(re.fullmatch(r"[0-9a-f]{40}", provenance["source_commit"]) is not None, "Watch source revision missing")
+        return provenance
+    except (KeyError, ValueError, zipfile.BadZipFile) as error:
+        raise VerificationError("Signal Station asset verification failed: " + str(error)) from error
+
+
 def verify(apk, sdk=None):
     require(apk.is_file(), "APK does not exist: " + str(apk))
     aapt = discover_tool("aapt2", sdk)
@@ -208,6 +229,7 @@ def verify(apk, sdk=None):
     policies = []
     with zipfile.ZipFile(apk) as archive:
         entries = archive.namelist()
+        signal_metadata = validate_signal_assets(archive)
         for attribute, name, extraction in (
             ("fullBackupContent", "inspector_backup_rules", False),
             ("dataExtractionRules", "inspector_data_extraction_rules", True),
@@ -228,6 +250,7 @@ def verify(apk, sdk=None):
     metadata.update({
         "status": "verified", "apk": str(apk.resolve()), "size_bytes": apk.stat().st_size,
         "sha256": digest.hexdigest(), "signer_certificate_sha256": certificates,
+        "signal_watch": signal_metadata,
         "manifest_reader": engine, "backup_policies": policies, "warnings": warnings,
         "scope": "APK signature, manifest identity and packaged backup exclusions; no install or hardware test",
     })

@@ -1,96 +1,111 @@
-# Pebble Inspector Lab
+# Signal Station in Pebble Inspector Lab
 
-Private Android companion experiment for Field Inspector, by Luke Steuber.
-**Parked September 7, 2026:** the owner's Time 2 speech test was too choppy and
-quiet for conversational use. This isolated companion build is preserved for
-reuse; native recognition and provider integration were not implemented.
-See the [saved experiment](https://github.com/lukeslp/pebble-field-inspector/blob/main/docs/experiment-handoff.md).
-Based on [Core Devices' mobile app](https://github.com/coredevices/mobileapp) at
-`d52101ad3d8940c5aa392d6f224e774cb6f5ce84`.
+Signal Station is Luke Steuber's private Android and Pebble context experiment.
+The phone is the workbench: type a question, trigger watch dictation or a survey,
+read full reports, and explore local history. The watch collects selected signals
+and displays a short answer. Replies are text only.
 
-The first build isolates the test installation on Pixel 9a. It preserves stock
-recognition and watch transport while the baseline and pairing recovery undergo
-physical checks. OpenAI recognition, Terra responses, direct phone requests,
-and voice-provider settings follow the gates in the
-[approved plan](https://github.com/lukeslp/pebble-field-inspector/blob/main/docs/voice-experiment-plan.md).
+The Android fork preserves Core Devices' source, notices and history from
+`d52101ad3d8940c5aa392d6f224e774cb6f5ce84`. The [upstream README](README.md)
+describes the rest of the companion. The earlier Field Inspector audio experiment
+remains in Git history; its choppy speaker playback is no longer part of this app.
 
-| Item | Selection |
-|---|---|
-| Experimental Android package | `coredevices.coreapp.inspectorlab` |
-| Private test label | Pebble Inspector Lab |
-| Build variant | `inspectorLab` |
-| Test phone | Pixel 9a |
-| Primary watch | New Pebble Time 2 |
-| Secondary watch | Pebble 2 SE |
-| Watchapp UUID | `e2fd86ec-dfb8-460c-afc1-ebe4d071657a` |
+## Set up
 
-Keep one companion actively connected to the test watch. Preserve Pixel 10's
-stock installation and the Pixel 9a stock app/data. A different package ID
-separates app storage; Bluetooth pairing still needs a deliberate handoff.
+1. Install the verified `inspectorLab` APK. Its package is
+   `coredevices.coreapp.inspectorlab`, labeled **Pebble Inspector Lab**. Keep the
+   stock companion and its data. Bluetooth pairing is still shared hardware:
+   keep only one companion actively connected to the test watch.
+2. Complete watch setup, using **Skip sign in** for the account-free watch path.
+   Leave Index disabled. Open **Signal Station** from the watch companion toolbar.
+3. In Settings, select a provider, model, and its own key. OpenAI defaults to
+   `gpt-4.1-mini`. Anthropic, Gemini, xAI, OpenRouter, and custom OpenAI-compatible
+   Chat Completions endpoints are also supported. A custom endpoint must use
+   HTTPS. Provider testing sends a small paid request only when tapped.
+4. Choose **OpenAI** recognition and save its separate transcription key, or
+   explicitly choose the stock companion recognizer. OpenAI recognition requests
+   `gpt-transcribe`; the provider must support that model. There is no automatic
+   fallback. App-specific OpenAI dictation currently requires exactly one connected
+   watch, because the upstream speech hook identifies the app but not its watch. The watch's ordinary dictation stream is the only audio input.
+5. Select the connected watch. Enable each desired source, then tap the
+   permissions button. All collection sources start disabled. Permission and
+   hardware restrictions remain visible as unavailable readings.
+6. Install the matching Signal Station 1.1.0 PBW from the staged pair. Its UUID
+   remains `e2fd86ec-dfb8-460c-afc1-ebe4d071657a`. The native bridge accepts only
+   the bundled PKJS digest and selected watch; an older PBW needs updating.
 
-Upstream source, history, notices, and licenses remain intact. The
-[upstream README](README.md) describes the original application. This fork is
-for private device testing; it is not a store release.
+**Ask** sends typed or confirmed dictated text. **Survey** collects enabled
+sources once and requests an analysis. **Record on watch** starts dictation on
+the selected watch. Conversation, History and Settings stay on the phone;
+collection progress and a UTF-8-safe brief return to the watch. The complete
+answer is saved independently of watch delivery.
 
-## Build and inspect
+## Sources and limits
 
-Use the checked-in Gradle wrapper, Java 21 to run Gradle, a Java 17 compilation
-toolchain, and an Android SDK with the licenses accepted. On the build Mac, Java 17 is at
-`/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home`; the SDK is at
-`/Users/luke/Library/Android/sdk`. The pinned source requires Android platform
-37.0 and downloads its NDK/build-tool versions through Gradle when missing.
+Phone sources include individually selected Android sensors, location, device
+status, Wi-Fi scans, and Bluetooth advertisements. Names and identifiers are
+separate switches. Radio scans are bounded; there are no connections to nearby
+peripherals, packet capture, ambient microphone sampling, camera use, or video.
+Background restrictions can prevent fresh phone readings; cached or unavailable
+results are labeled. Enabling a switch does not bypass operating-system consent.
+
+Watch sources include motion, compass, battery and supported HealthService
+metrics: steps, active time, distance, active/resting calories, sleep, restful
+sleep, heart rate and activity. Daily observations distinguish today from the
+seven preceding complete local calendar days. Last completed main sleep uses a
+documented completed-episode heuristic; unavailable data is not replaced with
+zero. Hardware capability, sampling age and wear gaps limit interpretation.
+Direct watch readings preserve watch provenance; the companion's merged health
+database is not used for these reports.
+
+## History and privacy
+
+History stays on this phone until deleted. Room stores encrypted report payloads;
+Android Keystore protects the AES-GCM key and provider credentials. Backup and
+device transfer are disabled for the lab package. No cloud history or embedding
+index is created. Exports deliberately produce plaintext JSON or Markdown for
+the destination selected in Android's share sheet.
+
+Normal conversation uses a bounded recent thread and explicitly attached reports.
+**Ask about history** retrieves local records and deduplicates daily health
+observations before constructing bounded provider context. Reports cite source
+record IDs and disclose coverage. Different provider/model settings start a new
+thread. Crossing providers requires explicit attachment. Disabling a source also
+excludes earlier text derived from that source from later requests; old reports
+remain locally readable. Deleting a source record removes dependent reports.
+
+Selected content goes directly to the selected provider. Keys stay in native
+storage and never enter PKJS, the PBW, prompts, or exports. Cancelling stops the
+local operation; a remote provider may already have received the request. An
+interrupted app session is marked interrupted and never automatically retried.
+There is no scheduled monitoring, text-to-speech, or external action execution.
+
+## Build, verify and stage
+
+Use Java 21 for Gradle, Java 17 for compilation, and Android SDK 37:
 
 ```sh
 export JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home
 export ANDROID_HOME="$HOME/Library/Android/sdk"
-./gradlew :androidApp:assembleInspectorLab :androidApp:lintInspectorLab --no-daemon \
+./gradlew :pebble:testAndroidHostTest :libpebble3:testAndroidHostTest \
+  :androidApp:assembleInspectorLab :androidApp:lintInspectorLab \
   -Dorg.gradle.java.installations.paths=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
 python3 -m unittest discover -s tools -p 'test_*.py'
 python3 tools/verify_inspector_apk.py androidApp/build/outputs/apk/inspectorLab/androidApp-inspectorLab.apk
 ```
 
-The lab source set carries a visibly fake Firebase configuration. It grants no
-cloud access. Crashlytics collection and analytics are disabled for this variant,
-and lab rules exclude cloud backup and device transfer. Keep provider credentials
-out of build configuration and package resources.
+The companion's `tools/import-signal-watch.py` imports a reviewed PBW and pins its
+PKJS SHA-256. Repeat import after any watch JS change. From committed source,
+`bash tools/stage-inspector-lab.sh` builds and verifies a revision-named package
+under ignored `dist/`. Lab revision 2 increments the APK version code and retains
+the original runtime class namespace, separate PebbleKit provider authorities,
+fake Firebase configuration, and disabled analytics/Crashlytics.
 
-Ordinary upstream `debug` and `release` retain their package, label, signing
-configuration, and recognition path. Two PebbleKit providers also need separate
-lab authorities. The classic provider reads its authority from the manifest so
-its connection notifications stay with the correct installation. Third-party
-clients using the old hardcoded authority continue addressing stock. The lab
-also removes three obsolete PebbleKit permission declarations, whose names
-belong to stock. Upstream no longer uses them to control access.
+The Android encrypted-storage test runs only on the lab variant with
+`-PsignalTests=true` and class
+`coredevices.coreapp.signal.SignalStoreTest`. Use an emulator or designated test
+phone; it uses a unique test-only database and key namespace.
 
-From reviewed, committed source, run `bash tools/stage-inspector-lab.sh`, adding
-the same `-Dorg.gradle.java.installations.paths=…` argument if Gradle cannot
-discover Java 17. It
-builds, lints, checks the APK signature/identity, and stages a revision-named
-package, metadata, checksum, and source revision under ignored `dist/`.
-Build timestamps and the local debug signing key can change APK bytes; the
-checksum identifies the exact package used for a device run.
-
-## Install on Pixel 9a
-
-Use the serial returned by `adb devices -l` and verify the phone model first.
-The following serial identifies the authorized Pixel 9a in the September 6 run.
-
-```sh
-adb -s 54051JEBF00576 shell getprop ro.product.model
-adb -s 54051JEBF00576 install -r androidApp/build/outputs/apk/inspectorLab/androidApp-inspectorLab.apk
-adb -s 54051JEBF00576 shell am start -n coredevices.coreapp.inspectorlab/coredevices.coreapp.MainActivity
-```
-
-Install only after package verification succeeds. Check that both stock and lab
-packages remain installed. The lab's application classes keep the original
-`coredevices.coreapp` namespace; the installed package supplies isolation.
-Grant permissions through the lab's ordinary setup screens. Do not copy stock
-app data or credentials into it.
-
-Both installations can handle Pebble links. Choose the intended companion in
-Android's chooser and avoid a permanent default during the experiment. Keep
-only one companion connected to the test watch. Follow the watchapp's
-[setup and recovery guide](https://github.com/lukeslp/pebble-field-inspector/blob/main/docs/inspector-lab-setup.md)
-for baseline measurements, the Time 2 handoff, and the return to both stock
-pairings. Physical results belong in its
-[device record](https://github.com/lukeslp/pebble-field-inspector/blob/main/docs/device-validation.md).
+No public store release is part of this experiment. Build, emulator, physical
+watch, provider-account and pairing-recovery evidence are recorded separately in
+[SIGNAL_VALIDATION.md](SIGNAL_VALIDATION.md).

@@ -1,0 +1,256 @@
+package coredevices.pebble.signal
+
+import android.Manifest
+import android.bluetooth.BluetoothManager
+import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanResult
+import android.bluetooth.le.ScanSettings
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.content.pm.PackageManager
+import android.hardware.*
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.net.wifi.WifiManager
+import android.os.*
+import kotlinx.coroutines.*
+import java.time.ZoneId
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
+
+/** Bounded foreground observations. Radio identifiers never appear in the base signal records. */
+class SignalCollectors(private val context: Context) {
+    private val sensors = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+    private fun locationEnabled(manager: LocationManager): Boolean = if (Build.VERSION.SDK_INT >= 28) manager.isLocationEnabled else manager.isProviderEnabled(LocationManager.GPS_PROVIDER) || manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+    private fun permitted(permission: String) = context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
+    fun sources(): List<SignalSource> = listOf(
+        SignalSource("location", "Location", "Phone"),
+        SignalSource("device.battery", "Phone battery level", "Phone"),
+        SignalSource("device.charging", "Phone charging state", "Phone"),
+        SignalSource("device.time", "Local time and timezone", "Phone"),
+        SignalSource("device.platform", "Phone operating system", "Phone"),
+        SignalSource("device.network", "Phone network status", "Phone"),
+        SignalSource("wifi", "Wi-Fi signal and frequency", "Radio"),
+        SignalSource("wifi.names", "Wi-Fi network names", "Radio"),
+        SignalSource("wifi.identifiers", "Wi-Fi network identifiers", "Radio"),
+        SignalSource("bluetooth", "Bluetooth advertisement signal strength", "Radio"),
+        SignalSource("bluetooth.names", "Bluetooth advertised device names", "Radio"),
+        SignalSource("bluetooth.identifiers", "Bluetooth device identifiers", "Radio"),
+        SignalSource("bluetooth.services", "Bluetooth advertised services", "Radio"),
+        SignalSource("watch.motion", "Watch motion", "Watch"),
+        SignalSource("watch.compass", "Watch compass", "Watch"),
+        SignalSource("watch.battery", "Watch battery", "Watch"),
+    ) + listOf("steps", "active_seconds", "distance", "active_calories", "resting_calories", "sleep", "restful_sleep", "heart_rate", "activity")
+        .map { SignalSource("health.$it", it.replace('_', ' ').replaceFirstChar(Char::uppercase), "Health") } +
+        sensors.getSensorList(Sensor.TYPE_ALL).distinctBy { it.type }.map { SignalSource("sensor.${it.type}", it.name, "Sensors") }
+
+    suspend fun collect(enabled: Set<String>): List<SignalObservation> = supervisorScope {
+        val probes = listOf(
+            async { probe(enabled.filter { it.startsWith("sensor.") }) { sensorReadings(enabled) } },
+            async { probe(enabled.filter { it == "bluetooth" || it.startsWith("bluetooth.") }) { bluetooth(enabled) } },
+            async { probe(enabled.filter { it == "wifi" || it.startsWith("wifi.") }) { wifi(enabled) } },
+            async { probe(enabled.filter { it == "location" }) { location() } },
+            async { probe(enabled.filter { it == "device" || it.startsWith("device.") }) { device(enabled) } },
+        )
+        probes.awaitAll().flatten().filter { it.key in enabled }
+    }
+
+    private suspend fun probe(keys: List<String>, block: suspend () -> List<SignalObservation>): List<SignalObservation> {
+        if (keys.isEmpty()) return emptyList()
+        return try { withTimeoutOrNull(9_500) { block() } ?: unavailable(keys, "timeout") }
+        catch (error: CancellationException) { throw error }
+        catch (_: SecurityException) { unavailable(keys, "permission_denied") }
+        catch (_: Exception) { unavailable(keys, "unavailable") }
+    }
+    private fun unavailable(keys: Collection<String>, status: String) = keys.map { observation(it, status = status, measuredAt = null) }
+    private fun observation(key: String, value: String = "", unit: String = "", status: String = "fresh", measuredAt: Long? = System.currentTimeMillis()) =
+        SignalObservation(key, "phone", value, unit, System.currentTimeMillis(), measuredAt, status)
+    private fun measured(nanos: Long): Long? = nanos.takeIf { it > 0 && it <= SystemClock.elapsedRealtimeNanos() }
+        ?.let { System.currentTimeMillis() - (SystemClock.elapsedRealtimeNanos() - it) / 1_000_000 }
+
+    private fun device(enabled: Set<String>): List<SignalObservation> {
+        val result = mutableListOf<SignalObservation>()
+        if (enabled.any { it == "device.battery" || it == "device.charging" || it == "device" }) {
+            val battery = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            val level = battery?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+            val scale = battery?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+            if ("device.battery" in enabled) result += if (level >= 0 && scale > 0) observation("device.battery", (level * 100 / scale).toString(), "%") else observation("device.battery", status = "unavailable", measuredAt = null)
+            if ("device.charging" in enabled) result += if (battery != null) observation("device.charging", (battery.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0).toString()) else observation("device.charging", status = "unavailable", measuredAt = null)
+            // Preserve interpretation of an older opt-in without enabling any new source.
+            if ("device" in enabled) result += observation("device", "battery=${if (level >= 0 && scale > 0) level * 100 / scale else "unknown"}; charging=${battery?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0)?.let { it != 0 } ?: "unknown"}")
+        }
+        if ("device.time" in enabled) result += observation("device.time", "local=${java.time.ZonedDateTime.now()}; timezone=${ZoneId.systemDefault()}")
+        if ("device.platform" in enabled) result += observation("device.platform", "Android ${Build.VERSION.RELEASE}; SDK ${Build.VERSION.SDK_INT}")
+        if ("device.network" in enabled) {
+            val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val capabilities = manager.activeNetwork?.let(manager::getNetworkCapabilities)
+            val transports = listOf(NetworkCapabilities.TRANSPORT_WIFI to "wifi", NetworkCapabilities.TRANSPORT_CELLULAR to "cellular", NetworkCapabilities.TRANSPORT_ETHERNET to "ethernet", NetworkCapabilities.TRANSPORT_VPN to "vpn")
+                .filter { capabilities?.hasTransport(it.first) == true }.map { it.second }
+            result += observation("device.network", "active=${capabilities != null}; transport=${transports.joinToString()}; internetValidated=${capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true}; metered=${manager.isActiveNetworkMetered}")
+        }
+        return result
+    }
+
+    private suspend fun sensorReadings(enabled: Set<String>): List<SignalObservation> = withContext(Dispatchers.Main) {
+        data class Sample(val values: FloatArray, val time: Long?, val accuracy: Int)
+        val values = mutableMapOf<Int, MutableList<Sample>>()
+        val selected = sensors.getSensorList(Sensor.TYPE_ALL).distinctBy { it.type }.filter { "sensor.${it.type}" in enabled }
+        val registration = mutableMapOf<Int, String>()
+        fun sample(type: Int, data: FloatArray, timestamp: Long, accuracy: Int) {
+            val samples = values.getOrPut(type) { mutableListOf() }
+            if (samples.size < 100) samples += Sample(data.copyOf(), measured(timestamp), accuracy)
+        }
+        val listener = object : SensorEventListener {
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+            override fun onSensorChanged(event: SensorEvent) = sample(event.sensor.type, event.values, event.timestamp, event.accuracy)
+        }
+        val trigger = object : TriggerEventListener() {
+            override fun onTrigger(event: TriggerEvent) = sample(event.sensor.type, event.values, event.timestamp, -1)
+        }
+        try {
+            for (sensor in selected) {
+                registration[sensor.type] = try {
+                    val accepted = if (sensor.reportingMode == Sensor.REPORTING_MODE_ONE_SHOT) sensors.requestTriggerSensor(trigger, sensor)
+                    else sensors.registerListener(listener, sensor, 200_000, Handler(Looper.getMainLooper()))
+                    if (accepted) "no_samples" else "unavailable"
+                } catch (_: SecurityException) { "permission_denied" }
+            }
+            if (registration.values.any { it == "no_samples" }) delay(5_000)
+        } finally {
+            sensors.unregisterListener(listener)
+            selected.filter { it.reportingMode == Sensor.REPORTING_MODE_ONE_SHOT }.forEach { runCatching { sensors.cancelTriggerSensor(trigger, it) } }
+        }
+        val output = selected.map { sensor ->
+            val samples = values[sensor.type].orEmpty()
+            val rows = samples.map { it.values }
+            val description = when {
+                rows.isEmpty() -> ""
+                sensor.type == Sensor.TYPE_STEP_DETECTOR -> "observedEvents=${rows.size}; sampleWindowSeconds=5"
+                sensor.type == Sensor.TYPE_STEP_COUNTER -> "cumulativeStepsSinceReboot=${rows.last().firstOrNull()}; notDailySteps=true"
+                else -> (0 until rows.first().size).mapNotNull { axis ->
+                    val numbers = rows.mapNotNull { it.getOrNull(axis)?.takeIf(Float::isFinite) }
+                    if (numbers.isEmpty()) null else "axis$axis mean=${numbers.average()} min=${numbers.minOrNull()} max=${numbers.maxOrNull()}"
+                }.joinToString()
+            }
+            observation("sensor.${sensor.type}", if (description.isBlank()) "" else "$description; samples=${samples.size}; accuracy=${samples.last().accuracy}; sensorType=${sensor.stringType}", sensorUnits(sensor.type),
+                if (samples.isEmpty()) registration[sensor.type] ?: "unavailable" else if (description.isBlank()) "invalid_samples" else "fresh", samples.lastOrNull()?.time)
+        }
+        output + unavailable(enabled.filter { it.startsWith("sensor.") && it !in output.map { row -> row.key } }, "hardware_unavailable")
+    }
+    private fun sensorUnits(type: Int): String = when (type) {
+        Sensor.TYPE_ACCELEROMETER, Sensor.TYPE_LINEAR_ACCELERATION, Sensor.TYPE_GRAVITY -> "m/s²"
+        Sensor.TYPE_GYROSCOPE, Sensor.TYPE_GYROSCOPE_UNCALIBRATED -> "rad/s"
+        Sensor.TYPE_MAGNETIC_FIELD, Sensor.TYPE_MAGNETIC_FIELD_UNCALIBRATED -> "µT"
+        Sensor.TYPE_LIGHT -> "lux"
+        Sensor.TYPE_PRESSURE -> "hPa"
+        Sensor.TYPE_PROXIMITY -> "cm"
+        Sensor.TYPE_AMBIENT_TEMPERATURE -> "°C"
+        Sensor.TYPE_RELATIVE_HUMIDITY -> "%"
+        Sensor.TYPE_HEART_RATE -> "bpm"
+        Sensor.TYPE_STEP_COUNTER, Sensor.TYPE_STEP_DETECTOR -> "steps"
+        else -> "sensor-specific Android SensorEvent units; see sensorType"
+    }
+
+    private suspend fun bluetooth(enabled: Set<String>): List<SignalObservation> {
+        val keys = enabled.filter { it == "bluetooth" || it.startsWith("bluetooth.") }
+        if (!permitted(Manifest.permission.ACCESS_FINE_LOCATION) || (Build.VERSION.SDK_INT >= 31 && (!permitted(Manifest.permission.BLUETOOTH_SCAN) || !permitted(Manifest.permission.BLUETOOTH_CONNECT)))) return unavailable(keys, "permission_denied")
+        val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        val adapter = manager.adapter ?: return unavailable(keys, "hardware_unavailable")
+        if (!adapter.isEnabled) return unavailable(keys, "radio_disabled")
+        val locations = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        if (!locationEnabled(locations)) return unavailable(keys, "location_services_disabled")
+        val scanner = adapter.bluetoothLeScanner ?: return unavailable(keys, "unavailable")
+        val results = ConcurrentHashMap<String, ScanResult>()
+        val failure = AtomicInteger(0)
+        val seen = ConcurrentHashMap.newKeySet<String>()
+        val callback = object : ScanCallback() {
+            override fun onScanResult(type: Int, result: ScanResult) {
+                try {
+                    val key = result.device.address
+                    // Bound local memory as well as the final model attachment.
+                    if (seen.size < 4096) seen.add(key)
+                    synchronized(results) {
+                        if (results.containsKey(key) || results.size < 64) results[key] = result
+                        else results.minByOrNull { it.value.rssi }?.let { weakest -> if (result.rssi > weakest.value.rssi) { results.remove(weakest.key); results[key] = result } }
+                    }
+                } catch (_: SecurityException) { failure.set(-1) }
+            }
+            override fun onBatchScanResults(batch: MutableList<ScanResult>) { batch.forEach { onScanResult(0, it) } }
+            override fun onScanFailed(code: Int) { failure.set(code) }
+        }
+        try { scanner.startScan(null, ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build(), callback); delay(5_000) }
+        finally { runCatching { scanner.stopScan(callback) } }
+        if (failure.get() != 0) return unavailable(keys, if (failure.get() == -1) "permission_denied" else "scan_failed_${failure.get()}")
+        val ordered = results.values.sortedByDescending { it.rssi }
+        if (ordered.isEmpty()) return keys.map { observation(it, "No advertisements observed in five seconds; this does not prove no devices are nearby.") }
+        val output = ordered.flatMapIndexed { index, result ->
+            val at = measured(result.timestampNanos)
+            buildList {
+                if ("bluetooth" in enabled) add(observation("bluetooth", "observation=$index; rssi=${result.rssi}; txPower=${result.scanRecord?.txPowerLevel?.takeUnless { it == Int.MIN_VALUE } ?: "unknown"}", "dBm", measuredAt = at))
+                if ("bluetooth.names" in enabled) add(observation("bluetooth.names", "observation=$index; name=${result.scanRecord?.deviceName.orEmpty().take(100)}", measuredAt = at))
+                if ("bluetooth.identifiers" in enabled) add(observation("bluetooth.identifiers", "observation=$index; address=${result.device.address}", measuredAt = at))
+                if ("bluetooth.services" in enabled) add(observation("bluetooth.services", "observation=$index; services=${result.scanRecord?.serviceUuids.orEmpty().take(12)}", measuredAt = at))
+            }
+        }
+        return output + keys.map { observation(it, "scanSeconds=5; retained=${ordered.size}; omittedAtLeast=${(seen.size - ordered.size).coerceAtLeast(0)}") }
+    }
+
+    @Suppress("DEPRECATION")
+    private suspend fun wifi(enabled: Set<String>): List<SignalObservation> {
+        val keys = enabled.filter { it == "wifi" || it.startsWith("wifi.") }
+        if (!permitted(Manifest.permission.ACCESS_FINE_LOCATION)) return unavailable(keys, "permission_denied")
+        if (!locationEnabled(context.getSystemService(Context.LOCATION_SERVICE) as LocationManager)) return unavailable(keys, "location_services_disabled")
+        val manager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+        if (!manager.isWifiEnabled && !manager.isScanAlwaysAvailable) return unavailable(keys, "radio_disabled")
+        val updated = CompletableDeferred<Boolean>()
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(c: Context?, intent: Intent?) {
+                if (intent?.action == WifiManager.SCAN_RESULTS_AVAILABLE_ACTION) updated.complete(intent.getBooleanExtra(WifiManager.EXTRA_RESULTS_UPDATED, false))
+            }
+        }
+        var registered = false
+        try {
+            // This is an Android-protected system action; no app-defined broadcast is accepted.
+            if (Build.VERSION.SDK_INT >= 33) context.registerReceiver(receiver, IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION), Context.RECEIVER_EXPORTED)
+            else context.registerReceiver(receiver, IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION))
+            registered = true
+            val started = manager.startScan()
+            val fresh = started && (withTimeoutOrNull(8_000) { updated.await() } == true)
+            val all = manager.scanResults.sortedByDescending { it.level }
+            val results = all.take(64)
+            val scanStatus = if (fresh) "fresh" else if (!started) "scan_not_started_cached" else "scan_timeout_or_failed_cached"
+            if (results.isEmpty()) return keys.map { observation(it, "No access points returned; scanStatus=$scanStatus", status = "unavailable", measuredAt = null) }
+            return results.flatMapIndexed { index, result ->
+                val at = measured(result.timestamp * 1000)
+                val status = if (fresh && at != null && System.currentTimeMillis() - at < 15_000) "fresh" else "cached"
+                buildList {
+                    if ("wifi" in enabled) add(observation("wifi", "observation=$index; rssi=${result.level}; frequency=${result.frequency}; capabilities=${result.capabilities.take(100)}", "dBm; MHz", status, at))
+                    if ("wifi.names" in enabled) add(observation("wifi.names", "observation=$index; ssid=${result.SSID.take(100)}", status = status, measuredAt = at))
+                    if ("wifi.identifiers" in enabled) add(observation("wifi.identifiers", "observation=$index; bssid=${result.BSSID}", status = status, measuredAt = at))
+                }
+            } + keys.map { observation(it, "scanStatus=$scanStatus; retained=${results.size}; omitted=${all.size - results.size}", status = scanStatus, measuredAt = null) }
+        } finally { if (registered) runCatching { context.unregisterReceiver(receiver) } }
+    }
+
+    private suspend fun location(): List<SignalObservation> = withContext(Dispatchers.Main) {
+        if (!permitted(Manifest.permission.ACCESS_COARSE_LOCATION) && !permitted(Manifest.permission.ACCESS_FINE_LOCATION)) return@withContext unavailable(listOf("location"), "permission_denied")
+        val manager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        if (!locationEnabled(manager)) return@withContext unavailable(listOf("location"), "location_services_disabled")
+        val available = manager.getProviders(true).filter { it == LocationManager.NETWORK_PROVIDER || (it == LocationManager.GPS_PROVIDER && permitted(Manifest.permission.ACCESS_FINE_LOCATION)) }
+        if (available.isEmpty()) return@withContext unavailable(listOf("location"), "provider_unavailable")
+        val latest = CompletableDeferred<Location>()
+        val listener = object : LocationListener { override fun onLocationChanged(location: Location) { latest.complete(Location(location)) } }
+        try {
+            available.forEach { manager.requestLocationUpdates(it, 1000L, 0f, listener, Looper.getMainLooper()) }
+            val fresh = withTimeoutOrNull(8_000) { latest.await() }
+            val result = fresh ?: available.mapNotNull { manager.getLastKnownLocation(it) }.maxByOrNull { it.elapsedRealtimeNanos }
+            if (result == null) unavailable(listOf("location"), "unavailable")
+            else listOf(observation("location", "latitude=${result.latitude}; longitude=${result.longitude}; accuracy=${if (result.hasAccuracy()) result.accuracy else "unknown"}; provider=${result.provider}", "degrees; meters", if (fresh != null) "fresh" else "cached", measured(result.elapsedRealtimeNanos) ?: result.time))
+        } finally { runCatching { manager.removeUpdates(listener) } }
+    }
+}

@@ -17,6 +17,7 @@ import io.rebble.libpebblecommon.services.VoiceService
 import io.rebble.libpebblecommon.voice.TranscriptionProvider
 import io.rebble.libpebblecommon.voice.TranscriptionResult
 import io.rebble.libpebblecommon.voice.TranscriptionWord
+import io.rebble.libpebblecommon.voice.VoiceProviderOverrides
 import io.rebble.libpebblecommon.voice.toProtocol
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -120,7 +121,9 @@ class VoiceSessionManager(
                     ))
                     return@collectLatest
                 }
-                if (transcriptionProvider.canServeSession()) {
+                // Capture the selection once so changing Settings cannot switch a live session.
+                val sessionProvider = VoiceProviderOverrides.select(setupRequest.appUuid, transcriptionProvider)
+                if (sessionProvider.canServeSession()) {
                     voiceService.send(makeSetupResult(
                         sessionType = setupRequest.sessionType,
                         result = Result.Success,
@@ -139,42 +142,47 @@ class VoiceSessionManager(
                 val resultCompletable = CompletableDeferred<TranscriptionResult>()
                 _currentSession.value = CurrentSession(setupRequest, resultCompletable)
                 logger.i { "Voice session initialized with ID: ${setupRequest.sessionId}" }
-                val result = try {
-                    transcriptionProvider.transcribe(
-                        setupRequest.encoderInfo,
-                        audioFrameFlow,
-                        isNotificationReply = setupRequest.appUuid == Uuid.NIL || setupRequest.appUuid == SystemAppIDs.NOTIFICATIONS_APP_UUID
-                    )
-                } catch (e: CancellationException) {
-                    logger.d { "Voice session cancelled" }
-                    throw e
-                } catch (e: Exception) {
-                    logger.e(e) { "Error during transcription: ${e.message}" }
-                    TranscriptionResult.Error("Transcription error: ${e.message}")
-                }
-                logger.i { "Voice session completed with result: ${
-                    when (result) {
-                        is TranscriptionResult.Success -> "Success, ${result.words.size} words"
-                        is TranscriptionResult.Error -> "Error, ${result.message}"
-                        is TranscriptionResult.Disabled -> "Disabled"
-                        is TranscriptionResult.Failed -> "Failed"
-                        is TranscriptionResult.ConnectionError -> "ConnectionError"
+                try {
+                    val result = try {
+                        sessionProvider.transcribe(
+                            setupRequest.encoderInfo,
+                            audioFrameFlow,
+                            isNotificationReply = setupRequest.appUuid == Uuid.NIL || setupRequest.appUuid == SystemAppIDs.NOTIFICATIONS_APP_UUID
+                        )
+                    } catch (e: CancellationException) {
+                        logger.d { "Voice session cancelled" }
+                        throw e
+                    } catch (_: Exception) {
+                        logger.e { "Error during transcription" }
+                        TranscriptionResult.Error("Transcription failed")
                     }
-                }" }
-                if (!audioFrameFlowCollected) {
-                    logger.w { "Audio frames not collected, sending audio stop packet" }
-                    audioStreamService.send(AudioStream.StopTransfer(setupRequest.sessionId.toUShort()))
-                }
-                voiceService.send(
-                    makeDictationResult(
-                        sessionId = setupRequest.sessionId.toUShort(),
-                        result = result.toProtocol(),
-                        words = (result as? TranscriptionResult.Success)?.words,
-                        appUuid = setupRequest.appUuid
+                    logger.i { "Voice session completed with result: ${
+                        when (result) {
+                            is TranscriptionResult.Success -> "Success, ${result.words.size} words"
+                            is TranscriptionResult.Error -> "Error"
+                            is TranscriptionResult.Disabled -> "Disabled"
+                            is TranscriptionResult.Failed -> "Failed"
+                            is TranscriptionResult.ConnectionError -> "ConnectionError"
+                        }
+                    }" }
+                    if (!audioFrameFlowCollected) {
+                        logger.w { "Audio frames not collected, sending audio stop packet" }
+                        audioStreamService.send(AudioStream.StopTransfer(setupRequest.sessionId.toUShort()))
+                    }
+                    voiceService.send(
+                        makeDictationResult(
+                            sessionId = setupRequest.sessionId.toUShort(),
+                            result = result.toProtocol(),
+                            words = (result as? TranscriptionResult.Success)?.words,
+                            appUuid = setupRequest.appUuid
+                        )
                     )
-                )
-                resultCompletable.complete(result)
-                _currentSession.value = null
+                    resultCompletable.complete(result)
+                } finally {
+                    // A superseded/disconnected session must not leave observers waiting forever.
+                    if (!resultCompletable.isCompleted) resultCompletable.cancel()
+                    if (_currentSession.value?.result === resultCompletable) _currentSession.value = null
+                }
             }
         }
     }

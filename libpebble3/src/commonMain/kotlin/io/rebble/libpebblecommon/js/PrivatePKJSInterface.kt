@@ -99,7 +99,7 @@ abstract class PrivatePKJSInterface(
     open fun onIntercepted(callbackId: String, url: String, method: String, body: String?) {
         val uuid = Uuid.parse(jsRunner.appInfo.uuid)
         scope.launch {
-            val result = httpInterceptorManager.onIntercepted(url, method, body, uuid)
+            val result = httpInterceptorManager.onIntercepted(url, method, body, uuid, HttpCallerContext(jsRunner))
             jsRunner.signalInterceptResponse(callbackId, result)
         }
     }

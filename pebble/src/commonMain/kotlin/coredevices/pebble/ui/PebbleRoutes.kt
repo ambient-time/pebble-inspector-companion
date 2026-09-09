@@ -7,6 +7,11 @@ import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import coredevices.pebble.signal.SignalScreen
+import coredevices.pebble.signal.SignalStation
+import org.koin.compose.getKoin
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
@@ -55,6 +60,9 @@ object NoOpNavBarNav : NavBarNav {
 }
 
 object PebbleNavBarRoutes {
+    @Serializable
+    data object SignalStationRoute : NavBarRoute
+
     @Serializable
     data object WatchesRoute : NavBarRoute
 
@@ -171,6 +179,18 @@ fun NavGraphBuilder.addNavBarRoutes(
     scopedCoreNav: CoreNav,
     viewModel: WatchHomeViewModel,
 ) {
+    composableWithAnimations<PebbleNavBarRoutes.SignalStationRoute>(viewModel) {
+        val koin = getKoin()
+        val station = remember(koin) { koin.getOrNull<SignalStation>() }
+        LaunchedEffect(Unit) {
+            topBarParams.title("Signal Station")
+            topBarParams.searchAvailable(null)
+            topBarParams.actions {}
+        }
+        if (station?.available == true) {
+            SignalScreen(station)
+        }
+    }
     composableWithAnimations<PebbleNavBarRoutes.WatchesRoute>(viewModel) {
         WatchesScreen(nav, topBarParams)
     }

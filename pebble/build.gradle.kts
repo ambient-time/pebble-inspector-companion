@@ -7,6 +7,7 @@ plugins {
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.kotlinx.atomicfu)
+    alias(libs.plugins.ksp)
 }
 
 kotlin {
@@ -120,6 +121,8 @@ kotlin {
         commonTest {
             dependencies {
                 implementation(libs.kotlin.test)
+                implementation(libs.coroutines.test)
+                implementation("io.ktor:ktor-client-mock:${libs.versions.ktor.get()}")
             }
         }
 
@@ -130,6 +133,8 @@ kotlin {
                 // dependencies declared in commonMain.
                 implementation(compose.uiTooling)
                 implementation(libs.androidx.activity.compose)
+                implementation(libs.room.runtime)
+                implementation(libs.ktor.client.okhttp)
                 // gitlive's compile variant declares com.google.firebase:* without versions.
                 implementation(project.dependencies.platform(libs.firebase.bom))
             }
@@ -164,3 +169,4 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach 
         ))
     }
 }
+dependencies { add("kspAndroid", libs.room.compiler) }

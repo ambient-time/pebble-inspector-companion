@@ -13,4 +13,5 @@ actual val platformWatchModule: Module = module {
     }
     single<Platform> { Platform.Android }
     singleOf(::PebbleAndroidDelegate)
+    single<coredevices.pebble.signal.SignalStation> { coredevices.pebble.signal.AndroidSignalStation(get()) { get<io.rebble.libpebblecommon.connection.LibPebble>() } }
 }
