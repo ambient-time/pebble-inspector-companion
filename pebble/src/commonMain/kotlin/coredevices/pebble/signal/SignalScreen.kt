@@ -66,6 +66,13 @@ private data class SignalConfirmation(val title: String, val message: String, va
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun SignalScreen(station: SignalStation, standalone: Boolean = false, onManageWatch: (() -> Unit)? = null) {
+    if (standalone) SignalMaterialTheme { SignalScreenContent(station, true, onManageWatch) }
+    else SignalScreenContent(station, false, onManageWatch)
+}
+
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onManageWatch: (() -> Unit)?) {
     val state by station.state.collectAsState()
     var page by remember { mutableStateOf(SignalPage.Capture) }
     var detailId by remember { mutableStateOf<String?>(null) }
@@ -92,7 +99,8 @@ fun SignalScreen(station: SignalStation, standalone: Boolean = false, onManageWa
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).then(if (standalone) Modifier.statusBarsPadding().navigationBarsPadding() else Modifier).imePadding()) {
         if (standalone) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
+                SignalAntennaGlyph()
+                Column(Modifier.weight(1f).padding(start = 12.dp)) {
                     SignalHeading("Signal Station")
                     if (state.buildVersion.isNotBlank()) Text(state.buildVersion, style = MaterialTheme.typography.labelSmall)
                 }

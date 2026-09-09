@@ -33,7 +33,10 @@ internal fun SignalSetup(station: SignalStation, state: SignalState) {
         contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
-            Text("Signal Station", Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineLarge)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                SignalAntennaGlyph()
+                Text("Signal Station", Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineLarge)
+            }
             Text("Set up your field notebook", style = MaterialTheme.typography.titleMedium)
             Text("${step + 1} of 3", style = MaterialTheme.typography.labelLarge)
         }
@@ -60,7 +63,7 @@ internal fun SignalSetup(station: SignalStation, state: SignalState) {
                         waitingForSources = true
                         station.updateSettings(state.settings.copy(enabled = selected))
                     }, enabled = !waitingForSources && !state.busy) { Text(if (waitingForSources) "Saving…" else "Continue with these choices") }
-                    Text("${selected.size} sources selected", style = MaterialTheme.typography.bodySmall)
+                    Text("${signalCount(selected.size, "source")} selected", style = MaterialTheme.typography.bodySmall)
                 }
                 state.sources.groupBy { it.group }.forEach { (group, sources) ->
                     item(key = "group:$group") {
@@ -77,7 +80,7 @@ internal fun SignalSetup(station: SignalStation, state: SignalState) {
                     }
                 }
                 item {
-                    Text("${selected.size} sources selected")
+                    Text("${signalCount(selected.size, "source")} selected")
                     Button(onClick = {
                         waitingForSources = true
                         station.updateSettings(state.settings.copy(enabled = selected))
@@ -126,7 +129,7 @@ internal fun SignalCapturePage(
         }
         item {
             Button(onClick = station::capture, enabled = !state.busy && state.settings.enabled.isNotEmpty(), modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Capture readings") }
-            Text("${state.settings.enabled.size} sources enabled · saved on this phone", style = MaterialTheme.typography.bodyMedium)
+            Text("${signalCount(state.settings.enabled.size, "source")} enabled · saved on this phone", style = MaterialTheme.typography.bodyMedium)
             if (state.settings.enabled.isEmpty()) Text("Choose at least one source to capture.")
             TextButton(onClick = onSources) { Text("Choose sources") }
         }
@@ -154,7 +157,7 @@ internal fun SignalCapturePage(
                 HorizontalDivider()
                 Text(signalDateTime(record.createdAt), style = MaterialTheme.typography.labelLarge)
                 Text(if (record.kind == "capture") "Captured readings" else record.question, style = MaterialTheme.typography.titleMedium)
-                Text("${record.observations.size} readings · ${record.state}")
+                Text("${signalCount(record.observations.size, "reading")} · ${record.state}")
                 TextButton(onClick = { onDetail(record.id) }) { Text("Inspect capture") }
             }
         }
