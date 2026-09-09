@@ -1,0 +1,21 @@
+{
+  "android_version": "0.1.1-separation-dev",
+  "version_code": 2,
+  "apk_sha256": "48ea934b899fc0a7208af2ec9f41a420843cbacf5d3a817ec0691b340ae31eb6",
+  "feature_tests": 96,
+  "android_instrumentation": [
+    {
+      "tests": "2",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0"
+    }
+  ],
+  "protocol_node_test": "pass",
+  "architecture_guard": "pass",
+  "lint": "zero errors",
+  "regression_before_fix": "TimeoutCancellationException waiting for an already-open app session",
+  "regression_after_fix": "pass",
+  "physical_watch_validated": false,
+  "stock_host_validated": false
+}

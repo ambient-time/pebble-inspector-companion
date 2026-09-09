@@ -116,8 +116,17 @@ checksums. The Android package is separate and debug-signed. The old lab 8
 companion remains withdrawn; the settings-wipe cause is unresolved. Publication
 does not establish migration, stock-host exchange or physical-watch behavior.
 
-Next connection check: recover the protocol when the chosen Pebble app already
-reports Signal Station open, including after Android recreates the process.
-The current adapter only starts a session on an app-open event, so it can miss
-an already-open watch app. Validate recovery through the read-only active-app
-provider and retain host-selection and disconnect boundaries.
+Android 0.1.1-separation-dev (2) restores the protocol when the chosen Pebble app
+already reports Signal Station open, including after Android recreates the
+process. The former adapter only started sessions on an app-open event and
+missed an already-open watch app. The adapter now observes the selected host's
+read-only active-app provider for each connected watch. Duplicate open events
+retain the current session; app closure, disconnection and host changes close
+and invalidate the old session.
+
+The new Android instrumentation regression timed out before this correction
+and passes afterward. It uses the real WebView protocol with a PebbleKit
+information/sender test double; it covers initial restoration without an open
+callback, duplicate callbacks, app closure, reconnection, host switching and
+explicit disconnection. It does not substitute for a stock host or physical
+watch. Cross-package history import and custom watch transcription remain open.

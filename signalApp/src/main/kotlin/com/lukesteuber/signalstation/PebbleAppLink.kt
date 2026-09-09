@@ -8,13 +8,18 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import java.util.UUID
 
-class PebbleAppLink(private val context: Context) : SignalWatchLink {
+class PebbleAppLink(
+    private val context: Context,
+    private val picker: PebbleAndroidAppPicker = DefaultPebbleAndroidAppPicker.getInstance(context),
+    private val information: PebbleInfoRetriever = DefaultPebbleInfoRetriever(context),
+    private val senderFactory: () -> PebbleSender = { DefaultPebbleSender(context) },
+) : SignalWatchLink {
     private val mutable = MutableStateFlow<List<SignalWatch>>(emptyList())
     override val watches = mutable.asStateFlow()
     override val capabilities = SignalWatchCapabilities(messages = true, description = "Uses your existing Pebble app and its watch dictation service.")
-    private val picker = DefaultPebbleAndroidAppPicker.getInstance(context)
-    private var sender = DefaultPebbleSender(context)
+    private var sender = senderFactory()
     private val sessions = mutableMapOf<String, LocalProtocolSession>()
+    private val appJobs = mutableMapOf<String, Job>()
     private var watchJob: Job? = null
     private lateinit var scope: CoroutineScope
     private var epoch = 0L
@@ -30,10 +35,11 @@ class PebbleAppLink(private val context: Context) : SignalWatchLink {
         gate.clear(); pendingOpen.values.forEach { it.cancel() }; pendingOpen.clear()
         require(packageName == null || packageName in availableApps())
         watchJob?.cancelAndJoin()
+        appJobs.clear()
         sessions.values.forEach { it.close() }; sessions.clear()
         mutable.value = emptyList(); ++epoch
         sender.close()
-        sender = DefaultPebbleSender(context)
+        sender = senderFactory()
         picker.selectApp(packageName)
         refresh()
     }
@@ -41,18 +47,30 @@ class PebbleAppLink(private val context: Context) : SignalWatchLink {
         watchJob?.cancel()
         watchJob = scope.launch {
             if (picker.getCurrentlySelectedApp() == null) return@launch
-            DefaultPebbleInfoRetriever(context).getConnectedWatches().flowOn(Dispatchers.IO)
+            information.getConnectedWatches().flowOn(Dispatchers.IO)
                 .catch { emit(emptyList()) }.collect { connected ->
-                    val removed = (sessions.keys + pendingOpen.keys) - connected.map { it.id.value }.toSet()
-                    removed.forEach { gate.close(it); pendingOpen.remove(it)?.cancel(); sessions.remove(it)?.close() }
+                    val removed = (sessions.keys + pendingOpen.keys + appJobs.keys) - connected.map { it.id.value }.toSet()
+                    removed.forEach { appJobs.remove(it)?.cancel(); closed(it) }
                     mutable.value = connected.map {
                         val session = sessions[it.id.value]
                         SignalWatch(it.id.value, it.name, true, session?.connectionId ?: "$epoch:${it.id.value}", session != null)
+                    }
+                    connected.forEach { watch ->
+                        if (watch.id.value !in appJobs) {
+                            appJobs[watch.id.value] = launch {
+                                information.getActiveApp(watch.id).flowOn(Dispatchers.IO)
+                                    .catch { emit(null) }.collect { active ->
+                                        if (active?.id?.toString() == AndroidSignalStation.APP_UUID) opened(watch.id.value)
+                                        else closed(watch.id.value)
+                                    }
+                            }
+                        }
                     }
                 }
         }
     }
     fun opened(watchId: String) {
+        if (sessions[watchId] != null || pendingOpen[watchId]?.isActive == true) return
         pendingOpen.remove(watchId)?.cancel()
         val ticket = gate.open(watchId)
         pendingOpen[watchId] = scope.launch {
