@@ -23,7 +23,7 @@ Implementation checkpoints:
 - [x] Optional bounded observation service, source status and Health Connect.
 - [x] Today, Ask, Activity and Memory; visible chat context and accessible flows.
 - [x] Upgrade, privacy, lifecycle, large-history and emulator verification.
-- [ ] Commit/push and publish matching Android preview, source and checksums.
+- [x] Commit/push and publish matching Android preview, source and checksums.
 
 Implemented in Android preview 0.2.0-learning-dev (4). Validation: 109 feature
 checks and 16 Android instrumentation checks pass, including encrypted v1
@@ -43,3 +43,12 @@ See [the guide](personal-context.md) and [verification](learning-evidence/verifi
 Review provenance: Opus 4.8 and Grok 4.5 agreed on the product and architectural
 spine; their memory-lifecycle and discoverability concerns informed the plan.
 The Luna swarm completed one of four scouts and was excluded from consensus.
+
+Publication completed September 9: Android build 4 from `23a9cade31a43b4abb29bb9ac6124416b63705d5`
+is available at [Signal Station downloads](https://dr.eamer.dev/downloads/apps/signal-station/).
+The APK keeps the existing preview certificate. Its SHA-256 is
+`6ac5a43775d96c869dcddd7fd79aa6b3ef113fe0c43cc7b4a1828f5161ddb151`.
+All 12 published artifacts and metadata files returned HTTP 200 with exact
+staged hashes, including the source ZIP, guide and checksums. Other catalog
+entries and older APK/checksum history were preserved. The 75 publisher tests
+passed. The unchanged watch package remains 1.4.0; no new watch validation is claimed.

@@ -28,5 +28,14 @@
     "grok/grok-4.5": "Two transport timeouts with no response. No successful release review."
   },
   "storage": "Encrypted v1-to-v2 migration with opaque thread index; 100000-row paging and absent-thread query verified",
-  "visual": "Today and Memory at 200 percent font visually inspected; navigation acceptance test passed"
+  "visual": "Today and Memory at 200 percent font visually inspected; navigation acceptance test passed",
+  "publication": {
+    "source": "23a9cade31a43b4abb29bb9ac6124416b63705d5",
+    "apkSha256": "6ac5a43775d96c869dcddd7fd79aa6b3ef113fe0c43cc7b4a1828f5161ddb151",
+    "certificateSha256": "e1faa235dbdd132ac86856639b60b12ad9f9b658fc921fd8160db84ed8dfa28d",
+    "url": "https://dr.eamer.dev/downloads/apps/signal-station/",
+    "httpHashChecks": 12,
+    "publisherTests": 75,
+    "watchVersion": "1.4.0 unchanged"
+  }
 }
