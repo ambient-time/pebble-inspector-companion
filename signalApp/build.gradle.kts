@@ -10,8 +10,8 @@ android {
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        versionCode = 4
-        versionName = "0.2.0-learning-dev"
+        versionCode = 5
+        versionName = "0.2.1-learning-dev"
     }
     buildFeatures { compose = true }
     compileOptions {

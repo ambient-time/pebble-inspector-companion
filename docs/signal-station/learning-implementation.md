@@ -52,3 +52,19 @@ All 12 published artifacts and metadata files returned HTTP 200 with exact
 staged hashes, including the source ZIP, guide and checksums. Other catalog
 entries and older APK/checksum history were preserved. The 75 publisher tests
 passed. The unchanged watch package remains 1.4.0; no new watch validation is claimed.
+
+
+September 9 connection correction, Android 0.2.1-learning-dev (5): first-time
+Pebble host selection attempted to close an unused PebbleKit 2 1.1.0 sender.
+That SDK unconditionally unbinds its Android service, which throws "Service not
+registered" before the selected host can be saved. The old dialog mislabeled
+this as an unavailable Pebble app. A regression test using the actual SDK
+sender reproduced the failure. Cleanup now accepts an already-unbound sender;
+selection is serialized and can finish while protected storage is opening.
+The chooser prevents overlapping taps, clears stale errors when reopened and
+handles disconnect errors through the same path. Pairing remains with Pebble.
+All 18 Android instrumentation tests pass after this correction; the unchanged
+109 shared feature checks remain green. The watch package remains unchanged.
+The screenshot identifying 0.1.1-separation-dev is an older preview, but this
+connection bug also existed in build 4. The regression establishes the software
+failure and recovery; exchange with a physical watch still needs validation.

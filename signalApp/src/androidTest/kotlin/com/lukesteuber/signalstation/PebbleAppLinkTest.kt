@@ -35,6 +35,42 @@ class PebbleAppLinkTest {
     }
     private suspend fun until(check: () -> Boolean) { withTimeout(15000) { while (!check()) delay(25) } }
 
+    @Test fun selectsAndDisconnectsWithRealSenderBeforeAnyWatchConnection() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val picker = Picker(null)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+        val link = withContext(Dispatchers.Main.immediate) {
+            PebbleAppLink(context, picker, Information(emptyList(), null)).also { it.initialize(scope) }
+        }
+        try {
+            link.selectApp("test.host")
+            assertEquals("test.host", picker.selected)
+            link.selectApp("other.host")
+            assertEquals("other.host", picker.selected)
+            link.selectApp(null)
+            assertNull(picker.selected)
+            link.selectApp(null)
+            assertTrue(link.watches.value.isEmpty())
+        } finally { scope.cancel() }
+    }
+
+    @Test fun selectionCanFinishBeforeStorageInitializesWatchMonitoring() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val picker = Picker(null)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+        val link = withContext(Dispatchers.Main.immediate) {
+            PebbleAppLink(context, picker, Information(listOf(connected), null))
+        }
+        try {
+            link.selectApp("test.host")
+            assertEquals("test.host", picker.selected)
+            assertTrue(link.watches.value.isEmpty())
+            withContext(Dispatchers.Main.immediate) { link.initialize(scope) }
+            until { link.watches.value.size == 1 }
+            link.selectApp(null)
+        } finally { scope.cancel() }
+    }
+
     @Test fun restoresAlreadyOpenAppAndClosesAcrossLifecycleBoundaries() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val picker = Picker()

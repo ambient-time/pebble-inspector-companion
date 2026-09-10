@@ -6,6 +6,8 @@ import io.rebble.pebblekit2.client.*
 import io.rebble.pebblekit2.common.model.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.UUID
 
 class PebbleAppLink(
@@ -25,6 +27,7 @@ class PebbleAppLink(
     private var epoch = 0L
     private val gate = SignalSessionGate()
     private val pendingOpen = mutableMapOf<String, Job>()
+    private val selection = Mutex()
     lateinit var request: suspend (String, String, String?, SignalWatchSession) -> SignalWatchResponse
     override fun initialize(scope: CoroutineScope) {
         this.scope = CoroutineScope(scope.coroutineContext + Dispatchers.Main.immediate)
@@ -32,18 +35,26 @@ class PebbleAppLink(
     }
     fun availableApps() = picker.getAllEligibleApps().filter { it != "coredevices.coreapp.inspectorlab" }
     suspend fun selectApp(packageName: String?) = withContext(Dispatchers.Main.immediate) {
-        gate.clear(); pendingOpen.values.forEach { it.cancel() }; pendingOpen.clear()
-        require(packageName == null || packageName in availableApps())
-        watchJob?.cancelAndJoin()
-        appJobs.clear()
-        sessions.values.forEach { it.close() }; sessions.clear()
-        mutable.value = emptyList(); ++epoch
-        sender.close()
-        sender = senderFactory()
-        picker.selectApp(packageName)
-        refresh()
+        selection.withLock {
+            require(packageName == null || packageName in availableApps()) { "Pebble host is no longer installed" }
+            gate.clear(); pendingOpen.values.forEach { it.cancel() }; pendingOpen.clear()
+            watchJob?.cancelAndJoin()
+            appJobs.clear()
+            sessions.values.forEach { it.close() }; sessions.clear()
+            mutable.value = emptyList(); ++epoch
+            // PebbleKit 2 1.1.0 unconditionally unbinds in close(), even when
+            // this sender has never sent anything or its service binding failed.
+            // Android throws IllegalArgumentException for that already-unbound case.
+            try { sender.close() } catch (_: IllegalArgumentException) { /* No binding to release. */ }
+            sender = senderFactory()
+            picker.selectApp(packageName)
+            refresh()
+        }
     }
     private fun refresh() {
+        // The picker can be used while encrypted storage is still opening.
+        // initialize() starts monitoring the saved selection once it is ready.
+        if (!::scope.isInitialized) return
         watchJob?.cancel()
         watchJob = scope.launch {
             if (picker.getCurrentlySelectedApp() == null) return@launch
@@ -70,6 +81,7 @@ class PebbleAppLink(
         }
     }
     fun opened(watchId: String) {
+        if (!::scope.isInitialized) return
         if (sessions[watchId] != null || pendingOpen[watchId]?.isActive == true) return
         pendingOpen.remove(watchId)?.cancel()
         val ticket = gate.open(watchId)
