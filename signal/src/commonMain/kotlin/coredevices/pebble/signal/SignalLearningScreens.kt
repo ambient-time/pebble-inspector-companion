@@ -103,7 +103,8 @@ internal fun SignalLearningSetup(state: SignalState, station: SignalStation, onC
 @Composable
 internal fun SignalTodayPage(state: SignalState, station: SignalStation, onAsk: () -> Unit, onCapture: () -> Unit,
     onObserve: () -> Unit, onMemory: () -> Unit, onDetail: (String) -> Unit, onSources: () -> Unit, onNearby: () -> Unit) {
-    val latest = state.records.firstOrNull { it.observations.isNotEmpty() && it.state == "ready" }
+    val latest = state.records.filter { signalSupportsLocalChanges(it) && it.observations.isNotEmpty() && it.state == "ready" }.maxByOrNull { it.createdAt }
+    val sourceIssues = state.sourceStatus.filter { it.key in state.settings.enabled && signalSourceNeedsAttention(it) }
     val proposals = state.memories.filter { it.state == "proposed" || it.needsReview }.take(3)
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
@@ -115,9 +116,16 @@ internal fun SignalTodayPage(state: SignalState, station: SignalStation, onAsk: 
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = onObserve) { Text("Observe for a while") }
                 TextButton(onClick = onAsk) { Text("Ask a question") }
+                TextButton(onClick = onNearby) { Text("Nearby") }
             }
             Text("${signalCount(state.settings.enabled.size, "source")} enabled · captures stay on this phone", style = MaterialTheme.typography.bodySmall)
             if (state.settings.enabled.isEmpty()) TextButton(onClick = onSources) { Text("Choose sources") }
+        }
+        if (sourceIssues.isNotEmpty()) item {
+            LearningHeading("Sources to review")
+            Text("Other available sources can still be captured.", style = MaterialTheme.typography.bodySmall)
+            sourceIssues.take(3).forEach { SignalSourceStatusRow(it, state, station, onSources) }
+            if (sourceIssues.size > 3) TextButton(onClick = onSources) { Text("Review all ${sourceIssues.size} source issues") }
         }
         if (state.savedQuestions.isNotEmpty()) item {
             LearningHeading("Saved questions")
@@ -129,13 +137,14 @@ internal fun SignalTodayPage(state: SignalState, station: SignalStation, onAsk: 
                 TextButton(onClick = { station.deleteSavedQuestion(recipe.id) }, enabled = !state.busy) { Text("Delete ${recipe.title}") }
             }
         }
-        state.observationSession?.let { session -> item { SignalSessionSummary(session, state, station) } }
+        state.observationSession?.let { session -> item { SignalSessionSummary(session, state, station, onSources) } }
         if (latest != null) item {
             HorizontalDivider()
             LearningHeading("Latest observation")
             Text(signalDateTime(latest.createdAt), style = MaterialTheme.typography.labelLarge)
             Text(latest.summary.ifBlank { "${signalCount(latest.observations.size, "reading")} saved" })
             TextButton(onClick = { onDetail(latest.id) }) { Text("Inspect readings") }
+            SignalLocalChangesAction(latest, state) { station.summarizeChanges(latest.id) }
             if (state.settings.placeFences.isEmpty()) {
                 Text("Give a familiar place a name to make future observations easier to understand.", style = MaterialTheme.typography.bodySmall)
                 TextButton(onClick = onNearby) { Text("Name a familiar place") }
@@ -156,7 +165,7 @@ internal fun SignalTodayPage(state: SignalState, station: SignalStation, onAsk: 
 }
 
 @Composable
-private fun SignalSessionSummary(session: SignalObservationSession, state: SignalState, station: SignalStation) {
+private fun SignalSessionSummary(session: SignalObservationSession, state: SignalState, station: SignalStation, onSources: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         LearningHeading("Observation session")
         Text(session.status, Modifier.semantics { liveRegion = LiveRegionMode.Polite })
@@ -164,7 +173,7 @@ private fun SignalSessionSummary(session: SignalObservationSession, state: Signa
         session.lastSuccessAt?.let { Text("Last saved ${signalDateTime(it)}", style = MaterialTheme.typography.bodySmall) }
         if (session.state in setOf("running", "paused")) OutlinedButton(onClick = station::stopObservation) { Text("Stop observing") }
         state.sourceStatus.filter { it.key in session.sourceKeys }.forEach { source ->
-            Text("${state.sources.firstOrNull { it.key == source.key }?.name ?: source.key}: ${source.status}${source.measuredAt?.let { " · ${signalDateTime(it)}" } ?: ""}", style = MaterialTheme.typography.bodySmall)
+            SignalSourceStatusRow(source, state, station, onSources)
         }
     }
 }
@@ -181,7 +190,7 @@ internal fun SignalSessionsPage(state: SignalState, station: SignalStation, onSo
             Text("Collect selected readings during a timed session. A notification shows that observation is active and lets you stop it. Android can delay or interrupt individual readings.")
             Text("Starting a session does not enable learning or send observations to a model.", style = MaterialTheme.typography.bodySmall)
         }
-        state.observationSession?.let { session -> item { SignalSessionSummary(session, state, station) } }
+        state.observationSession?.let { session -> item { SignalSessionSummary(session, state, station, onSources) } }
         if (!active) {
             item {
                 SignalChoice("Session length", minutes, listOf("15" to "15 minutes", "60" to "1 hour", "240" to "4 hours"), !state.busy) { minutes = it }

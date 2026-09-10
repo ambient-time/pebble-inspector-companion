@@ -43,6 +43,10 @@ data class SignalObservation(
     val id: String = "",
     val number: Double? = null,
     val boolean: Boolean? = null,
+    val metric: String = "",
+    val sampleCount: Int? = null,
+    val accuracy: Int? = null,
+    val fields: Map<String, String> = emptyMap(),
 )
 
 @Serializable
@@ -66,6 +70,13 @@ data class SignalRecord(
     val fieldTest: SignalFieldTest? = null,
     val sessionId: String = "",
     val memoryReferences: Map<String, Long> = emptyMap(),
+    val coverage: List<SignalSourceCoverage> = emptyList(),
+)
+
+@Serializable
+data class SignalSourceCoverage(
+    val key: String, val observed: Int, val retained: Int, val omitted: Int,
+    val attempted: Boolean = true, val status: String = "available",
 )
 
 data class SignalSource(val key: String, val name: String, val group: String, val available: Boolean = true)
@@ -152,6 +163,7 @@ interface SignalStation {
     fun clearHistory()
     fun shareHistory(format: String)
     fun requestPermissions()
+    fun recoverSource(key: String) = openPermissionSettings()
     fun searchWeatherPlaces(query: String)
     fun startWakeListening()
     fun stopWakeListening()

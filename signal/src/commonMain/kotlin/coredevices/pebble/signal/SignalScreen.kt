@@ -500,9 +500,9 @@ private fun SignalDetail(
             if (record.watchId.isNotBlank()) Text("Watch: ${state.watches.firstOrNull { it.id == record.watchId }?.name ?: record.watchId}")
         }
         item { SignalResponse(record.answer, record.summary.ifBlank { "No answer saved." }) }
+        if (signalSupportsLocalChanges(record)) item { SignalLocalChangesAction(record, state, onChanges) }
         item {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (record.kind in setOf("capture", "presence")) OutlinedButton(onClick = onChanges, enabled = !state.busy && SignalChanges.baseline(record, state.records, state.settings.enabled) != null) { Text("What changed? · local") }
                 Button(onClick = onAnalyze, enabled = !state.busy && record.state == "ready" && record.observations.isNotEmpty() && state.settings.provider in state.configuredProviders && state.settings.model.isNotBlank() && SignalHistory.allowed(record, state.settings.enabled)) { Text("Analyze readings") }
                 OutlinedButton(onClick = onAttach, enabled = !state.busy && record.state == "ready" && SignalHistory.allowed(record, state.settings.enabled)) { Text("Attach to conversation") }
                 if (record.kind != "capture" && record.provider != "local") OutlinedButton(onClick = onResume, enabled = !state.busy) { Text("Resume conversation") }
@@ -541,20 +541,35 @@ private fun SignalDetail(
                 }
             }
         }
+        if (record.coverage.isNotEmpty()) item { SignalRecordCoverage(record, state.sources) }
         item { SignalHeading("Readings"); if (record.observations.isEmpty()) Text("No readings attached.") }
         items(record.observations) { reading ->
             HorizontalDivider()
             val name = state.sources.firstOrNull { it.key == reading.key }?.name ?: reading.key
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(name, style = MaterialTheme.typography.titleMedium)
-                SelectionContainer { Text(if (reading.value.isBlank()) reading.status else "${reading.value} ${reading.unit}".trim()) }
-                Text("${reading.source} · ${reading.status}", style = MaterialTheme.typography.bodySmall)
+                if (reading.metric.isNotBlank()) Text(reading.metric.replace('_', ' ').replace('.', ' '), style = MaterialTheme.typography.labelLarge)
+                val value = reading.number?.takeIf { it.isFinite() }?.toString() ?: reading.boolean?.toString() ?: reading.value
+                SelectionContainer { Text(if (value.isBlank()) reading.status.replace('_', ' ') else "$value ${reading.unit}".trim()) }
+                if (reading.value.isNotBlank() && reading.value != value && (reading.number == null || reading.value.toDoubleOrNull() != reading.number)) {
+                    SelectionContainer { Text(reading.value, style = MaterialTheme.typography.bodySmall) }
+                }
+                Text("${reading.source} · ${reading.status.replace('_', ' ')}", style = MaterialTheme.typography.bodySmall)
+                reading.sampleCount?.let { Text("${signalCount(it, "sample")}", style = MaterialTheme.typography.bodySmall) }
+                reading.accuracy?.let { accuracy ->
+                    val label = when (accuracy) { -1 -> "no contact"; 0 -> "unreliable"; 1 -> "low"; 2 -> "medium"; 3 -> "high"; else -> "unknown ($accuracy)" }
+                    Text("Sensor accuracy: $label", style = MaterialTheme.typography.bodySmall)
+                }
                 Text("Collected ${signalDateTime(reading.collectedAt)}", style = MaterialTheme.typography.bodySmall)
                 reading.measuredAt?.let { Text("Measured ${signalDateTime(it)}", style = MaterialTheme.typography.bodySmall) }
                 reading.date?.let { Text("Reporting date $it", style = MaterialTheme.typography.bodySmall) }
                 Text("Period: ${reading.period}", style = MaterialTheme.typography.bodySmall)
                 reading.windowStart?.let { start ->
                     Text("From ${signalDateTime(start)}${reading.windowEnd?.let { " through ${signalDateTime(it)}" } ?: ""}", style = MaterialTheme.typography.bodySmall)
+                }
+                if (reading.windowStart == null) reading.windowEnd?.let { Text("Window ends ${signalDateTime(it)}", style = MaterialTheme.typography.bodySmall) }
+                reading.fields.entries.sortedBy { it.key }.forEach { (key, fieldValue) ->
+                    SelectionContainer { Text("${key.replace('_', ' ')}: $fieldValue", style = MaterialTheme.typography.bodySmall) }
                 }
                 if (reading.key !in state.settings.enabled) Text("Currently disabled; retained locally in this record.", style = MaterialTheme.typography.bodySmall)
             }
@@ -692,6 +707,9 @@ private fun SignalConfiguration(state: SignalState, station: SignalStation, onMa
             TextButton(onClick = station::openPermissionSettings, enabled = !state.busy) { Text("Open Android permissions") }
             Text("Enable only what you want included in a capture. Each source is optional. Disabling a source clears active context; saved records remain locally viewable.")
         }
+        val sourceIssues = state.sourceStatus.filter { it.key in settings.enabled && signalSourceNeedsAttention(it) }
+        if (sourceIssues.isNotEmpty()) item { SignalHeading("Sources to review") }
+        items(sourceIssues, key = { "issue:${it.key}" }) { source -> SignalSourceStatusRow(source, state, station) }
         state.sources.groupBy { it.group }.forEach { (group, sources) ->
             item(key = "group:$group") {
                 val expanded = group in expandedGroups
@@ -706,6 +724,9 @@ private fun SignalConfiguration(state: SignalState, station: SignalStation, onMa
             if (group in expandedGroups) items(sources, key = { it.key }) { source ->
                 SignalToggle(source.name, source.key in settings.enabled, !state.busy, if (source.available) null else "Unavailable on this device or permission not granted") { enabled ->
                     station.updateSettings(settings.copy(enabled = if (enabled) settings.enabled + source.key else settings.enabled - source.key))
+                }
+                if (source.key in settings.enabled) state.sourceStatus.firstOrNull { it.key == source.key && !signalSourceNeedsAttention(it) }?.let {
+                    SignalSourceStatusRow(it, state, station)
                 }
             }
         }

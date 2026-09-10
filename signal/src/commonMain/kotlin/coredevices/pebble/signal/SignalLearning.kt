@@ -45,7 +45,12 @@ data class SignalObservationSession(
     val captures: Int = 0,
 )
 
-data class SignalSourceStatus(val key: String, val status: String, val measuredAt: Long? = null)
+data class SignalSourceStatus(
+    val key: String, val status: String, val measuredAt: Long? = null,
+    val reason: String = "", val remedy: String = "none",
+    val attempted: Boolean = false, val accepted: Int = 0, val omitted: Int = 0,
+    val lastSuccessAt: Long? = null,
+)
 data class SignalDeletionPreview(val recordIds: Set<String>, val recordCount: Int, val memories: List<SignalMemory>, val memoryId: String? = null)
 
 object SignalLearning {
@@ -81,7 +86,7 @@ object SignalLearning {
     fun fresh(observation: SignalObservation): Boolean {
         val measured = observation.measuredAt ?: return false
         if (observation.source.startsWith("health_connect:") && observation.status == "recorded")
-            return observation.windowStart?.let { start -> observation.windowEnd?.let { end -> start < end && end == measured && end <= observation.collectedAt } } == true
+            return observation.windowStart?.let { start -> observation.windowEnd?.let { end -> (start < end || observation.period == "instant" && start == end) && end == measured && end <= observation.collectedAt } } == true
         if (measured > observation.collectedAt || observation.status !in setOf("fresh", "available", "observed", "inside", "outside")) return false
         return if (observation.period == "day") observation.windowEnd?.let { it <= observation.collectedAt } == true
         else observation.collectedAt - measured <= 60_000
@@ -125,14 +130,14 @@ object SignalLearning {
             }
         }
         originals.flatMap { r -> r.observations.filter { it.number != null && fresh(it) && !it.key.startsWith("wifi") && !it.key.startsWith("bluetooth") && !it.key.startsWith("presence.") }
-            .map { r to it } }.groupBy { (r, o) -> "${o.source}|${r.watchId}|${o.key}|${o.unit}|${o.period}|${o.identity}|${zone.id}" }.forEach { (identity, rows) ->
+            .map { r to it } }.groupBy { (r, o) -> "${o.source}|${r.watchId}|${o.key}${o.metric.takeIf { it.isNotBlank() }?.let { ":$it" }.orEmpty()}|${o.unit}|${o.period}|${o.identity}|${zone.id}" }.forEach { (identity, rows) ->
                 val samples = rows.sortedByDescending { it.first.createdAt }.distinctBy { (_, o) -> if (o.period == "day") "${o.date}:${o.windowStart}:${o.windowEnd}" else "${o.measuredAt}" }
                 val days = samples.map { (_, o) -> o.date ?: date(o.measuredAt!!) }.distinct()
                 if (samples.size >= 10 && days.size >= 5) {
                     val values = samples.mapNotNull { it.second.number }.sorted()
                     val median = if (values.size % 2 == 0) values[values.size / 2 - 1] / 2 + values[values.size / 2] / 2 else values[values.size / 2]
                     val o = samples.first().second
-                    proposal("baseline:$identity", "baseline", "${o.key.replace('.', ' ')}: observed median $median ${o.unit}; range ${values.first()}–${values.last()} ${o.unit}.", samples,
+                    proposal("baseline:$identity", "baseline", "${o.key.replace('.', ' ')} ${o.metric.replace('_', ' ')}: observed median $median ${o.unit}; range ${values.first()}–${values.last()} ${o.unit}.", samples,
                         "${values.size} comparable measurements across ${days.size} days. Origin: ${o.source}; period: ${o.period}. Descriptive observations, not a health assessment.")
                 }
             }

@@ -7,7 +7,8 @@ import kotlin.math.*
 data class SignalPresenceTarget(val id: String, val radio: String, val address: String, val label: String, val enabled: Boolean = true, val beaconId: String = "")
 @Serializable
 data class SignalPlaceFence(val id: String, val label: String, val latitude: Double, val longitude: Double, val radiusMeters: Int = 150, val wifiSsid: String = "", val enabled: Boolean = true)
-data class SignalRadioCandidate(val radio: String, val address: String, val name: String, val rssi: Int, val measuredAt: Long?, val status: String, val security: String = "", val beaconId: String = "", val metadata: String = "", val sampleCount: Int = 1, val medianRssi: Int? = null)
+data class SignalRadioCandidate(val radio: String, val address: String, val name: String, val rssi: Int, val measuredAt: Long?, val status: String, val security: String = "", val beaconId: String = "", val metadata: String = "", val sampleCount: Int = 1, val medianRssi: Int? = null,
+    val frequencyMHz: Int? = null, val firstSeenAt: Long? = null)
 data class SignalPresenceResult(val observations: List<SignalObservation>, val candidates: List<SignalRadioCandidate>)
 data class SignalPlaceLookup(val place: SignalPlace, val description: String)
 data class SignalPresenceFix(val latitude: Double, val longitude: Double, val accuracyMeters: Double, val measuredAt: Long)

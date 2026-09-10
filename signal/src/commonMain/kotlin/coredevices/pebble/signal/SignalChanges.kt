@@ -4,12 +4,13 @@ package coredevices.pebble.signal
 object SignalChanges {
     private fun scope(record: SignalRecord) = record.sourceKeys + record.observations.map { it.key }
     private fun eligible(record: SignalRecord, enabled: Set<String>) = record.state == "ready" &&
-        record.kind in setOf("capture", "presence") && record.references.isEmpty() && SignalHistory.allowed(record, enabled)
+        record.kind in setOf("capture", "presence", "observation", "health_import") && record.references.isEmpty() && SignalHistory.allowed(record, enabled)
+    private fun family(record: SignalRecord) = if (record.kind in setOf("capture", "observation")) "snapshot" else record.kind
 
     fun baseline(current: SignalRecord, records: List<SignalRecord>, enabled: Set<String>): SignalRecord? {
         if (!eligible(current, enabled)) return null
         return records.filter { it.id != current.id && it.createdAt < current.createdAt &&
-            it.kind == current.kind && it.watchId == current.watchId && scope(it) == scope(current) && eligible(it, enabled)
+            family(it) == family(current) && it.watchId == current.watchId && scope(it).intersect(scope(current)).isNotEmpty() && eligible(it, enabled)
         }.maxByOrNull { it.createdAt }
     }
 
@@ -19,20 +20,21 @@ object SignalChanges {
         val before = previous.observations.groupBy(::identity)
         val after = current.observations.groupBy(::identity)
         val changes = mutableListOf<String>()
+        val commonSources = scope(previous).intersect(scope(current))
         var unchanged = 0
         var unknown = 0
         for (key in before.keys + after.keys) {
             val old = before[key]?.singleOrNull()
             val next = after[key]?.singleOrNull()
-            if (old == null || next == null || !comparable(old) || !comparable(next)) { unknown++; continue }
+            if (old == null || next == null || !comparable(old) || !comparable(next) || !compatibleWindow(old, next)) { unknown++; continue }
             if (old.measuredAt != null && next.measuredAt != null && next.measuredAt <= old.measuredAt && (old.value != next.value || old.status != next.status)) { unknown++; continue }
-            val title = "${if (next.identity.isNotBlank()) next.value.substringBefore(": ${next.status}").take(100) else next.key.replace('.', ' ').replace('_', ' ')}${next.date?.let { " ($it)" }.orEmpty()}"
+            val title = "${if (next.key.startsWith("presence.") && next.identity.isNotBlank()) next.value.substringBefore(": ${next.status}").take(100) else (next.key + " " + next.metric).trim().replace('.', ' ').replace('_', ' ')}${next.date?.let { " ($it)" }.orEmpty()}"
             if (next.key.startsWith("presence.")) {
                 if (old.status == next.status) unchanged++
                 else changes += "$title: ${old.status} → ${next.status}. This is a change in observations, not proof of arrival or departure."
             } else {
-                val a = old.value.toDoubleOrNull()?.takeIf { it.isFinite() }
-                val b = next.value.toDoubleOrNull()?.takeIf { it.isFinite() }
+                val a = (old.number ?: old.value.toDoubleOrNull())?.takeIf { it.isFinite() }
+                val b = (next.number ?: next.value.toDoubleOrNull())?.takeIf { it.isFinite() }
                 if (a != null && b != null) {
                     if (!(b - a).isFinite()) { unknown++; continue }
                     if (a == b) unchanged++ else changes += "$title: $a → $b ${next.unit} (difference ${b - a})."
@@ -44,6 +46,12 @@ object SignalChanges {
         val text = buildString {
             append("Compared captures from ${signalDateTime(previous.createdAt)} and ${signalDateTime(current.createdAt)} (phone local time).\n")
             append("${changes.size} changed; $unchanged unchanged; $unknown unknown or not comparable.\n")
+            val added = scope(current) - commonSources
+            val removed = scope(previous) - commonSources
+            if (added.isNotEmpty()) append("Newly included sources: ${added.sorted().joinToString()}.\n")
+            if (removed.isNotEmpty()) append("Sources absent from the newer record: ${removed.sorted().joinToString()}.\n")
+            val omitted = (previous.coverage + current.coverage).sumOf { it.omitted }
+            if (omitted > 0) append("$omitted readings were omitted from these saved records; comparisons cover retained evidence.\n")
             changes.take(40).forEach { append(it); append('\n') }
             if (changes.size > 40) append("${changes.size - 40} additional changes omitted from this summary.\n")
             append("Only matching sources, watch, metric, unit and measurement periods are compared. Cached, missing, duplicate and old readings are unknown. No continuous coverage or model request.")
@@ -53,7 +61,15 @@ object SignalChanges {
             state = "ready", sourceKeys = scope(previous) + scope(current), references = listOf(previous.id, current.id), kind = "changes")
     }
 
-    private fun identity(o: SignalObservation) = listOf(o.key, o.source, o.identity, o.unit, o.date, o.period, o.windowStart, o.windowEnd)
+    private fun identity(o: SignalObservation) = listOf(o.key, o.source, o.identity, o.metric, o.unit, o.date.takeIf { o.period == "day" }, o.period)
+    private fun compatibleWindow(a: SignalObservation, b: SignalObservation): Boolean {
+        if (a.windowStart == null && a.windowEnd == null && b.windowStart == null && b.windowEnd == null) return true
+        val da = a.windowEnd?.let { end -> a.windowStart?.let { end - it } } ?: return false
+        val db = b.windowEnd?.let { end -> b.windowStart?.let { end - it } } ?: return false
+        if (da < 0 || db < 0) return false
+        // Sensor delivery can jitter within the same bounded sampling window.
+        return if (a.period == "sample_window") kotlin.math.abs(da - db) <= maxOf(250L, maxOf(da, db) / 10) else da == db
+    }
     private fun comparable(o: SignalObservation): Boolean {
         // Scan ordinals and labels are not durable device identities. Legacy presence has no identity.
         if (o.key.startsWith("presence.")) {
@@ -62,6 +78,7 @@ object SignalChanges {
             return o.status in setOf("observed", "inside", "outside") && timely(o)
         }
         if (o.key == "bluetooth" || o.key.startsWith("bluetooth.") || o.key == "wifi" || o.key.startsWith("wifi.")) return false
+        if (o.source.startsWith("health_connect:")) return SignalLearning.fresh(o)
         return o.status in setOf("fresh", "available") && timely(o)
     }
     private fun timely(o: SignalObservation): Boolean {

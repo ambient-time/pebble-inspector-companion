@@ -30,9 +30,9 @@ internal class SignalLearningRepository(private val store: SignalStore) {
         val bucket = store.opaqueIndex("${date.date}:${date.hour}:${record.kind}:${record.watchId}:${record.observations.firstOrNull()?.source}:$healthSeries")
         val key = "f:$bucket"
         val normalized = SignalLearning.normalize(record)
-        val frame = normalized.copy(question = "", answer = "", summary = "", observations = normalized.observations
-            .filter { it.number != null || it.identity.startsWith("fence:") || it.identity.startsWith("target:") }
-            .take(64).map { it.copy(value = it.value.take(200)) })
+        val budget = SignalBudget.retain(normalized.observations
+            .filter { it.number != null || it.identity.startsWith("fence:") || it.identity.startsWith("target:") }, 64)
+        val frame = normalized.copy(question = "", answer = "", summary = "", observations = budget.observations.map { it.copy(value = it.value.take(200)) }, coverage = budget.coverage)
         if (frame.observations.isEmpty()) return
         val old = store.document(key)?.let { json.decodeFromString<SignalRecord>(it) }
         if (old == null || old.createdAt <= record.createdAt)
@@ -40,6 +40,11 @@ internal class SignalLearningRepository(private val store: SignalStore) {
     }
 
     suspend fun backfill(now: Long, progress: (Long) -> Unit) {
+        // Only disposable frames are rebuilt. Originals, identifiers, keys and corrections stay intact.
+        if (store.document("learning-frame-version") != "3") {
+            rebuild()
+            store.document("learning-frame-version", "checkpoint", "3")
+        }
         val cursor = store.document("learning-cursor")?.toLongOrNull() ?: 0L
         var last = cursor; var count = 0L
         store.walk(cursor) { position, record ->

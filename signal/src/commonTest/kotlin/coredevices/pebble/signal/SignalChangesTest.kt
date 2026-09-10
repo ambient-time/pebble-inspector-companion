@@ -21,13 +21,35 @@ class SignalChangesTest {
         assertTrue(SignalHistory.deletionClosure(listOf(a, b, diff), setOf("a")).contains("diff"))
         assertFalse(SignalHistory.allowed(diff, emptySet()))
     }
-    @Test fun baselineRequiresSameScopeKindWatchAndEarlierTime() {
+    @Test fun baselineRequiresCompatibleKindWatchAndEarlierTime() {
         val current = capture("new", 200_000, reading("75", 200_000))
         val base = capture("old", 100_000, reading("80"))
         val candidates = listOf(base.copy(watchId = "other"), base.copy(kind = "analysis"),
-            base.copy(sourceKeys = base.sourceKeys + "location"), base.copy(createdAt = 200_000), base.copy(state = "working"))
+            base.copy(sourceKeys = setOf("location"), observations = listOf(reading("0", key = "location"))), base.copy(createdAt = 200_000), base.copy(state = "working"))
         assertNull(SignalChanges.baseline(current, candidates, current.sourceKeys + "location"))
         assertEquals(base, SignalChanges.baseline(current, candidates + base, current.sourceKeys))
+    }
+    @Test fun overlappingSelectionsCompareAndReportCoverageChanges() {
+        val a = capture("a", 100_000, reading("80"), reading("100", key = "sensor.5"))
+        val b = capture("b", 200_000, reading("75", 200_000), reading("1000", 200_000, "sensor.6")).copy(kind = "observation")
+        val result = assertNotNull(compare(a, b))
+        assertTrue(result.answer.contains("difference -5.0"))
+        assertTrue(result.answer.contains("Newly included sources: sensor.6"))
+        assertTrue(result.answer.contains("Sources absent from the newer record: sensor.5"))
+        assertNull(SignalChanges.create(b, listOf(a), setOf("device.battery"), "x", 300_000))
+    }
+    @Test fun numericFieldsAndEquivalentHealthWindowsCompareWithoutIdenticalTimestamps() {
+        fun health(id: String, time: Long, value: Double, duration: Long = 1000) = capture(id, time,
+            reading("summary", time, "healthconnect.steps").copy(source = "health_connect:origin", number = value,
+                unit = "steps", status = "recorded", period = "interval:$duration", windowStart = time - duration, windowEnd = time)
+        ).copy(kind = "health_import")
+        assertTrue(assertNotNull(compare(health("a", 100_000, 20.0), health("b", 200_000, 35.0))).answer.contains("difference 15.0"))
+        assertTrue(assertNotNull(compare(health("a", 100_000, 20.0), health("b", 200_000, 35.0, 2000))).answer.contains("0 changed"))
+    }
+    @Test fun axesAndMetricKindsCannotBeMixed() {
+        val a = capture("a", 100_000, reading("1", key = "sensor.1").copy(metric = "axis_0.mean"))
+        val b = capture("b", 200_000, reading("2", 200_000, "sensor.1").copy(metric = "axis_1.mean"))
+        assertTrue(assertNotNull(compare(a, b)).answer.contains("0 changed"))
     }
     @Test fun cachedMissingAndDuplicateReadingsAreUnknown() {
         val a = capture("a", 100_000, reading("80"))

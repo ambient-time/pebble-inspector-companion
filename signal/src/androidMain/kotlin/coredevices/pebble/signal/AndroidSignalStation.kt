@@ -39,7 +39,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
         val originals: List<SignalRecord>, val memories: List<SignalMemory>, val review: SignalQuestionReview)
     private var preparedQuestion: PreparedQuestion? = null
     private val collectors by lazy { SignalCollectors(context) }
-    private val presenceCollector by lazy { SignalPresenceCollector(context) }
+    private val presenceCollector by lazy { SignalPresenceCollector(context, collectors) }
     private val mutable = MutableStateFlow(SignalState())
     override val state: StateFlow<SignalState> = mutable.asStateFlow()
     private val wakeReview = SignalWakeReview()
@@ -466,9 +466,9 @@ open class AndroidSignalStation(private val context: Context, protected val watc
     }
     override fun summarizeChanges(id: String) {
         startOperation { settings, token ->
-            val current = mutable.value.records.firstOrNull { it.id == id } ?: throw SignalProviderException("Capture unavailable.")
+            val current = withContext(Dispatchers.IO) { store.record(id) } ?: throw SignalProviderException("Saved reading unavailable.")
             val summary = SignalChanges.create(current, mutable.value.records, settings.enabled, id(), now())
-                ?: throw SignalProviderException("Capture again with the same sources and watch to compare. Cached or missing readings remain unknown.")
+                ?: throw SignalProviderException("No earlier compatible reading is loaded. Open more history or capture again. Sources, watch, metric and measurement period must overlap; missing readings remain unknown.")
             save(summary, token)
             ensureActiveToken(token)
             mutable.update { it.copy(selectedRecordId = summary.id, status = "Local change summary saved in History. No provider request was made.") }
@@ -624,7 +624,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
         }
         val collectedReadings = if (survey) coroutineScope {
             status("Collecting selected sources…")
-            val phone = async { if (foreground()) { collectors.collect(settings) + if (settings.enabled.any { it.startsWith("presence.") }) presenceCollector.collect(settings).observations else emptyList() } else settings.enabled.filter { it !in watchKeys }.map { SignalObservation(it, "phone", collectedAt = now(), status = "background_unavailable") } }
+            val phone = async { if (foreground()) collectors.collect(settings) else settings.enabled.filter { it !in watchKeys }.map { SignalObservation(it, "phone", collectedAt = now(), status = "background_unavailable") } }
             val watch = async {
                 val enabledWatch = settings.enabled.intersect(watchKeys)
                 if (enabledWatch.isEmpty()) emptyList() else {
@@ -644,19 +644,16 @@ open class AndroidSignalStation(private val context: Context, protected val watc
             phone.await() + watch.await()
         } else emptyList()
         ensureActiveToken(token)
-        var readingBytes = 0
         val eligibleReadings = collectedReadings.filter { it.key in settings.enabled }
-        val readings = eligibleReadings.filter { reading ->
-            val bytes = json.encodeToString(reading).toByteArray().size
-            if (readingBytes + bytes > 80 * 1024) false else { readingBytes += bytes; true }
-        }
-        val omittedReadings = eligibleReadings.size - readings.size
+        val budget = SignalBudget.retain(eligibleReadings, 200, 80 * 1024) { json.encodeToString(it).toByteArray().size }
+        val readings = budget.observations
+        val omittedReadings = budget.omitted
         val priorCandidates = if (history || captureOnly) emptyList() else withContext(Dispatchers.IO) { store.thread(record.threadId, 100).filter { it.id != record.id && it.state == "ready" && it.provider == settings.provider && it.model == settings.model && it.endpoint == settings.endpoint }.take(10).reversed() }
         val prior = boundedRecords(priorCandidates.filter { withContext(Dispatchers.IO) { learning.eligible(it, settings, currentMemory) } }, 48 * 1024)
         val memories = if (captureOnly || fromWatch != null) emptyList() else activeMemories.filter { chosen -> currentMemory.any { it.id == chosen.id && it.revision == chosen.revision && it.text == chosen.text && SignalLearning.eligible(it, settings) } }
         if (!captureOnly && fromWatch == null && memories.size != activeMemories.size) throw SignalProviderException("Suggested memories changed. Review the context and send again.")
-        val sourceKeys = readings.map { it.key }.toSet() + references.flatMap { it.sourceKeys } + prior.flatMap { it.sourceKeys } + memories.flatMap { it.sourceKeys }
-        record = record.copy(observations = readings, sourceKeys = sourceKeys, references = (record.references + prior.map { it.id }).distinct(), watchId = activeWatch, memoryReferences = memories.associate { it.id to it.revision })
+        val sourceKeys = eligibleReadings.map { it.key }.toSet() + references.flatMap { it.sourceKeys } + prior.flatMap { it.sourceKeys } + memories.flatMap { it.sourceKeys }
+        record = record.copy(observations = readings, coverage = budget.coverage, sourceKeys = sourceKeys, references = (record.references + prior.map { it.id }).distinct(), watchId = activeWatch, memoryReferences = memories.associate { it.id to it.revision })
         save(record, token)
         ensureActiveToken(token)
         if (captureOnly) {
@@ -773,14 +770,11 @@ open class AndroidSignalStation(private val context: Context, protected val watc
         val ticket = observationGeneration
         observationJob = currentCoroutineContext()[Job]
         val selected = session.sourceKeys.intersect(mutable.value.settings.enabled)
-        val eligible = selected.filterNot { (it.startsWith("wifi") || it == "presence.wifi") && now() - observationLastWifi < 30 * 60_000L || it in SignalWeather.keys && now() - observationLastWeather < 30 * 60_000L }.toSet()
+        val eligible = selected.filterNot { it in SignalWeather.keys && now() - observationLastWeather < 30 * 60_000L }.toSet()
         val settings = mutable.value.settings.copy(enabled = eligible)
-        val readings = coroutineScope {
-            val phone = async { collectors.collect(settings) }
-            val presence = async { if (eligible.any { it.startsWith("presence.") }) presenceCollector.collect(settings).observations else emptyList() }
-            phone.await() + presence.await()
-        }.toMutableList()
-        if (eligible.any { it.startsWith("wifi") || it == "presence.wifi" }) observationLastWifi = now()
+        val activeWifi = now() - observationLastWifi >= 30 * 60_000L
+        val readings = collectors.collect(settings, activeWifi = activeWifi).toMutableList()
+        if (activeWifi && eligible.any { it.startsWith("wifi") || it == "presence.wifi" }) observationLastWifi = now()
         if (eligible.any { it in SignalWeather.keys }) observationLastWeather = now()
         readings += (selected - eligible).map { SignalObservation(it, "phone", collectedAt = now(), status = "rate_limited") }
         // Watch collection only uses an already-open app and established message session.
@@ -805,8 +799,10 @@ open class AndroidSignalStation(private val context: Context, protected val watc
         }
         currentCoroutineContext().ensureActive()
         if (ticket != observationGeneration || pendingSession?.id != id) return
+        val budget = SignalBudget.retain(readings, 200, 80 * 1024) { json.encodeToString(it).toByteArray().size }
         val record = SignalLearning.normalize(SignalRecord(this.id(), "observation:$id", now(), "Observation session sample", provider = "local", model = "", watchId = settings.watchId,
-            answer = SignalCapture.summary(readings, 0), summary = SignalCapture.summary(readings, 0), state = "ready", observations = readings.take(200), sourceKeys = readings.map { it.key }.toSet(), kind = "observation", sessionId = id))
+            answer = SignalCapture.summary(budget.observations, budget.omitted), summary = SignalCapture.summary(budget.observations, budget.omitted), state = "ready", observations = budget.observations,
+            coverage = budget.coverage, sourceKeys = readings.map { it.key }.toSet(), kind = "observation", sessionId = id))
         persistence.withLock {
             if (ticket != observationGeneration || pendingSession?.id != id) return@withLock
             withContext(Dispatchers.IO) { store.save(record); if (settings.learningEnabled) learning.ingest(record, now()) }
@@ -885,7 +881,14 @@ open class AndroidSignalStation(private val context: Context, protected val watc
         mutable.update { it.copy(savedQuestions = questions, memories = memories, sessions = sessions, historyCount = count, storageBytes = bytes,
             sourceStatus = it.settings.enabled.sorted().map { key ->
                 val observation = it.records.asSequence().flatMap { row -> row.observations.asSequence() }.filter { o -> o.key == key }.maxByOrNull { o -> o.collectedAt }
-                SignalSourceStatus(key, observation?.status ?: "not_sampled", observation?.measuredAt)
+                val record = it.records.filter { row -> row.observations.any { o -> o.key == key } }.maxByOrNull { row -> row.createdAt }
+                val coverage = record?.coverage?.firstOrNull { c -> c.key == key }
+                val sourceState = observation?.status ?: "not_sampled"
+                SignalSourceStatus(key, sourceState, observation?.measuredAt,
+                    reason = SignalSourceRecovery.reason(sourceState), remedy = SignalSourceRecovery.remedy(sourceState),
+                    attempted = coverage?.attempted ?: (observation != null), accepted = coverage?.retained ?: record?.observations?.count { o -> o.key == key } ?: 0,
+                    omitted = coverage?.omitted ?: 0,
+                    lastSuccessAt = it.records.asSequence().flatMap { row -> row.observations.asSequence() }.filter { o -> o.key == key && SignalLearning.fresh(o) }.maxOfOrNull { o -> o.measuredAt ?: 0 })
             }) }
         suggestMemory(memoryQuery)
     }
@@ -1150,6 +1153,17 @@ open class AndroidSignalStation(private val context: Context, protected val watc
         }
     }
     override fun requestPermissions() { context.startActivity(Intent(context, SignalPermissionActivity::class.java).putExtra("sources", mutable.value.settings.enabled.toTypedArray()).putExtra("weatherDeviceLocation", mutable.value.settings.weatherLocation == "device").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+    override fun recoverSource(key: String) {
+        if (key !in mutable.value.settings.enabled || !foreground()) return
+        if (key.startsWith("healthconnect.")) { requestHealthPermissions(mutable.value.settings.healthHistoryDays); return }
+        val outcome = mutable.value.sourceStatus.firstOrNull { it.key == key }?.status
+        val intent = when (outcome) {
+            "location_services_disabled" -> Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS)
+            "radio_disabled" -> Intent(if (key.contains("bluetooth")) android.provider.Settings.ACTION_BLUETOOTH_SETTINGS else android.provider.Settings.ACTION_WIFI_SETTINGS)
+            else -> Intent(context, SignalPermissionActivity::class.java).putExtra("sources", arrayOf(key)).putExtra("weatherDeviceLocation", mutable.value.settings.weatherLocation == "device")
+        }
+        runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.onFailure { openPermissionSettings() }
+    }
 
     suspend fun handleWatchRequest(url: String, method: String, body: String?, session: SignalWatchSession): SignalWatchResponse = withContext(Dispatchers.Main.immediate) {
         if (!available || !trusted(session)) return@withContext SignalWatchResponse("{}", 403)

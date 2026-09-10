@@ -55,7 +55,8 @@ internal class SignalHealthConnect(private val context: Context, private val sto
         }
         for ((key, type) in selected) {
             currentCoroutineContext().ensureActive()
-            val checkpoint = "health-token:${store.opaqueIndex("$key:$days")}"
+            // A mapping revision requires a bounded snapshot even when the provider's rows did not change.
+            val checkpoint = "health-token:${store.opaqueIndex(healthMapperCheckpoint(key, days))}"
             var token = store.document(checkpoint)
             if (token != null && client.getChanges(token).changesTokenExpired) token = null
             if (token == null) {
@@ -89,11 +90,14 @@ internal class SignalHealthConnect(private val context: Context, private val sto
     companion object {
         val types: Map<String, kotlin.reflect.KClass<out Record>> = mapOf("healthconnect.steps" to StepsRecord::class, "healthconnect.distance" to DistanceRecord::class,
             "healthconnect.active_calories" to ActiveCaloriesBurnedRecord::class, "healthconnect.total_calories" to TotalCaloriesBurnedRecord::class,
-            "healthconnect.exercise" to ExerciseSessionRecord::class, "healthconnect.sleep" to SleepSessionRecord::class, "healthconnect.heart_rate" to HeartRateRecord::class)
+            "healthconnect.exercise" to ExerciseSessionRecord::class, "healthconnect.sleep" to SleepSessionRecord::class, "healthconnect.heart_rate" to HeartRateRecord::class,
+            "healthconnect.resting_heart_rate" to RestingHeartRateRecord::class, "healthconnect.hrv_rmssd" to HeartRateVariabilityRmssdRecord::class)
     }
 }
 
 internal data class HealthInterval(val startTime: Instant, val endTime: Instant, val endZoneOffset: java.time.ZoneOffset?)
+internal const val HEALTH_MAPPER_VERSION = 2
+internal fun healthMapperCheckpoint(key: String, days: Int) = "$key:$days:mapper:$HEALTH_MAPPER_VERSION"
 internal fun healthInterval(row: Record): HealthInterval? = when (row) {
     is StepsRecord -> HealthInterval(row.startTime, row.endTime, row.endZoneOffset)
     is DistanceRecord -> HealthInterval(row.startTime, row.endTime, row.endZoneOffset)
@@ -102,13 +106,16 @@ internal fun healthInterval(row: Record): HealthInterval? = when (row) {
     is ExerciseSessionRecord -> HealthInterval(row.startTime, row.endTime, row.endZoneOffset)
     is SleepSessionRecord -> HealthInterval(row.startTime, row.endTime, row.endZoneOffset)
     is HeartRateRecord -> HealthInterval(row.startTime, row.endTime, row.endZoneOffset)
+    is RestingHeartRateRecord -> HealthInterval(row.time, row.time, row.zoneOffset)
+    is HeartRateVariabilityRmssdRecord -> HealthInterval(row.time, row.time, row.zoneOffset)
     else -> null
 }
 
 internal fun mapHealthRecord(key: String, row: Record, id: String, importedAt: Long): SignalRecord? {
     val interval = healthInterval(row) ?: return null
     val start = interval.startTime.toEpochMilli(); val end = interval.endTime.toEpochMilli()
-    if (end <= start || end > importedAt) return null
+    val instantaneous = row is RestingHeartRateRecord || row is HeartRateVariabilityRmssdRecord
+    if (end < start || (!instantaneous && end == start) || end > importedAt) return null
     val (number, unit) = when (row) {
         is StepsRecord -> row.count.toDouble() to "steps"
         is DistanceRecord -> row.distance.inMeters to "m"
@@ -117,15 +124,51 @@ internal fun mapHealthRecord(key: String, row: Record, id: String, importedAt: L
         is ExerciseSessionRecord -> (end - start) / 60_000.0 to "session minutes"
         is SleepSessionRecord -> (end - start) / 60_000.0 to "sleep session minutes"
         is HeartRateRecord -> row.samples.map { it.beatsPerMinute.toDouble() }.average() to "bpm interval mean"
+        is RestingHeartRateRecord -> row.beatsPerMinute.toDouble() to "bpm"
+        is HeartRateVariabilityRmssdRecord -> row.heartRateVariabilityMillis to "ms"
         else -> return null
     }
     if (!number.isFinite()) return null
     val origin = row.metadata.dataOrigin.packageName
     val observation = SignalObservation(key, "health_connect:$origin", number.toString(), unit, importedAt, end, "recorded",
-        interval.endTime.atZone(interval.endZoneOffset ?: ZoneId.systemDefault()).toLocalDate().toString(), "interval:${end - start}", start, end, identity = origin, id = "$id:0", number = number)
+        interval.endTime.atZone(interval.endZoneOffset ?: ZoneId.systemDefault()).toLocalDate().toString(), if (instantaneous) "instant" else "interval:${end - start}", start, end, identity = origin, id = "$id:0", number = number,
+        sampleCount = if (row is HeartRateRecord) row.samples.size else null)
+    val details = when (row) {
+        is HeartRateRecord -> healthSeries(row.samples).map { sample ->
+            val at = sample.time.toEpochMilli()
+            observation.copy(value = sample.beatsPerMinute.toString(), unit = "bpm", number = sample.beatsPerMinute.toDouble(),
+                metric = "sample", measuredAt = at, windowStart = at, windowEnd = at, period = "instant", sampleCount = 1, id = "$id:hr:$at")
+        }
+        is SleepSessionRecord -> healthSeries(row.stages).map { stage ->
+            val from = stage.startTime.toEpochMilli(); val to = stage.endTime.toEpochMilli()
+            val name = when (stage.stage) {
+                SleepSessionRecord.STAGE_TYPE_AWAKE -> "awake"
+                SleepSessionRecord.STAGE_TYPE_SLEEPING -> "sleeping"
+                SleepSessionRecord.STAGE_TYPE_OUT_OF_BED -> "out_of_bed"
+                SleepSessionRecord.STAGE_TYPE_LIGHT -> "light"
+                SleepSessionRecord.STAGE_TYPE_DEEP -> "deep"
+                SleepSessionRecord.STAGE_TYPE_REM -> "rem"
+                SleepSessionRecord.STAGE_TYPE_AWAKE_IN_BED -> "awake_in_bed"
+                else -> "unknown"
+            }
+            observation.copy(value = name, number = null, unit = "", metric = "sleep_stage", period = "stage",
+                measuredAt = to, windowStart = from, windowEnd = to, sampleCount = 1, id = "$id:stage:$from:$to:${stage.stage}",
+                fields = mapOf("stage" to name, "durationMinutes" to ((to - from) / 60_000.0).toString()))
+        }
+        else -> emptyList()
+    }
+    val totalDetails = when (row) { is HeartRateRecord -> row.samples.size; is SleepSessionRecord -> row.stages.size; else -> 0 }
+    val omitted = totalDetails - details.size
+    val coverage = SignalSourceCoverage(key, 1 + totalDetails, 1 + details.size, omitted, status = if (omitted > 0) "partial" else "recorded")
     val summary = "${key.removePrefix("healthconnect.").replace('_', ' ')}: $number $unit. Origin: $origin. Interval: ${interval.startTime} to ${interval.endTime}. Separate observation; overlapping origins must not be added."
-    return SignalRecord(id, "health-import", end, "Health Connect reading", summary, summary, "local", "", state = "ready", observations = listOf(observation), sourceKeys = setOf(key), kind = "health_import", sessionId = id)
+    val detailNote = if (omitted > 0) " $omitted series entries omitted; retained entries are spread across the interval." else ""
+    return SignalRecord(id, "health-import", end, "Health Connect reading", summary + detailNote, summary + detailNote, "local", "", state = "ready", observations = listOf(observation) + details,
+        coverage = listOf(coverage), sourceKeys = setOf(key), kind = "health_import", sessionId = id)
 }
+
+/** Bound SQLite records while preserving the first and last sample and their original timestamps. */
+internal fun <T> healthSeries(rows: List<T>, limit: Int = 512): List<T> =
+    if (rows.size <= limit) rows else (0 until limit).map { rows[(it.toLong() * (rows.size - 1) / (limit - 1)).toInt()] }
 
 class SignalHealthPermissionActivity : ComponentActivity() {
     private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
