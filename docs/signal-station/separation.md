@@ -14,9 +14,12 @@ The independent shell must not instantiate them. Android PebbleKit2 can carry
 watch app messages; raw dictation audio is not exposed by its public client API.
 Do not present that capability as available through the new adapter.
 
-The interface has Ask, Activity and Settings. Activity retains Capture, Nearby,
-History and the labelled advanced experiments. First use offers a question or a
-local capture; watch setup is optional. All sources remain individually opt-in.
+The current interface has Today, Ask, Activity and Memory, with Settings in the
+header. Activity retains Capture, Nearby, saved history and the labelled advanced
+experiments. First use offers a question, a local capture or an observation
+session; watch setup is optional. All sources remain individually opt-in. See
+[the personal context guide](personal-context.md) for learning, Health Connect
+and deletion controls.
 
 Touch/keyboard: open app -> save provider -> ask -> see the answer or a retained
 question with an error. Capture: choose sources -> capture -> inspect dated

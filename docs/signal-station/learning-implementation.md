@@ -16,21 +16,29 @@ separate. All collection sources remain individually optional.
 
 Implementation checkpoints:
 
-- [ ] Additive encrypted storage migration, typed observations, pagination,
+- [x] Additive encrypted storage migration, typed observations, pagination,
   memory/evidence/corrections and deletion propagation.
-- [ ] Deterministic place/device, recurring-situation and numeric-baseline
+- [x] Deterministic place/device, recurring-situation and numeric-baseline
   proposals, bounded review queue, correction and evidence inspection.
-- [ ] Optional bounded observation service, source status and Health Connect.
-- [ ] Today, Ask, Activity and Memory; visible chat context and accessible flows.
-- [ ] Upgrade, privacy, lifecycle, large-history and emulator verification.
+- [x] Optional bounded observation service, source status and Health Connect.
+- [x] Today, Ask, Activity and Memory; visible chat context and accessible flows.
+- [x] Upgrade, privacy, lifecycle, large-history and emulator verification.
 - [ ] Commit/push and publish matching Android preview, source and checksums.
 
-Observed: build 3 source is 691d38d5; the existing store encrypts full record
-payloads and loads all history; there is no memory engine or background sensor
-session. Existing tests passed before this work (99 feature, five instrumented).
-Planned: the checks and delivery above. Unavailable so far: physical Android
-battery evidence and physical Pebble validation. Never label simulation as a
-hardware result. Physical watch pairing/reset is outside this implementation.
+Implemented in Android preview 0.2.0-learning-dev (4). Validation: 109 feature
+checks and 16 Android instrumentation checks pass, including encrypted v1
+migration, transitive deletion, 100,000-row indexed paging, real foreground
+service capture/Stop, correction persistence, explicit retained notes and 200%
+font navigation. Storage retains encrypted history; learning uses compact
+hourly frames instead of loading all observations on startup. The source-based
+provider privacy checks remain active for resumed threads and attached reports.
+
+Physical Android battery/thermal behavior, real Health Connect account access,
+stock-host exchange and physical Pebble validation remain unverified. No watch
+pairing, reset or firmware change was performed. JSON exports stream the full
+history and include memories/sessions. The build uses the established preview
+package and debug signing identity. Publication is tracked by the final item.
+See [the guide](personal-context.md) and [verification](learning-evidence/verification.json).
 
 Review provenance: Opus 4.8 and Grok 4.5 agreed on the product and architectural
 spine; their memory-lifecycle and discoverability concerns informed the plan.

@@ -4,8 +4,8 @@ import android.app.Application
 import coredevices.pebble.signal.AndroidSignalStation
 import io.rebble.pebblekit2.client.DefaultPebbleAndroidAppPicker
 
-class SignalApplication : Application() {
-    lateinit var station: AndroidSignalStation
+class SignalApplication : Application(), coredevices.pebble.signal.SignalObservationHost {
+    override lateinit var station: AndroidSignalStation
         private set
     lateinit var watchLink: PebbleAppLink
         private set

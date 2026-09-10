@@ -10,8 +10,8 @@ android {
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        versionCode = 3
-        versionName = "0.1.2-separation-dev"
+        versionCode = 4
+        versionName = "0.2.0-learning-dev"
     }
     buildFeatures { compose = true }
     compileOptions {
@@ -29,6 +29,7 @@ dependencies {
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.kotlin.test)
+    androidTestImplementation(libs.room.runtime)
     androidTestImplementation("androidx.compose.ui:ui-test-junit4:1.11.3")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
     testImplementation(libs.kotlin.test)

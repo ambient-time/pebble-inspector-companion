@@ -188,7 +188,7 @@ internal fun SignalCapturePage(
         }
         if (watchSetupOpen) item {
             Text("Watch setup", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge)
-            Text("This test build manages its own watch connection. Keep only one companion actively connected to the watch. If your watch is already paired here, select it below; no new pairing is needed.")
+            Text("Signal Station uses the watch connection managed by your Pebble app. Select an already connected watch here; no new pairing is needed.")
             SignalChoice("Selected watch", state.settings.watchId, listOf("" to "Phone only") + state.watches.map { it.id to it.name }, !state.busy) {
                 station.updateSettings(state.settings.copy(watchId = it))
             }

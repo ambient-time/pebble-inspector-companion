@@ -57,7 +57,7 @@ import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Instant
 
 private enum class SignalPage(val title: String) {
-    Conversation("Ask"), Capture("Capture"), History("History"), Presence("Nearby"), Settings("Settings")
+    Today("Today"), Conversation("Ask"), Capture("Capture"), History("Activity"), Presence("Nearby"), Sessions("Sessions"), Memory("Memory"), Settings("Settings")
 }
 
 private data class SignalConfirmation(val title: String, val message: String, val action: () -> Unit)
@@ -74,7 +74,7 @@ fun SignalScreen(station: SignalStation, standalone: Boolean = false, onManageWa
 @Composable
 private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onManageWatch: (() -> Unit)?) {
     val state by station.state.collectAsState()
-    var page by remember { mutableStateOf(SignalPage.Conversation) }
+    var page by remember { mutableStateOf(if (standalone) SignalPage.Today else SignalPage.Conversation) }
     var questionDraft by remember { mutableStateOf("") }
     var submittedQuestion by remember(state.threadId) { mutableStateOf<String?>(null) }
     var submittedRecordIds by remember(state.threadId) { mutableStateOf(emptySet<String>()) }
@@ -88,10 +88,18 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
     var fieldTestOpen by remember { mutableStateOf(false) }
     val fieldTestDraft = remember { SignalFieldTestDraft() }
     var detailId by remember { mutableStateOf<String?>(null) }
+    var deletionWasOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(state.deletionPreview) {
+        if (state.deletionPreview != null) deletionWasOpen = true
+        else if (deletionWasOpen) {
+            deletionWasOpen = false
+            if (state.selectedRecordId == null) detailId = null
+        }
+    }
     var confirmation by remember { mutableStateOf<SignalConfirmation?>(null) }
     var historyQuestion by remember { mutableStateOf(false) }
     var attachmentId by remember { mutableStateOf<String?>(null) }
-    val selected = state.records.firstOrNull { it.id == detailId }
+    val selected = state.selectedRecord?.takeIf { it.id == detailId } ?: state.records.firstOrNull { it.id == detailId }
 
     if (!state.initialized) {
         Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).statusBarsPadding().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -101,36 +109,45 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
         return
     }
     if (standalone && !state.settings.onboardingComplete) {
-        SignalSetup(station, state)
+        SignalLearningSetup(state, station) { destination ->
+            page = when (destination) {
+                SignalStartDestination.Capture -> SignalPage.Capture
+                SignalStartDestination.Observe -> SignalPage.Sessions
+                SignalStartDestination.Ask -> SignalPage.Conversation
+            }
+        }
         return
     }
-    BackHandler(enabled = fieldTestOpen || detailId != null || page != SignalPage.Conversation) {
-        if (fieldTestOpen) fieldTestOpen = false else if (detailId != null) detailId = null else page = SignalPage.Conversation
+    BackHandler(enabled = fieldTestOpen || detailId != null || page != SignalPage.Today) {
+        if (fieldTestOpen) fieldTestOpen = false else if (detailId != null) detailId = null else page = SignalPage.Today
     }
     LaunchedEffect(state.threadId) { attachmentId = null }
+    LaunchedEffect(page) {
+        if (page in setOf(SignalPage.Today, SignalPage.History, SignalPage.Capture, SignalPage.Presence)) station.searchSavedHistory("")
+    }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).then(if (standalone) Modifier.statusBarsPadding().navigationBarsPadding() else Modifier).imePadding()) {
-        if (standalone) {
+        run {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 SignalAntennaGlyph()
                 Column(Modifier.weight(1f).padding(start = 12.dp)) {
                     SignalHeading("Signal Station")
                     if (state.buildVersion.isNotBlank()) Text(state.buildVersion, style = MaterialTheme.typography.labelSmall)
                 }
-                onManageWatch?.let { TextButton(onClick = it) { Text("Watch") } }
+                TextButton(onClick = { page = SignalPage.Settings; detailId = null; fieldTestOpen = false }) { Text("Settings") }
             }
         }
         FlowRow(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            listOf(SignalPage.Conversation to "Ask", SignalPage.History to "Activity", SignalPage.Settings to "Settings").forEach { (destination, title) ->
-                val selected = if (destination == SignalPage.History) page in listOf(SignalPage.History, SignalPage.Capture, SignalPage.Presence) else page == destination
+            listOf(SignalPage.Today to "Today", SignalPage.Conversation to "Ask", SignalPage.History to "Activity", SignalPage.Memory to "Memory").forEach { (destination, title) ->
+                val selected = if (destination == SignalPage.History) page in listOf(SignalPage.History, SignalPage.Capture, SignalPage.Presence, SignalPage.Sessions) else page == destination
                 FilterChip(selected = selected, onClick = { page = destination; detailId = null; fieldTestOpen = false }, label = { Text(title) })
             }
         }
-        if (page in listOf(SignalPage.History, SignalPage.Capture, SignalPage.Presence) && detailId == null && !fieldTestOpen) {
+        if (page in listOf(SignalPage.History, SignalPage.Capture, SignalPage.Presence, SignalPage.Sessions) && detailId == null && !fieldTestOpen) {
             FlowRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(SignalPage.History to "Saved activity", SignalPage.Capture to "Capture", SignalPage.Presence to "Nearby").forEach { (destination, title) ->
+                listOf(SignalPage.History to "Saved activity", SignalPage.Capture to "Capture", SignalPage.Presence to "Nearby", SignalPage.Sessions to "Sessions").forEach { (destination, title) ->
                     FilterChip(selected = page == destination, onClick = { page = destination }, label = { Text(title) })
                 }
             }
@@ -171,21 +188,26 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
                 onChanges = { station.summarizeChanges(selected.id) },
                 onAnalyze = { station.analyzeRecord(selected.id); detailId = null; page = SignalPage.Conversation },
                 onSettings = { detailId = null; page = SignalPage.Settings },
-                onReference = { detailId = it },
-                onDelete = {
-                    confirmation = SignalConfirmation(
-                        "Delete this record?",
-                        "This also removes dependent analysis and cached excerpts. This cannot be undone.",
-                    ) { station.deleteRecord(selected.id); detailId = null }
-                },
-                onDeleteThread = {
-                    confirmation = SignalConfirmation(
-                        "Delete this conversation?",
-                        "All its messages and dependent reports will be removed. This cannot be undone.",
-                    ) { station.deleteThread(selected.threadId); detailId = null }
-                },
+                onReference = { detailId = it; station.selectRecord(it) },
+                onDelete = { station.previewDeleteRecords(setOf(selected.id)) },
+                onDeleteThread = { station.deleteThread(selected.threadId) },
             )
+        } else if (detailId != null) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                TextButton(onClick = { detailId = null }) { Text("Back") }
+                Text(if (state.selectedRecordLoading) "Loading saved evidence…" else "This saved evidence is no longer available.", Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                if (state.selectedRecordLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            }
         } else when (page) {
+            SignalPage.Today -> SignalTodayPage(state, station,
+                onAsk = { page = SignalPage.Conversation }, onCapture = { page = SignalPage.Capture },
+                onObserve = { page = SignalPage.Sessions }, onMemory = { page = SignalPage.Memory },
+                onDetail = { detailId = it; station.selectRecord(it) }, onSources = { page = SignalPage.Settings },
+                onNearby = { page = SignalPage.Presence })
+            SignalPage.Memory -> SignalMemoryPage(state, station,
+                onEvidence = { detailId = it; station.selectRecord(it) }, onCapture = { page = SignalPage.Capture },
+                onNearby = { page = SignalPage.Presence }, onSources = { page = SignalPage.Settings })
+            SignalPage.Sessions -> SignalSessionsPage(state, station) { page = SignalPage.Settings }
             SignalPage.Capture -> SignalCapturePage(state, station,
                 onDetail = { detailId = it; station.selectRecord(it) },
                 onSources = { page = SignalPage.Settings },
@@ -201,7 +223,7 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
                 },
                 searchHistory = historyQuestion,
                 attachment =
-                attachmentId?.let { id -> state.records.firstOrNull { it.id == id } },
+                attachmentId?.let { id -> state.selectedRecord?.takeIf { it.id == id } ?: state.records.firstOrNull { it.id == id } },
                 onHistoryChange = { historyQuestion = it },
                 onDetail = { detailId = it; station.selectRecord(it) },
                 onSettings = { page = SignalPage.Settings },
@@ -222,6 +244,7 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
             SignalPage.Settings -> SignalConfiguration(state, station, onManageWatch) { confirmation = it }
         }
     }
+    SignalDeletionDialog(state, station)
     confirmation?.let { request ->
         AlertDialog(
             onDismissRequest = { confirmation = null },
@@ -251,6 +274,8 @@ private fun SignalConversation(
 ) {
     var voiceOpen by remember { mutableStateOf(false) }
     var contextOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(draft) { station.suggestMemory(draft) }
+    LaunchedEffect(state.threadId) { station.loadConversation() }
     val records = state.records.filter { it.threadId == state.threadId }.sortedByDescending { it.createdAt }
     val ready = state.settings.provider in state.configuredProviders && state.settings.model.isNotBlank()
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -273,11 +298,13 @@ private fun SignalConversation(
                     Text("Attached: ${signalDateTime(attachment.createdAt)} · ${attachment.question}")
                     TextButton(onClick = onNewThread, enabled = !state.busy) { Text("Remove attachment / new conversation") }
                 }
-                Button(onClick = onSend, enabled = !state.busy && ready && draft.isNotBlank(), modifier = Modifier.fillMaxWidth().sizeIn(minHeight = 48.dp)) {
+                SignalSuggestedMemoryContext(state, station, onDetail)
+                if (state.historyLoading) Text("Loading this conversation before sending…", Modifier.semantics { liveRegion = LiveRegionMode.Polite }, style = MaterialTheme.typography.bodySmall)
+                Button(onClick = onSend, enabled = !state.busy && !state.historyLoading && ready && draft.isNotBlank(), modifier = Modifier.fillMaxWidth().sizeIn(minHeight = 48.dp)) {
                     Text(if (state.busy) "Waiting for reply…" else "Send question")
                 }
                 Text(if (searchHistory) "Includes matching saved history from enabled sources."
-                    else "Sends your question, attached records and this conversation. New readings are collected from Capture.", style = MaterialTheme.typography.bodySmall)
+                    else "Sends your question, attached records, this conversation and any selected memory above. New readings are collected from Capture.", style = MaterialTheme.typography.bodySmall)
             }
         }
         if (records.isNotEmpty()) item {
@@ -355,7 +382,9 @@ private fun SignalHistory(
         item {
             SignalHeading("History")
             Text("Saved on this phone. Searching here is local; asking about history sends matching evidence to your provider.")
-            OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), label = { Text("Search questions, answers, and readings") })
+            OutlinedTextField(query, { query = it; station.searchSavedHistory(it) }, Modifier.fillMaxWidth(), label = { Text("Search questions, answers, and readings") })
+            Text("${state.historyCount} stored records · ${signalStorageLabel(state.storageBytes)} · showing ${state.records.size} records", style = MaterialTheme.typography.bodySmall)
+            if (state.historyLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
         }
         item {
             TextButton(onClick = { toolsOpen = !toolsOpen }) { Text(if (toolsOpen) "Hide history tools" else "Filter, compare & export") }
@@ -377,14 +406,19 @@ private fun SignalHistory(
                 TextButton(onClick = {
                     onConfirm(SignalConfirmation("Export history?", "The export contains your questions, answers, and saved readings. Choose where to share it.") { station.shareHistory("markdown") })
                 }, enabled = state.records.isNotEmpty() && !state.busy) { Text("Export Markdown") }
-                TextButton(onClick = {
-                    onConfirm(SignalConfirmation("Clear all history?", "All conversations, surveys, and saved analysis on this phone will be deleted. Provider settings remain. This cannot be undone.") { station.clearHistory() })
-                }, enabled = state.records.isNotEmpty() && !state.busy) { Text("Clear all") }
+                TextButton(onClick = { station.previewDeleteRecords(null) }, enabled = state.historyReady && state.historyCount > 0 && !state.busy) { Text("Review deletion of all history") }
             }
             Text("${records.size} ${if (records.size == 1) "record" else "records"} · select two surveys to compare", style = MaterialTheme.typography.bodySmall)
-            Text("Filters above affect this list. Ask about history searches saved records with currently enabled sources.", style = MaterialTheme.typography.bodySmall)
+            Text("Date and source filters apply to this page. Text search searches all stored records. Ask about history uses currently enabled sources.", style = MaterialTheme.typography.bodySmall)
+            TextButton(onClick = { station.previewDeleteRecords(records.map { it.id }.toSet()) }, enabled = state.historyReady && records.isNotEmpty() && !state.busy) { Text("Review deletion of this filtered page") }
         }
-        if (records.isEmpty()) item { Text(if (state.records.isEmpty()) "No saved history yet." else "No records match these filters.") }
+        if (records.isEmpty()) item { Text(if (!state.historyReady || state.historyLoading) "Loading saved activity…" else if (state.historyCount == 0L) "No saved history yet." else "No records match this search or these page filters.") }
+        item {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (state.historyHasMore) OutlinedButton(onClick = station::loadMoreHistory, enabled = !state.historyLoading) { Text("Older activity") }
+                TextButton(onClick = { query = ""; station.searchSavedHistory("") }, enabled = !state.historyLoading) { Text("Newest activity") }
+            }
+        }
         items(records, key = { it.id }) { record ->
             HorizontalDivider()
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -437,8 +471,8 @@ private fun SignalDetail(
                 Button(onClick = onAnalyze, enabled = !state.busy && record.state == "ready" && record.observations.isNotEmpty() && state.settings.provider in state.configuredProviders && state.settings.model.isNotBlank() && SignalHistory.allowed(record, state.settings.enabled)) { Text("Analyze readings") }
                 OutlinedButton(onClick = onAttach, enabled = !state.busy && record.state == "ready" && SignalHistory.allowed(record, state.settings.enabled)) { Text("Attach to conversation") }
                 if (record.kind != "capture" && record.provider != "local") OutlinedButton(onClick = onResume, enabled = !state.busy) { Text("Resume conversation") }
-                TextButton(onClick = onDelete, enabled = !state.busy) { Text("Delete record") }
-                TextButton(onClick = onDeleteThread, enabled = !state.busy) { Text("Delete conversation") }
+                TextButton(onClick = onDelete, enabled = !state.busy && state.historyReady) { Text("Delete record") }
+                TextButton(onClick = onDeleteThread, enabled = !state.busy && state.historyReady) { Text("Delete conversation") }
             }
         }
         if (record.observations.isNotEmpty() && (!SignalHistory.allowed(record, state.settings.enabled) || state.settings.provider !in state.configuredProviders || state.settings.model.isBlank())) item {
@@ -451,8 +485,25 @@ private fun SignalDetail(
             SignalHeading("Evidence used")
             record.references.distinct().forEach { id ->
                 val reference = state.records.firstOrNull { it.id == id }
-                if (reference == null) Text("Referenced record unavailable")
-                else TextButton(onClick = { onReference(id) }) { Text("${signalDateTime(reference.createdAt)} · ${reference.question}") }
+                TextButton(onClick = { onReference(id) }) { Text(reference?.let { "${signalDateTime(it.createdAt)} · ${it.question}" } ?: "Inspect saved evidence") }
+            }
+        }
+        if (record.memoryReferences.isNotEmpty()) item { SignalHeading("Memory used") }
+        record.memoryReferences.forEach { (memoryId, revision) ->
+            item(key = "memory:$memoryId") {
+                val memory = state.memories.firstOrNull { it.id == memoryId }
+                if (memory == null) Text("Referenced memory is no longer available · revision $revision")
+                else {
+                    if (memory.revision != revision) Text("This answer used revision $revision. The current memory is revision ${memory.revision}; its wording and evidence below may have changed.", style = MaterialTheme.typography.bodySmall)
+                    else Text("Revision $revision · ${memory.state}", style = MaterialTheme.typography.labelLarge)
+                    Text(memory.text)
+                    if (!SignalLearning.eligible(memory, state.settings)) Text("This memory is not currently available for new model context.", style = MaterialTheme.typography.bodySmall)
+                    if (memory.coverage.isNotBlank()) Text(memory.coverage, style = MaterialTheme.typography.bodySmall)
+                    if (memory.evidence.isEmpty()) Text("No observation evidence is attached.", style = MaterialTheme.typography.bodySmall)
+                    memory.evidence.forEach { evidence ->
+                        TextButton(onClick = { onReference(evidence.recordId) }) { Text("Inspect evidence · ${signalDateTime(evidence.collectedAt)}") }
+                    }
+                }
             }
         }
         item { SignalHeading("Readings"); if (record.observations.isEmpty()) Text("No readings attached.") }
@@ -492,7 +543,7 @@ private fun SignalConfiguration(state: SignalState, station: SignalStation, onMa
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            SignalHeading("Setup")
+            SignalHeading("Settings")
             Text("Capture works without a provider key. Add a key when you want model analysis.")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = { station.updateSettings(settings.copy(onboardingComplete = false)) }, enabled = !state.busy) { Text("Revisit setup guide") }
@@ -524,6 +575,14 @@ private fun SignalConfiguration(state: SignalState, station: SignalStation, onMa
             TextButton(onClick = {
                 onConfirm(SignalConfirmation("Remove answer key?", "You can add another key later.") { station.saveKey(settings.provider, "") })
             }, enabled = !state.busy && settings.provider in state.configuredProviders) { Text("Remove saved key") }
+        }
+        item {
+            HorizontalDivider()
+            SignalLearningControls(state, station)
+        }
+        item {
+            HorizontalDivider()
+            SignalHealthControls(state, station)
         }
         item {
             HorizontalDivider()
@@ -565,7 +624,7 @@ private fun SignalConfiguration(state: SignalState, station: SignalStation, onMa
             SignalChoice("Weather for", settings.weatherLocation, listOf("place" to "A chosen place", "device" to "Near this phone"), !state.busy) {
                 station.updateSettings(settings.copy(weatherLocation = it))
             }
-            Text("Weather switches below send a chosen place or your phone position rounded to about 1 km to Open-Meteo when you tap Capture. Coordinates stay out of model context unless Location is also enabled.")
+            Text("Weather switches below send a chosen place or your phone position rounded to about 1 km to Open-Meteo during a capture or enabled observation session. Coordinates stay out of model context unless Location is also enabled.")
             if (settings.weatherLocation == "place") {
                 Text(settings.weatherPlace?.let { "Saved place: ${it.name}" } ?: "Choose a place before collecting weather.")
                 OutlinedTextField(weatherQuery, { weatherQuery = it.take(100) }, Modifier.fillMaxWidth(), label = { Text("City and country") }, singleLine = true, enabled = !state.busy)

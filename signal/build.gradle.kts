@@ -38,6 +38,7 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.androidx.activity.compose)
             implementation(libs.room.runtime)
+            implementation("androidx.health.connect:connect-client:1.1.0")
             implementation(libs.ktor.client.okhttp)
             implementation("com.alphacephei:vosk-android:0.3.75")
         }

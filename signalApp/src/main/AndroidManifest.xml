@@ -17,6 +17,19 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.health.READ_STEPS" />
+    <uses-permission android:name="android.permission.health.READ_DISTANCE" />
+    <uses-permission android:name="android.permission.health.READ_ACTIVE_CALORIES_BURNED" />
+    <uses-permission android:name="android.permission.health.READ_TOTAL_CALORIES_BURNED" />
+    <uses-permission android:name="android.permission.health.READ_EXERCISE" />
+    <uses-permission android:name="android.permission.health.READ_SLEEP" />
+    <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_HISTORY" />
+    <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <queries><package android:name="com.google.android.apps.healthdata" /></queries>
     <application android:name=".SignalApplication" android:label="Signal Station" android:icon="@mipmap/ic_launcher" android:allowBackup="false" android:fullBackupContent="@xml/inspector_backup_rules" android:dataExtractionRules="@xml/inspector_data_extraction_rules" android:supportsRtl="true" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:usesCleartextTraffic="false">
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
@@ -25,6 +38,16 @@
             <intent-filter><action android:name="io.rebble.pebblekit2.RECEIVE_DATA_FROM_WATCH" /></intent-filter>
         </service>
         <service android:name="coredevices.pebble.signal.SignalWakeService" android:exported="false" android:foregroundServiceType="microphone" />
+        <service android:name="coredevices.pebble.signal.SignalObservationService" android:exported="false" android:foregroundServiceType="specialUse|location|connectedDevice|health">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="User-started finite environment observation with individually selected sensors and visible Stop control" />
+        </service>
+        <activity android:name="coredevices.pebble.signal.SignalHealthPermissionActivity" android:exported="false" />
+        <activity android:name="coredevices.pebble.signal.SignalHealthRationaleActivity" android:exported="true">
+            <intent-filter><action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" /></intent-filter>
+        </activity>
+        <activity-alias android:name="ViewHealthPermissionUsage" android:exported="true" android:targetActivity="coredevices.pebble.signal.SignalHealthRationaleActivity" android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
+            <intent-filter><action android:name="android.intent.action.VIEW_PERMISSION_USAGE" /><category android:name="android.intent.category.HEALTH_PERMISSIONS" /></intent-filter>
+        </activity-alias>
         <activity android:name="coredevices.pebble.signal.SignalPermissionActivity" android:exported="false" />
         <provider android:name="coredevices.pebble.signal.SignalExportProvider" android:authorities="${applicationId}.signal-export" android:exported="false" android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/signal_export_paths" />

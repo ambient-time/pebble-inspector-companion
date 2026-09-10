@@ -1,0 +1,32 @@
+{
+  "version": "0.2.0-learning-dev",
+  "versionCode": 4,
+  "checkedAt": "2026-09-09",
+  "tests": {
+    "feature": {
+      "tests": 109,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "android": {
+      "tests": 16,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "boundaries": [
+    "Physical Android battery and thermal behavior not verified",
+    "Physical Pebble and stock host exchange not verified",
+    "Health Connect account permissions and real health records not verified",
+    "No iOS release; independent Android shell only"
+  ],
+  "review": {
+    "designHelper": "Implemented and reviewed UI; fixed context, deletion, history and permission-flow findings",
+    "anthropic/claude-opus-4-8": "Partial response. Suggested expiring deletion tombstones conflicts with explicit forget policy. Claimed dangling memory after Health remove contradicted by transitive-closure implementation and deletion test. No approval inferred.",
+    "grok/grok-4.5": "Two transport timeouts with no response. No successful release review."
+  },
+  "storage": "Encrypted v1-to-v2 migration with opaque thread index; 100000-row paging and absent-thread query verified",
+  "visual": "Today and Memory at 200 percent font visually inspected; navigation acceptance test passed"
+}

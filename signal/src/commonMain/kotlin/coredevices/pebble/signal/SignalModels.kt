@@ -6,6 +6,8 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class SignalSettings(
     val onboardingComplete: Boolean = false,
+    val learningEnabled: Boolean = false,
+    val healthHistoryDays: Int = 7,
     val provider: String = "openai",
     val model: String = "gpt-4.1-mini",
     val endpoint: String = "",
@@ -38,6 +40,9 @@ data class SignalObservation(
     val windowStart: Long? = null,
     val windowEnd: Long? = null,
     val identity: String = "",
+    val id: String = "",
+    val number: Double? = null,
+    val boolean: Boolean? = null,
 )
 
 @Serializable
@@ -59,6 +64,8 @@ data class SignalRecord(
     val kind: String = "analysis",
     val endpoint: String = "",
     val fieldTest: SignalFieldTest? = null,
+    val sessionId: String = "",
+    val memoryReferences: Map<String, Long> = emptyMap(),
 )
 
 data class SignalSource(val key: String, val name: String, val group: String, val available: Boolean = true)
@@ -86,6 +93,23 @@ data class SignalState(
     val presenceCandidates: List<SignalRadioCandidate> = emptyList(),
     val presenceStatus: String = "Check nearby signals when ready.",
     val placeLookup: SignalPlaceLookup? = null,
+    val memories: List<SignalMemory> = emptyList(),
+    val memorySuggestions: List<SignalMemory> = emptyList(),
+    val useMemory: Boolean = true,
+    val learningStatus: String = "Learning is off. Enable it when you are ready.",
+    val observationSession: SignalObservationSession? = null,
+    val sessions: List<SignalObservationSession> = emptyList(),
+    val sourceStatus: List<SignalSourceStatus> = emptyList(),
+    val deletionPreview: SignalDeletionPreview? = null,
+    val historyHasMore: Boolean = false,
+    val historyCount: Long = 0,
+    val historyLoading: Boolean = false,
+    val historyReady: Boolean = false,
+    val storageBytes: Long = 0,
+    val healthStatus: String = "Health Connect is optional.",
+    val selectedRecord: SignalRecord? = null,
+    val selectedRecordLoading: Boolean = false,
+
 )
 
 interface SignalStation {
@@ -106,6 +130,7 @@ interface SignalStation {
     fun cancel()
     fun newThread()
     fun selectRecord(id: String)
+    fun loadConversation() = Unit
     fun resumeThread(id: String)
     fun attachRecord(id: String)
     fun compareRecords(first: String, second: String)
@@ -127,6 +152,21 @@ interface SignalStation {
     fun savePlaceFence(fence: SignalPlaceFence)
     fun removePlaceFence(id: String)
     fun lookupNearbyPlace()
+    fun enableLearning(enabled: Boolean) {}
+    fun reviewMemory(id: String, action: String, text: String = "") {}
+    fun saveMemoryNote(text: String) {}
+    fun suggestMemory(query: String) {}
+    fun setUseMemory(enabled: Boolean) {}
+    fun startObservation(minutes: Int, sources: Set<String>) {}
+    fun stopObservation() {}
+    fun loadMoreHistory() {}
+    fun searchSavedHistory(query: String) {}
+    fun previewDeleteRecords(ids: Set<String>?) {}
+    fun previewForgetMemory(id: String) {}
+    fun applyDeletion(keepAsNotes: Set<String>) {}
+    fun dismissDeletion() {}
+    fun requestHealthPermissions(days: Int = 7, background: Boolean = false) {}
+    fun importHealth() {}
     suspend fun exportHistory(): String
 }
 
