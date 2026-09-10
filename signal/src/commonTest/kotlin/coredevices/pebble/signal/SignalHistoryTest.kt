@@ -15,6 +15,33 @@ class SignalHistoryTest {
     private fun retrieve(records: List<SignalRecord>, query: String, enabled: Set<String> = setOf("health.steps")) =
         SignalHistory.retrieve(records, query, enabled, now = now, zone = zone)
 
+    @Test fun projectionKeepsOriginalIdentityAndOnlySendsSelectedEvidence() {
+        val original = record("mixed", reading(), reading("health.heart_rate", "SECRET"), question = "Broad private question")
+        val projection = SignalHistory.project(listOf(original), "steps yesterday", original.sourceKeys, now = now, zone = zone).single()
+        assertEquals(original, projection.original)
+        assertEquals("Selected observations", projection.excerpt.question)
+        assertEquals("", projection.excerpt.answer)
+        assertEquals(listOf("health.steps"), projection.excerpt.observations.map { it.key })
+    }
+
+    @Test fun globalRankingKeepsOlderStrongMatchBeyondThirtyRecentRecords() {
+        val recent = (1..50).map { record("recent-$it", question = "cedar", answer = "", createdAt = now + it) }
+        val strong = record("older", question = "cedar library quiet", answer = "", createdAt = now - 10000)
+        val selected = mutableListOf<ProjectedContext>()
+        (recent + strong).forEach { row ->
+            selected += SignalHistory.project(listOf(row), "cedar library quiet", emptySet(), now = now, zone = zone)
+            selected.sortWith(SignalHistory.order)
+            if (selected.size > 30) selected.removeAt(selected.lastIndex)
+        }
+        assertEquals("older", selected.first().original.id)
+        assertEquals(30, selected.size)
+    }
+
+    @Test fun nonLatinWordsDoNotBecomeAnEmptyQuery() {
+        val rows = listOf(record("match", question = "図書館前", answer = ""), record("other", question = "station", answer = ""))
+        assertEquals(listOf("match"), retrieve(rows, "図書館前").map { it.id })
+    }
+
     @Test fun disabledObservationCannotHideBehindMissingSourceMetadata() {
         val saved = record("old", reading(), reading("health.heart_rate", "70")).copy(sourceKeys = setOf("health.steps"))
         assertFalse(SignalHistory.allowed(saved, setOf("health.steps")))

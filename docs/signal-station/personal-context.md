@@ -22,7 +22,7 @@ is a separate choice; observation sessions do not record ambient audio or video.
 **Activity** contains saved captures, nearby checks, sessions and reports. Older
 activity loads in pages. Search checks saved history on the phone. You can
 inspect the original readings and their measurement dates before asking a
-provider to analyze them. JSON exports contain records, memories and sessions;
+provider to analyze them. JSON exports contain records, memories, sessions and saved questions;
 Markdown exports are for reading. Exports are temporary share files, removed
 from the app cache after ten minutes or when affected history is deleted.
 
@@ -45,13 +45,33 @@ was during unobserved time. Health patterns are descriptive observations, not
 health assessments. Corrected wording stays accepted until the underlying
 pattern changes.
 
-In **Ask**, type or dictate a question and review the suggested memories beside
-Send. At most five relevant, confirmed memories are selected locally. Switch
-**Use memory** off to exclude them. Disabled sources and memories awaiting
-review are excluded. Sending uses your chosen provider and key. Continuing a
-conversation can include its eligible recent messages; searching history or
-attaching a report includes the chosen evidence. Capturing, importing health,
-learning and reviewing memories do not call a language model.
+In **Ask**, type or dictate a question and choose **Review context**. This step
+runs locally, even without a provider key. It shows the record and memory
+counts, message size, and the exact text prepared for your provider. History
+uses a ranked selection of at most 30 matching records. Date and source
+restrictions remove broader prose from the selected excerpts. Size limits can
+omit records; the review tells you when that happens. The original records
+remain available in Activity.
+
+Choose **Send question** only after reviewing. Sending uses your chosen provider
+and key, and may use credits. If evidence is deleted or changes before Send,
+Signal Station asks you to review again. It keeps your draft after errors and
+does not retry automatically. At most five confirmed memories are selected
+locally; **Use memory** excludes them when switched off.
+
+**Save question** gives a question a name. Find it under **Saved questions** on
+Today. Opening one prepares an editable draft: it does not collect, enable a
+source, ask for a permission, or contact a provider. Saved source choices and
+attachments are resolved against current data. Disabled or deleted selections
+need your attention. **Use current context / remove saved attachments** lets
+you deliberately revise those choices. **Save changes** updates the recipe;
+**Save as new** keeps both. Deleting a recipe leaves its evidence alone.
+
+In Settings, **Check answer setup** checks local storage and saved configuration.
+**Test with provider** sends a small test question and may use credits. Neither
+runs a sensor capture. A shared diagnostic report contains only the build,
+stage, result, elapsed time and message size. It excludes your questions,
+answers, keys, health readings, coordinates and radio identifiers.
 
 For **Health Connect**, enable individual data types in Settings, then review
 health access. The app can read steps, distance, active and total calories,

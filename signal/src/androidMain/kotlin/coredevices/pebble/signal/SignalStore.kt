@@ -159,6 +159,8 @@ class SignalStore(context: Context, private val namespace: String = "signal", pr
         ids.toList().chunked(400).forEach { dao.delete(it); dao.deleteDocuments(it); dao.deleteEdges(it) }
     }
     suspend fun clear() { val ids = mutableSetOf<String>(); walk { _, r -> ids += r.id }; delete(deletionClosure(ids)) }
+    suspend fun savedQuestions(): List<SavedQuestion> = documents("saved_question").map { json.decodeFromString<SavedQuestion>(it) }.sortedBy { it.title.lowercase() }
+    suspend fun saveQuestion(value: SavedQuestion) = document("q:${value.id}", "saved_question", json.encodeToString(value))
     suspend fun memory(): List<SignalMemory> = documents("memory").map { json.decodeFromString(it) }
     suspend fun saveMemory(memory: SignalMemory) = database.withTransaction {
         val id = "m:${memory.id}"

@@ -99,6 +99,12 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
     var confirmation by remember { mutableStateOf<SignalConfirmation?>(null) }
     var historyQuestion by remember { mutableStateOf(false) }
     var attachmentId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(state.savedQuestionOpenToken) {
+        state.savedQuestionDraft?.let { recipe ->
+            questionDraft = recipe.question; historyQuestion = recipe.searchHistory; attachmentId = null
+            page = SignalPage.Conversation; detailId = null
+        }
+    }
     val selected = state.selectedRecord?.takeIf { it.id == detailId } ?: state.records.firstOrNull { it.id == detailId }
 
     if (!state.initialized) {
@@ -215,7 +221,7 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
                 onFieldTest = { fieldTestOpen = true },
             )
             SignalPage.Conversation -> SignalConversation(
-                state, station, questionDraft, { questionDraft = it },
+                state, station, questionDraft, { questionDraft = it; station.dismissQuestionReview() },
                 onSend = {
                     submittedQuestion = questionDraft.trim()
                     submittedRecordIds = state.records.map { it.id }.toSet()
@@ -224,7 +230,7 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
                 searchHistory = historyQuestion,
                 attachment =
                 attachmentId?.let { id -> state.selectedRecord?.takeIf { it.id == id } ?: state.records.firstOrNull { it.id == id } },
-                onHistoryChange = { historyQuestion = it },
+                onHistoryChange = { historyQuestion = it; station.dismissQuestionReview() },
                 onDetail = { detailId = it; station.selectRecord(it) },
                 onSettings = { page = SignalPage.Settings },
                 onNewThread = { station.newThread(); questionDraft = ""; attachmentId = null; historyQuestion = false },
@@ -232,7 +238,7 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
             SignalPage.History -> SignalHistory(
                 state, station,
                 onDetail = { detailId = it; station.selectRecord(it) },
-                onAskHistory = { historyQuestion = true; page = SignalPage.Conversation },
+                onAskHistory = { station.dismissQuestionReview(); historyQuestion = true; page = SignalPage.Conversation },
                 onCompare = { first, second ->
                     station.compareRecords(first, second)
                     page = SignalPage.Conversation
@@ -272,6 +278,12 @@ private fun SignalConversation(
     onSettings: () -> Unit,
     onNewThread: () -> Unit,
 ) {
+    var saveTitle by remember { mutableStateOf<String?>(null) }
+    var saveAsNew by remember { mutableStateOf(false) }
+    saveTitle?.let { title -> AlertDialog(onDismissRequest = { saveTitle = null }, title = { Text("Save question") },
+        text = { OutlinedTextField(title, { saveTitle = it }, label = { Text("Name") }, singleLine = true) },
+        confirmButton = { TextButton(onClick = { station.saveQuestion(title, draft, searchHistory, saveAsNew); saveTitle = null }, enabled = title.isNotBlank()) { Text("Save") } },
+        dismissButton = { TextButton(onClick = { saveTitle = null }) { Text("Cancel") } }) }
     var voiceOpen by remember { mutableStateOf(false) }
     var contextOpen by remember { mutableStateOf(false) }
     LaunchedEffect(draft) { station.suggestMemory(draft) }
@@ -294,14 +306,37 @@ private fun SignalConversation(
                     label = { Text(if (searchHistory) "Question about saved history" else "Your question") },
                     supportingText = { Text("Type or use keyboard dictation. No watch is needed.") },
                     minLines = 2, maxLines = 6, enabled = !state.busy)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = { saveAsNew = false; saveTitle = state.savedQuestionDraft?.title ?: draft.take(60) }, enabled = !state.busy && draft.isNotBlank()) { Text(if (state.savedQuestionDraft == null) "Save question" else "Save changes") }
+                    if (state.savedQuestionDraft != null) TextButton(onClick = { saveAsNew = true; saveTitle = draft.take(60) }, enabled = !state.busy && draft.isNotBlank()) { Text("Save as new") }
+                }
+                state.savedQuestionDraft?.let { recipe ->
+                    Text("Saved question: ${recipe.title}")
+                    Text("Sources: ${recipe.sourceKeys.sorted().joinToString().ifEmpty { "none" }} · ${recipe.attachmentIds.size} saved attachments")
+                    if (!state.settings.enabled.containsAll(recipe.sourceKeys)) Text("Some saved sources are disabled. Review them in Settings.")
+                    TextButton(onClick = station::dismissSavedQuestion, enabled = !state.busy) { Text("Use current context / remove saved attachments") }
+                }
                 if (attachment != null) {
                     Text("Attached: ${signalDateTime(attachment.createdAt)} · ${attachment.question}")
                     TextButton(onClick = onNewThread, enabled = !state.busy) { Text("Remove attachment / new conversation") }
                 }
                 SignalSuggestedMemoryContext(state, station, onDetail)
                 if (state.historyLoading) Text("Loading this conversation before sending…", Modifier.semantics { liveRegion = LiveRegionMode.Polite }, style = MaterialTheme.typography.bodySmall)
-                Button(onClick = onSend, enabled = !state.busy && !state.historyLoading && ready && draft.isNotBlank(), modifier = Modifier.fillMaxWidth().sizeIn(minHeight = 48.dp)) {
-                    Text(if (state.busy) "Waiting for reply…" else "Send question")
+                Button(onClick = onSend, enabled = !state.busy && !state.historyLoading && draft.isNotBlank(), modifier = Modifier.fillMaxWidth().sizeIn(minHeight = 48.dp)) {
+                    Text(if (state.busy) "Working…" else "Review context")
+                }
+                state.questionReview?.let { review ->
+                    SignalHeading("Review before sending")
+                    Text("${providerLabel(state.settings.provider)} · ${state.settings.model}")
+                    Text("${review.recordCount} records · ${review.memoryCount} memories · ${review.bytes} bytes")
+                    Text("History is ranked and bounded. Dates and source restrictions are applied to the evidence below.")
+                    if (review.omittedRecords > 0) Text("${review.omittedRecords} records omitted by the size limit.")
+                    var showEvidence by remember(review) { mutableStateOf(false) }
+                    TextButton(onClick = { showEvidence = !showEvidence }) { Text(if (showEvidence) "Hide exact message text" else "Show exact message text") }
+                    if (showEvidence) SelectionContainer { Column { review.messages.forEach { (role, text) -> Text("$role\n$text") } } }
+                    Text("Only Send contacts your provider. It may use credits.")
+                    Button(onClick = station::sendReviewedQuestion, enabled = !state.busy && ready, modifier = Modifier.fillMaxWidth().sizeIn(minHeight = 48.dp)) { Text("Send question") }
+                    TextButton(onClick = station::dismissQuestionReview, enabled = !state.busy) { Text("Back to editing") }
                 }
                 Text(if (searchHistory) "Includes matching saved history from enabled sources."
                     else "Sends your question, attached records, this conversation and any selected memory above. New readings are collected from Capture.", style = MaterialTheme.typography.bodySmall)
@@ -334,7 +369,7 @@ private fun SignalConversation(
             if (voiceOpen || state.wakeDraft.isNotBlank() || state.wakePhase !in setOf("stopped", "error", "denied", "draft")) {
                 SignalWakeControls(station, state) { voice -> onDraft(if (draft.isBlank()) voice else "$draft\n\n$voice") }
                 OutlinedButton(onClick = station::recordOnWatch, enabled = !state.busy && state.watches.any { it.id == state.settings.watchId && it.connected }) { Text("Dictate on watch") }
-                if (state.watches.none { it.id == state.settings.watchId && it.connected }) Text("Connect a watch from Watch to use watch dictation.", style = MaterialTheme.typography.bodySmall)
+                if (state.watches.none { it.id == state.settings.watchId && it.connected }) Text("Choose a watch in Settings to use watch dictation.", style = MaterialTheme.typography.bodySmall)
             }
         }
         item {
@@ -551,6 +586,7 @@ private fun SignalConfiguration(state: SignalState, station: SignalStation, onMa
                 OutlinedButton(onClick = station::installWatchApp, enabled = !state.busy && state.watchCapabilities.install && state.watches.any { it.id == settings.watchId && it.connected }) { Text("Install watch app") }
             }
             Text(state.watchCapabilities.description)
+            Text("Watch buttons: Up captures readings · Select asks · Down opens history. Your Pebble app keeps ownership of pairing and watch settings.")
             if (state.installStatus.isNotBlank()) Text(state.installStatus)
             SignalHeading("Answer provider")
         }
@@ -568,9 +604,15 @@ private fun SignalConfiguration(state: SignalState, station: SignalStation, onMa
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { station.saveProvider(model, endpoint, key); key = "" },
                     enabled = !state.busy && model.isNotBlank() && (key.isNotBlank() || settings.provider in state.configuredProviders) && (settings.provider != "custom" || endpoint.startsWith("https://"))) { Text("Save answer setup") }
-                OutlinedButton(onClick = station::testProvider, enabled = !state.busy && !pendingProfile && key.isBlank() && settings.model.isNotBlank() && settings.provider in state.configuredProviders) { Text("Test saved setup") }
+                OutlinedButton(onClick = station::checkAnswerSetup, enabled = !state.busy && !pendingProfile && key.isBlank()) { Text("Check answer setup") }
+                OutlinedButton(onClick = station::testProvider, enabled = !state.busy && !pendingProfile && key.isBlank() && settings.model.isNotBlank() && settings.provider in state.configuredProviders) { Text("Test with provider") }
             }
             if (pendingProfile || key.isNotBlank()) Text("Save these changes before testing or asking.", style = MaterialTheme.typography.bodySmall)
+            state.diagnostics?.let { report ->
+                Text("${report.stage.replace('_', ' ')}: ${report.result.replace('_', ' ')} · ${report.elapsedMs} ms · ${report.payloadBytes} message bytes")
+                TextButton(onClick = station::shareDiagnostics, enabled = !state.busy) { Text("Share diagnostic report") }
+                Text("The report contains build, stage, result, timing and size only. Your question, keys and readings are excluded.", style = MaterialTheme.typography.bodySmall)
+            }
             Text("The test sends a short question using the saved model and key. Provider charges may apply.", style = MaterialTheme.typography.bodySmall)
             TextButton(onClick = {
                 onConfirm(SignalConfirmation("Remove answer key?", "You can add another key later.") { station.saveKey(settings.provider, "") })

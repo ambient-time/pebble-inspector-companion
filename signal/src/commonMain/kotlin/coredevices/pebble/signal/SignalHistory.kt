@@ -9,6 +9,8 @@ import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Clock
 import kotlin.time.Instant
 
+data class ProjectedContext(val original: SignalRecord, val excerpt: SignalRecord, val score: Int)
+
 /** Derived prose is indivisible: every contributing source must still be enabled. */
 object SignalHistory {
     fun allowed(record: SignalRecord, enabled: Set<String>): Boolean =
@@ -17,13 +19,18 @@ object SignalHistory {
     fun retrieve(
         records: List<SignalRecord>, query: String, enabled: Set<String>, limit: Int = 30,
         now: Long = Clock.System.now().toEpochMilliseconds(), zone: TimeZone = TimeZone.currentSystemDefault(),
-    ): List<SignalRecord> {
+    ): List<SignalRecord> = project(records, query, enabled, limit, now, zone).map { it.excerpt }
+
+    fun project(
+        records: List<SignalRecord>, query: String, enabled: Set<String>, limit: Int = 30,
+        now: Long = Clock.System.now().toEpochMilliseconds(), zone: TimeZone = TimeZone.currentSystemDefault(),
+    ): List<ProjectedContext> {
         if (limit <= 0) return emptyList()
         val dates = dateWindow(query, Instant.fromEpochMilliseconds(now).toLocalDateTime(zone).date)
         if (!dates.valid) return emptyList()
         val lower = query.lowercase()
         val sourceHints = sourceAliases.filter { (_, words) -> words.any { word -> Regex("\\b${Regex.escape(word)}\\b").containsMatchIn(lower) } }.keys + enabled.filter { key -> Regex("\\b${Regex.escape(key)}\\b").containsMatchIn(lower) }
-        val terms = lower.replace(Regex("\\d{4}-\\d{2}-\\d{2}"), " ").split(Regex("[^a-z0-9._-]+"))
+        val terms = lower.replace(Regex("\\d{4}-\\d{2}-\\d{2}"), " ").split(Regex("[^\\p{L}\\p{N}._-]+"))
             .filter { it.length > 2 && it !in stopWords && it.toIntOrNull() == null }
         // Topological provenance check: cycles, missing references and disabled ancestors
         // stay ineligible. Avoid recursion/exponential walks through long histories.
@@ -57,11 +64,12 @@ object SignalHistory {
             if (terms.isNotEmpty() && score == 0 && sourceHints.isEmpty()) return@mapNotNull null
             // A dated/metric excerpt cannot safely reuse prose derived from a broader snapshot.
             val excerpt = if ((dates.constrained || sourceHints.isNotEmpty()) && record.observations.isNotEmpty())
-                record.copy(observations = readings, answer = "", summary = "") else record
-            excerpt to score
-        }.sortedWith(compareByDescending<Pair<SignalRecord, Int>> { it.second }.thenByDescending { it.first.createdAt })
-            .take(limit).map { it.first }.toList()
+                record.copy(observations = readings, question = "Selected observations", answer = "", summary = "") else record
+            ProjectedContext(record, excerpt, score)
+        }.sortedWith(order).take(limit).toList()
     }
+
+    val order = compareByDescending<ProjectedContext> { it.score }.thenByDescending { it.original.createdAt }.thenBy { it.original.id }
 
     /** Latest watch + metric + date + period wins; missing and invalid values remain unknown. */
     fun summarize(records: List<SignalRecord>, enabled: Set<String>): String {

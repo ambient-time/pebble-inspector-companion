@@ -153,6 +153,21 @@ class SignalLearningUiTest {
         compose.runOnIdle { assertEquals(0, station.providerRequests) }
     }
 
+    @Test fun savedQuestionOpensAndReviewDoesNotSendAtLargeText() {
+        val recipe = SavedQuestion("saved", "Morning check", "What changed?", searchHistory = true)
+        val station = LearningUiStation(baseState().copy(settings = readySettings(), configuredProviders = setOf("openai"), savedQuestions = listOf(recipe)))
+        show(station, fontScale = 2f)
+        compose.onNode(hasScrollAction()).performScrollToNode(hasText("Morning check"))
+        compose.onNodeWithText("Morning check").performClick()
+        compose.onNodeWithText("Question about saved history").performScrollTo().assertExists()
+        compose.onNodeWithText("Review context").performScrollTo().performClick()
+        compose.onNodeWithText("Review before sending").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Show exact message text").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(0, station.providerRequests); assertEquals(0, station.captures); assertEquals(0, station.permissionRequests) }
+        compose.onNodeWithText("Send question").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(1, station.providerRequests) }
+    }
+
     private fun show(station: LearningUiStation, fontScale: Float? = null) {
         compose.activityRule.scenario.onActivity { activity ->
             activity.setLearningTestContent {
@@ -237,7 +252,10 @@ private class LearningUiStation(initial: SignalState) : SignalStation {
     override fun saveProvider(model: String, endpoint: String, key: String) = Unit
     override fun saveKey(provider: String, key: String) = Unit
     override fun testProvider() { providerRequests++ }
-    override fun ask(text: String, searchHistory: Boolean) { providerRequests++ }
+    override fun ask(text: String, searchHistory: Boolean) { state.value = state.value.copy(questionReview = SignalQuestionReview(text, listOf("user" to text), 0, 0, 0)) }
+    override fun sendReviewedQuestion() { providerRequests++ }
+    override fun dismissQuestionReview() { state.value = state.value.copy(questionReview = null) }
+    override fun openSavedQuestion(id: String) { state.value = state.value.copy(savedQuestionDraft = state.value.savedQuestions.first { it.id == id }, savedQuestionOpenToken = "opened", threadId = "saved-draft") }
     override fun analyzeRecord(id: String) { providerRequests++ }
     override fun survey() { providerRequests++ }
     override fun installWatchApp() = Unit

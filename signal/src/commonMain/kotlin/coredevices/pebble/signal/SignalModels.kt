@@ -71,6 +71,11 @@ data class SignalRecord(
 data class SignalSource(val key: String, val name: String, val group: String, val available: Boolean = true)
 data class SignalWatch(val id: String, val name: String, val connected: Boolean, val connectionId: String = id, val appOpen: Boolean = false, val connectionStatus: String = "")
 data class SignalState(
+    val diagnostics: SignalDiagnosticReport? = null,
+    val savedQuestions: List<SavedQuestion> = emptyList(),
+    val savedQuestionDraft: SavedQuestion? = null,
+    val savedQuestionOpenToken: String = "",
+    val questionReview: SignalQuestionReview? = null,
     val initialized: Boolean = false,
     val buildVersion: String = "",
     val installStatus: String = "",
@@ -118,6 +123,14 @@ interface SignalStation {
     fun updateSettings(settings: SignalSettings)
     fun saveProvider(model: String, endpoint: String, key: String)
     fun saveKey(provider: String, key: String)
+    fun saveQuestion(title: String, question: String, history: Boolean, asNew: Boolean = false) {}
+    fun openSavedQuestion(id: String) {}
+    fun deleteSavedQuestion(id: String) {}
+    fun dismissSavedQuestion() {}
+    fun dismissQuestionReview() {}
+    fun sendReviewedQuestion() {}
+    fun checkAnswerSetup() {}
+    fun shareDiagnostics() {}
     fun testProvider()
     fun ask(text: String, searchHistory: Boolean = false)
     fun capture()
@@ -175,3 +188,27 @@ interface SignalSecrets {
     suspend fun get(provider: String): String?
     suspend fun put(provider: String, key: String)
 }
+
+/** Exact messages reviewed on the phone; never persisted automatically. */
+data class SignalQuestionReview(
+    val question: String,
+    val messages: List<Pair<String, String>>,
+    val recordCount: Int,
+    val memoryCount: Int,
+    val omittedRecords: Int,
+) {
+    val bytes: Int get() = messages.sumOf { it.second.encodeToByteArray().size }
+}
+
+@Serializable
+data class SavedQuestion(
+    val id: String, val title: String, val question: String,
+    val sourceKeys: Set<String> = emptySet(), val attachmentIds: Set<String> = emptySet(),
+    val searchHistory: Boolean = false, val useMemory: Boolean = true,
+)
+
+@Serializable
+data class SignalDiagnosticReport(
+    val build: String, val stage: String, val result: String,
+    val elapsedMs: Long = 0, val payloadBytes: Int = 0,
+)

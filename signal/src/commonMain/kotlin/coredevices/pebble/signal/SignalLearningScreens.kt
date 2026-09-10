@@ -119,6 +119,16 @@ internal fun SignalTodayPage(state: SignalState, station: SignalStation, onAsk: 
             Text("${signalCount(state.settings.enabled.size, "source")} enabled · captures stay on this phone", style = MaterialTheme.typography.bodySmall)
             if (state.settings.enabled.isEmpty()) TextButton(onClick = onSources) { Text("Choose sources") }
         }
+        if (state.savedQuestions.isNotEmpty()) item {
+            LearningHeading("Saved questions")
+            Text("Open a draft, review its current context, then send when ready.")
+        }
+        items(state.savedQuestions, key = { "question:${it.id}" }) { recipe ->
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { station.openSavedQuestion(recipe.id) }, enabled = !state.busy) { Text(recipe.title) }
+                TextButton(onClick = { station.deleteSavedQuestion(recipe.id) }, enabled = !state.busy) { Text("Delete ${recipe.title}") }
+            }
+        }
         state.observationSession?.let { session -> item { SignalSessionSummary(session, state, station) } }
         if (latest != null) item {
             HorizontalDivider()
