@@ -168,6 +168,44 @@ class SignalLearningUiTest {
         compose.runOnIdle { assertEquals(1, station.providerRequests) }
     }
 
+    @Test fun sensingEvidenceAndReviewRemainReachable() = sensingReview(1f)
+    @Test fun sensingEvidenceAndReviewRemainReachableAtLargeText() = sensingReview(2f)
+
+    private fun sensingReview(fontScale: Float) {
+        val now = System.currentTimeMillis()
+        val records = (0..2).map { index ->
+            val time = now - (2 - index) * 60_000
+            SignalRecord("sensing-$index", "sensing", time, "Captured readings", provider = "local", model = "", state = "ready", kind = "capture",
+                sourceKeys = setOf(BATTERY, "location"), sessionId = "sensing-session",
+                observations = listOf(
+                    SignalObservation(BATTERY, "phone", (80 - index).toString(), "%", time, measuredAt = time, status = "fresh", number = (80 - index).toDouble(), id = "battery-$index"),
+                    SignalObservation("location", "phone", collectedAt = time, measuredAt = time, status = "fresh", id = "fix-$index", fields = mapOf("latitude" to "45.5", "longitude" to "-122.6", "accuracyMeters" to "10"))))
+        }
+        val station = LearningUiStation(baseState().copy(records = records, historyCount = records.size.toLong(),
+            settings = readySettings().copy(enabled = setOf(BATTERY, "location", "places.nearby"), lookups = SignalLookupSettings(nearbyPlaces = true)),
+            sessions = listOf(SignalObservationSession("sensing-session", now - 120_000, now, setOf(BATTERY, "location"), state = "completed", captures = 3, attempts = 4))))
+        show(station, fontScale)
+        compose.onNode(hasScrollAction()).performScrollToNode(hasText("Numeric history · local"))
+        compose.onNodeWithText("Numeric history · local").performScrollTo().performClick()
+        compose.onNodeWithText("Exact values and evidence").performScrollTo().performClick()
+        compose.onNodeWithText("Measurement table · phone local time").performScrollTo().assertIsDisplayed()
+        captureFixtureScreenshot("sensing-table-${fontScale.toInt()}.png")
+        compose.onNode(hasText("Activity") and hasClickAction()).performClick()
+        compose.onNode(hasText("Nearby") and hasClickAction()).performClick()
+        compose.onNode(hasScrollAction()).performScrollToNode(hasText("Look up nearby places…"))
+        compose.onNodeWithText("Look up nearby places…").performScrollTo().assertIsEnabled().performClick()
+        compose.onNodeWithText("Review external lookup").assertIsDisplayed()
+        compose.onNodeWithText("Exact outgoing request").performScrollTo().assertIsDisplayed()
+        captureFixtureScreenshot("sensing-lookup-${fontScale.toInt()}.png")
+        compose.onNodeWithText("Cancel").assertIsDisplayed().performClick()
+        compose.onNode(hasText("Sessions") and hasClickAction()).performClick()
+        compose.onNode(hasScrollAction()).performScrollToNode(hasText("Inspect session evidence"))
+        compose.onNodeWithText("Inspect session evidence").performScrollTo().performClick()
+        compose.onNodeWithText("Inspect record · sensing-0").performScrollTo().assertIsDisplayed()
+        captureFixtureScreenshot("sensing-session-${fontScale.toInt()}.png")
+        compose.runOnIdle { assertEquals(0, station.providerRequests); assertEquals(0, station.captures); assertEquals(0, station.lookupSends) }
+    }
+
     private fun show(station: LearningUiStation, fontScale: Float? = null) {
         compose.activityRule.scenario.onActivity { activity ->
             activity.setLearningTestContent {
@@ -226,10 +264,16 @@ private class LearningUiStation(initial: SignalState) : SignalStation {
     var captures = 0
     var providerRequests = 0
     var observationStops = 0
+    var lookupSends = 0
     val observationStarts = mutableListOf<Pair<Int, Set<String>>>()
     val retainedNotes = mutableListOf<Set<String>>()
 
     override fun updateSettings(settings: SignalSettings) { state.value = state.value.copy(settings = settings) }
+    override fun prepareLookup(kind: String, recordId: String) {
+        state.value = state.value.copy(lookupReview = SignalLookupProviders.prepare(kind, state.value.records.first { it.id == recordId }, state.value.settings, System.currentTimeMillis()).review)
+    }
+    override fun sendReviewedLookup() { lookupSends++ }
+    override fun dismissLookupReview() { state.value = state.value.copy(lookupReview = null) }
     override fun requestPermissions() { permissionRequests++ }
     override fun capture() { captures++ }
     override fun applyDeletion(keepAsNotes: Set<String>) {
