@@ -55,4 +55,6 @@ The machine-readable Android receipt lives in the release toolkit at `docs/relea
 
 ## Device follow-up
 
+Build **8** supersedes the build-7 download with clearer billing and xAI authentication errors. Its frozen source is `7c5acfed46032639649c2a8b2115f00bed81a12c`. Both public domains serve matching files. The extended [acceptance record](sensing-acceptance.md) contains the live-service outcomes, Android 9/12 compatibility runs, successful TalkBack navigation and remaining physical gates. The final-build upgrade fixture passed again without uninstalling.
+
 Real sensor accuracy, Health Connect account behavior, battery/long-session behavior and stock Pebble-host exchange require physical-device checks. The watch-settings reset is unresolved. The recovered owner watch was not installed or modified; its installation hold remains. Flint/Gabbro native render evidence and controlled watch acceptance are prerequisites to any public watch promotion.
