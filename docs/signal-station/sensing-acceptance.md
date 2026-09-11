@@ -2,7 +2,9 @@
 
 By Luke Steuber. September 10, 2026.
 
-The current Android preview is **0.3.0-sensing-dev (8)**, from `7c5acfed46032639649c2a8b2115f00bed81a12c`. It is available at <https://lukesteuber.com/downloads/apps/signal-station/> and updates the earlier separate previews in place. Its APK SHA-256 is `a31c21000acc244d330494f77b880ce57d5bbfbd9db0a68a0d39d7dfa47558fe`. The package and signing certificate are unchanged.
+The sensing-release Android preview was **0.3.0-sensing-dev (8)**, from `7c5acfed46032639649c2a8b2115f00bed81a12c`. It is available at <https://lukesteuber.com/downloads/apps/signal-station/> and updates the earlier separate previews in place. Its APK SHA-256 is `a31c21000acc244d330494f77b880ce57d5bbfbd9db0a68a0d39d7dfa47558fe`. The package and signing certificate are unchanged.
+
+Build 9 follows this checkpoint with [capture context and navigation fixes](capture-context-acceptance.md). The results below describe the earlier sensing release.
 
 This record checks the [approved plan](sensing-release-plan.md) against implementation and measured evidence. Software and download preparation are complete. Physical acceptance remains open.
 

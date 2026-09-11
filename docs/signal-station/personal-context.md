@@ -6,7 +6,9 @@ Signal Station saves observations about your surroundings and helps you make
 sense of them over time. Your phone is enough. A Pebble watch can collect a
 reading or give quick feedback through the Pebble app you already use.
 
-Start on **Today**. Capture once to save a moment, or choose **Observe for a
+Start on **Now**. **Capture once** saves a moment and attaches it in Ask.
+Choose **Ask about this** on the saved observation to open an editable question.
+Use **Observe for a
 while** for a 15-minute, one-hour or four-hour session. Select the sources you
 want for that session. Android asks for the permissions those sources need.
 You can decline a permission and continue using the other sources.
@@ -20,7 +22,7 @@ unplugged, with low storage, or when the phone is too warm. They finish at their
 chosen end time and do not restart after Android stops the app. Wake listening
 is a separate choice; observation sessions do not record ambient audio or video.
 
-**Activity** contains saved captures, nearby checks, sessions and reports. Older
+**History** contains saved captures, nearby checks, sessions and reports. Older
 activity loads in pages. Search checks saved history on the phone. You can
 inspect the original readings and their measurement dates before asking a
 provider to analyze them. JSON exports contain records, memories, sessions and saved questions;
@@ -29,7 +31,7 @@ measurement times, quality and provenance. Exports include only evidence whose
 sources remain enabled; page filters do not limit the export. Exports are temporary share files, removed
 from the app cache after ten minutes or when affected history is deleted.
 
-**Nearby** shows the saved wireless environment, cellular context, phone location
+Open **Nearby** from Now to see the saved wireless environment, cellular context, phone location
 and optional map lookups. Wi-Fi channel counts describe received advertisements,
 not channel utilization. An advertised open network does not establish internet
 access. Cellular observations include technology, signal and registered or
@@ -64,7 +66,7 @@ same values in a table and links to evidence. Gaps stay gaps. Sensor readings
 include sample counts, actual measurement windows and accuracy when available.
 Step deltas use two cumulative readings within one phone boot, not daily totals.
 
-Turn on learning when you want Signal Station to look for patterns. **Memory**
+Turn on learning when you want Signal Station to look for patterns. **Patterns** in History
 shows proposals, confirmed observations and personal notes. A proposal explains
 which records support it. Confirm its wording, correct it, reject it, or leave
 it for later. No model writes memories automatically. Proposals are limited to
@@ -85,11 +87,23 @@ pattern changes.
 
 In **Ask**, type or dictate a question and choose **Review context**. This step
 runs locally, even without a provider key. It shows the record and memory
-counts, message size, and the exact text prepared for your provider. History
-uses a ranked selection of at most 30 matching records. Date and source
-restrictions remove broader prose from the selected excerpts. Size limits can
-omit records; the review tells you when that happens. The original records
-remain available in Activity.
+counts, retained readings, omitted readings, earlier conversation turns and the
+exact text prepared for your provider. Large captures keep their identity and
+a bounded selection of readings from their sources. A selected capture is never
+silently dropped because it is too large; if no safe excerpt fits, preparation
+stops and explains how to narrow the selection. The original records remain
+available in History.
+
+The attachment card shows the observation’s time and coverage. **Inspect** opens
+its original readings; **Remove** detaches it without deleting the capture or
+starting a new conversation. Attachments remain available for follow-up questions
+and retries. Reopening a conversation restores its linked evidence. Source and
+deletion checks apply again before sending.
+
+**Ask about this**, comparing captures, and **Capture and prepare question** all
+open a draft. They do not contact a model until you review and choose Send.
+Asking about saved history uses a ranked selection of at most 30 records. Date
+and source restrictions remove broader prose from the selected excerpts.
 
 Choose **Send question** only after reviewing. Sending uses your chosen provider
 and key, and may use credits. If evidence is deleted or changes before Send,
@@ -98,7 +112,7 @@ does not retry automatically. At most five confirmed memories are selected
 locally; **Use memory** excludes them when switched off.
 
 **Save question** gives a question a name. Find it under **Saved questions** on
-Today. Opening one prepares an editable draft: it does not collect, enable a
+Now. Opening one prepares an editable draft: it does not collect, enable a
 source, ask for a permission, or contact a provider. Saved source choices and
 attachments are resolved against current data. Disabled or deleted selections
 need your attention. **Use current context / remove saved attachments** lets
@@ -121,7 +135,7 @@ permissions when supported. Import reads only granted types. It preserves the
 origin and measurement interval, handles updates and deletions, and never adds
 overlapping origins together. Pebble health and Health Connect are separate
 sources. Revoking access in Android stops new reads; delete imported copies
-from Activity when you want them removed from this phone too.
+from History when you want them removed from this phone too.
 
 Deletion starts with a preview. Removing evidence also removes dependent
 memories, corrections and reports. You can explicitly keep confirmed wording

@@ -84,6 +84,9 @@ data class SignalSourceCoverage(
 data class SignalSource(val key: String, val name: String, val group: String, val available: Boolean = true)
 data class SignalWatch(val id: String, val name: String, val connected: Boolean, val connectionId: String = id, val appOpen: Boolean = false, val connectionStatus: String = "")
 data class SignalState(
+    val attachedRecords: List<SignalRecord> = emptyList(),
+    val questionDraft: String = "",
+    val questionDraftToken: String = "",
     val diagnostics: SignalDiagnosticReport? = null,
     val savedQuestions: List<SavedQuestion> = emptyList(),
     val savedQuestionDraft: SavedQuestion? = null,
@@ -160,6 +163,7 @@ interface SignalStation {
     fun loadConversation() = Unit
     fun resumeThread(id: String)
     fun attachRecord(id: String)
+    fun removeAttachment(id: String) {}
     fun compareRecords(first: String, second: String)
     fun deleteRecord(id: String)
     fun deleteThread(id: String)
@@ -214,6 +218,10 @@ data class SignalQuestionReview(
     val recordCount: Int,
     val memoryCount: Int,
     val omittedRecords: Int,
+    val captureCount: Int = 0,
+    val observationCount: Int = 0,
+    val omittedObservations: Int = 0,
+    val priorTurnCount: Int = 0,
 ) {
     val bytes: Int get() = messages.sumOf { it.second.encodeToByteArray().size }
 }

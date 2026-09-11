@@ -9,6 +9,18 @@ import kotlinx.serialization.json.*
 import kotlin.test.*
 
 class SignalProvidersTest {
+    @Test fun encodedRequestLimitIncludesJsonEscapingForEveryProvider() = runBlocking {
+        val http = HttpClient(MockEngine { error("Oversized request must not leave the phone") })
+        val providers = SignalProviders(http, Keys())
+        try {
+            for (provider in listOf("openai", "xai", "anthropic", "gemini", "openrouter", "custom")) {
+                val settings = SignalSettings(provider = provider, model = "test-model", endpoint = "https://example.test/v1")
+                val messages = listOf("user" to "\"".repeat(140000))
+                assertFailsWith<SignalProviderException> { providers.validateRequest(settings, messages) }
+                assertFailsWith<SignalProviderException> { providers.answer(settings, messages) }
+            }
+        } finally { providers.close(); http.close() }
+    }
     private class Keys : SignalSecrets {
         val requested = mutableListOf<String>()
         override suspend fun get(provider: String): String { requested += provider; return "private-test-key" }

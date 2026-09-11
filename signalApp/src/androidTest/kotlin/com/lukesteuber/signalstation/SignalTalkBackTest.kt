@@ -28,9 +28,29 @@ class SignalTalkBackTest {
         fun waitFor(check: () -> Boolean) {
             val deadline = android.os.SystemClock.elapsedRealtime() + 15_000
             while (!check()) {
-                assertTrue(android.os.SystemClock.elapsedRealtime() < deadline, "Accessibility state did not settle.")
+                if (android.os.SystemClock.elapsedRealtime() >= deadline) {
+                    val pending = ArrayDeque<AccessibilityNodeInfo>()
+                    automation.rootInActiveWindow?.let(pending::add)
+                    var remaining = 80
+                    while (pending.isNotEmpty() && remaining-- > 0) {
+                        val node = pending.removeFirst()
+                        println("ACCESSIBILITY_NODE package=${node.packageName} text=${node.text?.take(100)} description=${node.contentDescription?.take(100)} visible=${node.isVisibleToUser} clickable=${node.isClickable}")
+                        repeat(node.childCount) { node.getChild(it)?.let(pending::add) }
+                    }
+                    fail("Accessibility state did not settle.")
+                }
                 Thread.sleep(100)
             }
+        }
+        fun visibleText(label: String): Boolean {
+            val pending = ArrayDeque<AccessibilityNodeInfo>()
+            automation.rootInActiveWindow?.let(pending::add)
+            while (pending.isNotEmpty()) {
+                val node = pending.removeFirst()
+                if (node.isVisibleToUser && node.text?.toString() == label) return true
+                repeat(node.childCount) { node.getChild(it)?.let(pending::add) }
+            }
+            return false
         }
         fun clickable(label: String): AccessibilityNodeInfo? {
             val pending = ArrayDeque<AccessibilityNodeInfo>()
@@ -43,7 +63,7 @@ class SignalTalkBackTest {
             }
             return candidates.firstNotNullOfOrNull { candidate ->
                 var node: AccessibilityNodeInfo? = candidate
-                repeat(4) {
+                repeat(12) {
                     if (node?.isVisibleToUser == true && node?.isClickable == true && node?.isEnabled == true) return@firstNotNullOfOrNull node
                     node = node?.parent
                 }
@@ -58,23 +78,32 @@ class SignalTalkBackTest {
             shell("settings put secure enabled_accessibility_services $selected")
             shell("settings put secure accessibility_enabled 1")
             waitFor { manager.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK).any { it.resolveInfo.serviceInfo.packageName == "com.google.android.marvin.talkback" } }
-            ActivityScenario.launch(MainActivity::class.java).use {
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                val station = (context.applicationContext as SignalApplication).station
+                waitFor { station.state.value.initialized && !station.state.value.busy }
+                scenario.onActivity { station.updateSettings(station.state.value.settings.copy(onboardingComplete = true)) }
+                waitFor { station.state.value.settings.onboardingComplete && !station.state.value.busy }
                 waitFor {
                     // A fresh emulator may ask about TalkBack's own notifications.
                     // Declining those is independent of the tested app's sources.
                     if (automation.rootInActiveWindow?.packageName?.toString()?.endsWith("permissioncontroller") == true)
                         clickable("Don’t allow")?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                    clickable("Today") != null
+                    clickable("Ask") != null
                 }
-                for (label in listOf("Today", "Ask", "Activity", "Memory", "Today")) {
+                for (label in listOf("Ask", "History", "Now")) {
                     waitFor { clickable(label) != null }
                     val node = clickable(label)!!
                     assertTrue(node.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS), "$label can receive screen-reader focus")
                     waitFor { node.refresh() && node.isAccessibilityFocused }
                     assertTrue(node.performAction(AccessibilityNodeInfo.ACTION_CLICK), "$label can be activated through accessibility")
-                    Thread.sleep(250)
+                    val expected = when (label) {
+                        "Ask" -> "Ask about your observations"
+                        "History" -> "Filter, compare & export"
+                        else -> "Right now"
+                    }
+                    waitFor { visibleText(expected) }
                 }
-                println("TALKBACK_NAVIGATION serviceBound=true destinations=Today,Ask,Activity,Memory focusAndActivation=passed")
+                println("TALKBACK_NAVIGATION serviceBound=true destinations=Now,Ask,History focusAndActivation=passed")
             }
         } finally {
             if (previousServices.isNullOrEmpty()) shell("settings delete secure enabled_accessibility_services")

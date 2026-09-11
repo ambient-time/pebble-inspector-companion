@@ -70,6 +70,36 @@ open class AndroidSignalStation(private val context: Context, protected val watc
     private val runners = mutableMapOf<String, SignalWatchSession>()
     private val wireResults = linkedMapOf<Int, Pair<String, SignalRecord>>()
     private var attachments = setOf<String>()
+        set(value) {
+            field = value
+            mutable.update { state ->
+                val known = state.attachedRecords + state.records + listOfNotNull(state.selectedRecord)
+                state.copy(attachedRecords = value.mapNotNull { key -> known.firstOrNull { it.id == key } })
+            }
+        }
+    private fun draft(question: String) {
+        dismissQuestionReview()
+        mutable.update { it.copy(questionDraft = question, questionDraftToken = id(), savedQuestionDraft = null) }
+    }
+    private fun attachRows(rows: List<SignalRecord>) {
+        mutable.update { it.copy(attachedRecords = rows.distinctBy { row -> row.id }) }
+        attachments = rows.map { it.id }.toSet()
+    }
+    private suspend fun resolveEvidence(ids: Set<String>, settings: SignalSettings, memory: List<SignalMemory>): List<SignalRecord> {
+        val pending = ArrayDeque(ids)
+        val found = linkedMapOf<String, SignalRecord>()
+        while (pending.isNotEmpty()) {
+            val key = pending.removeFirst()
+            if (key in found) continue
+            if (found.size >= 30) throw SignalProviderException("This selection links too many records. Attach the original captures or choose fewer records, then review again.")
+            val row = store.record(key) ?: throw SignalProviderException("An attached record was deleted. Remove it from the question or choose another capture.")
+            if (row.state != "ready" || !learning.eligible(row, settings, memory)) throw SignalProviderException("An attached record is unavailable under the current sources. Review its sources or remove it from this question.")
+            if (row.kind == "capture" && row.observations.isEmpty()) throw SignalProviderException("This capture has no readings. Choose sources and capture again, or remove it to ask a general question. Nothing was sent.")
+            found[key] = row
+            pending.addAll(row.references)
+        }
+        return found.values.toList()
+    }
     private var initialized = CompletableDeferred<Unit>()
     private val providerNames = listOf("openai", "anthropic", "gemini", "xai", "openrouter", "custom", "transcription")
     private fun id() = UUID.randomUUID().toString()
@@ -169,7 +199,6 @@ open class AndroidSignalStation(private val context: Context, protected val watc
                     }
                     val configuredProviders = withContext(Dispatchers.IO) { configured() }
                     val newThread = old.enabled != sanitized.enabled || old.watchId != sanitized.watchId || old.provider != sanitized.provider || old.endpoint != sanitized.endpoint || old.model != sanitized.model || old.weatherPlace != sanitized.weatherPlace || old.weatherLocation != sanitized.weatherLocation || old.presenceTargets != sanitized.presenceTargets || old.placeFences != sanitized.placeFences
-                    if (newThread) attachments = emptySet()
                     mutable.update { it.copy(settings = sanitized, configuredProviders = configuredProviders, presenceCandidates = it.presenceCandidates.filter { candidate -> "presence.${candidate.radio}" in sanitized.enabled }, placeLookup = null, threadId = if (newThread) id() else it.threadId, status = "Settings saved. Collection runs only when requested.") }
                 } }
                 if (generation == token) { refreshWatchSettings(); refreshLearning(); suggestMemory(memoryQuery) }
@@ -234,58 +263,58 @@ open class AndroidSignalStation(private val context: Context, protected val watc
     override fun ask(text: String, searchHistory: Boolean) {
         if (text.isBlank()) return
         if (mutable.value.historyLoading) { status("Wait for the conversation to finish loading."); return }
+        startOperation { settings, token -> prepareQuestion(text, searchHistory, settings, token) }
+    }
+    private suspend fun prepareQuestion(text: String, searchHistory: Boolean, currentSettings: SignalSettings, token: Long) {
         val picked = if (mutable.value.useMemory) mutable.value.memorySuggestions.toList() else emptyList()
         val recipe = mutable.value.savedQuestionDraft
         val selected = (recipe?.attachmentIds.orEmpty() + attachments).toSet()
-        startOperation { currentSettings, token ->
-            if (recipe != null && !currentSettings.enabled.containsAll(recipe.sourceKeys))
-                throw SignalProviderException("Some saved sources are disabled. Enable them in Settings, or choose Use current context to revise this draft.")
-            val settings = currentSettings.copy(enabled = recipe?.sourceKeys ?: currentSettings.enabled)
-            val started = now()
-            val prepared = withContext(Dispatchers.IO) {
-                val memory = store.memory()
-                for (key in selected) {
-                    val row = store.record(key) ?: throw SignalProviderException("A saved attachment was deleted. Choose Use current context to remove unavailable selections.")
-                    if (!learning.eligible(row, settings, memory)) throw SignalProviderException("A saved attachment is unavailable under these sources. Review the selections.")
+        if (recipe != null && !currentSettings.enabled.containsAll(recipe.sourceKeys))
+            throw SignalProviderException("Some saved sources are disabled. Enable them in Settings, or choose Use current context to revise this draft.")
+        val settings = currentSettings.copy(enabled = recipe?.sourceKeys ?: currentSettings.enabled)
+        val started = now()
+        val prepared = withContext(Dispatchers.IO) {
+            val memory = store.memory()
+            val explicit = resolveEvidence(selected, settings, memory)
+            val projected = explicit.mapNotNull { row ->
+                if (!searchHistory) ProjectedContext(row, row, 0)
+                else {
+                    val projection = SignalHistory.project(listOf(row.copy(references = emptyList())), text, settings.enabled, now = started).firstOrNull()
+                    if (projection == null && row.id in selected) throw SignalProviderException("An attached record does not match this question's date or source restrictions. Revise the question or remove that attachment.")
+                    projection?.copy(original = row)
                 }
-                val ranked = if (searchHistory) {
-                    val explicit = selected.map { key ->
-                        val row = store.record(key) ?: throw SignalProviderException("A saved attachment was deleted. Review your selections.")
-                        val projection = SignalHistory.project(listOf(row.copy(references = emptyList())), text, settings.enabled, now = started).firstOrNull()
-                            ?: throw SignalProviderException("A saved attachment does not match this question's date or source restrictions. Revise the question or remove that attachment.")
-                        projection.copy(original = row)
-                    }
-                    (explicit + findHistory(text, settings).filter { it.original.id !in selected }).take(30)
-                } else selected.map { id ->
-                    val row = store.record(id) ?: throw SignalProviderException("An attached record was deleted. Review your selections.")
-                    if (row.state != "ready" || !learning.eligible(row, settings, memory)) throw SignalProviderException("An attached record is unavailable. Review its sources.")
-                    ProjectedContext(row, row, 0)
-                }
-                val excerpts = boundedRecords(ranked.map { it.excerpt }, 64 * 1024)
-                val chosen = ranked.filter { candidate -> excerpts.any { it.id == candidate.original.id } }
-                val thread = mutable.value.threadId
-                val prior = if (searchHistory) emptyList() else boundedRecords(store.thread(thread, 100)
-                    .filter { it.state == "ready" && it.provider == settings.provider && it.model == settings.model && it.endpoint == settings.endpoint && learning.eligible(it, settings, memory) }
-                    .take(10).reversed(), 48 * 1024)
-                if (picked.any { p -> memory.none { it == p && SignalLearning.eligible(it, settings) } })
-                    throw SignalProviderException("Suggested memories changed. Review them and try again.")
-                val evidence = buildString {
-                    append(text.take(8000))
-                    if (searchHistory) append("\nHistory is a ranked, bounded selection, not a complete account of events.")
-                    if (searchHistory && excerpts.isEmpty()) append("\nNo matching eligible records. Missing evidence is not proof that no events occurred.")
-                    if (ranked.size > chosen.size) append("\nContext size limit omitted ${ranked.size - chosen.size} records.")
-                    for (row in excerpts) append("\n[${row.id}] ${row.createdAt}: ${row.question}\n${row.answer}\nObservations: ${json.encodeToString(row.observations)}\n")
-                    if (excerpts.isNotEmpty()) append("\nDaily summary: ${SignalProviders.truncateUtf8(SignalHistory.summarize(excerpts, settings.enabled), 16 * 1024)}")
-                    for (m in picked) append("\n[memory:${m.id}] ${m.text}\nDated memory, not proof of current circumstances. ${m.coverage}\nEvidence: ${m.evidence.take(8).joinToString { "[${it.recordId}] ${it.collectedAt}: ${it.description}" }}")
-                }
-                val messages = listOf("system" to ANSWER_INSTRUCTIONS) + prior.flatMap { listOf("user" to it.question, "assistant" to it.answer) } + listOf("user" to evidence)
-                PreparedQuestion(settings, currentSettings, thread, chosen.map { it.original } + prior, picked,
-                    SignalQuestionReview(text.take(8000), messages, chosen.size + prior.size, picked.size, ranked.size - chosen.size))
             }
-            ensureActiveToken(token)
-            preparedQuestion = prepared
-            mutable.update { it.copy(diagnostics = SignalDiagnosticReport(it.buildVersion, "context_preparation", "ready", now() - started, prepared.review.bytes), questionReview = prepared.review, status = "Context prepared locally in ${now() - started} ms. Review before sending; nothing has left this phone.") }
+            val ranked = (projected + if (searchHistory) findHistory(text, settings).filter { candidate -> explicit.none { it.id == candidate.original.id } } else emptyList()).take(30)
+            val excerpts = SignalEvidenceBudget.excerpts(ranked.map { it.excerpt })
+            val thread = mutable.value.threadId
+            val prior = if (searchHistory) emptyList() else boundedRecords(store.thread(thread, 100)
+                .filter { it.state == "ready" && it.provider == settings.provider && it.model == settings.model && it.endpoint == settings.endpoint && learning.eligible(it, settings, memory) }
+                .take(10).reversed(), 48 * 1024)
+            if (picked.any { p -> memory.none { it == p && SignalLearning.eligible(it, settings) } })
+                throw SignalProviderException("Suggested memories changed. Review them and try again.")
+            val omitted = excerpts.sumOf { row -> row.coverage.sumOf { it.omitted } }
+            val evidence = buildString {
+                append(text.take(8000))
+                if (searchHistory) append("\nHistory is a ranked, bounded selection, not a complete account of events.")
+                if (searchHistory && excerpts.isEmpty()) append("\nNo matching eligible records. Missing evidence is not proof that no events occurred.")
+                for (row in excerpts) {
+                    append("\n[${row.id}] ${row.createdAt}: ${row.question}\n${row.answer}\nObservations: ${json.encodeToString(row.observations)}\n")
+                    append("Retained ${row.observations.size} readings; omitted ${row.coverage.sumOf { it.omitted }}. Original records remain on the phone.\n")
+                    if (row.coverage.isNotEmpty()) append("Source coverage: ${json.encodeToString(row.coverage)}\n")
+                }
+                if (excerpts.isNotEmpty()) append("\nDaily summary: ${SignalProviders.truncateUtf8(SignalHistory.summarize(excerpts, settings.enabled), 16 * 1024)}")
+                for (m in picked) append("\n[memory:${m.id}] ${m.text}\nDated memory, not proof of current circumstances. ${m.coverage}\nEvidence: ${m.evidence.take(8).joinToString { "[${it.recordId}] ${it.collectedAt}: ${it.description}" }}")
+            }
+            val messages = listOf("system" to ANSWER_INSTRUCTIONS) + prior.flatMap { listOf("user" to it.question, "assistant" to it.answer) } + listOf("user" to evidence)
+            providers.validateRequest(settings, messages)
+            PreparedQuestion(settings, currentSettings, thread, (explicit + ranked.map { it.original } + prior).distinctBy { it.id }, picked,
+                SignalQuestionReview(text.take(8000), messages, excerpts.size, picked.size, 0,
+                    captureCount = excerpts.count { it.observations.isNotEmpty() || it.kind == "capture" },
+                    observationCount = excerpts.sumOf { it.observations.size }, omittedObservations = omitted, priorTurnCount = prior.size))
         }
+        ensureActiveToken(token)
+        preparedQuestion = prepared
+        mutable.update { it.copy(diagnostics = SignalDiagnosticReport(it.buildVersion, "context_preparation", "ready", now() - started, prepared.review.bytes), questionReview = prepared.review, status = "Ready to send. ${prepared.review.observationCount} readings included; nothing has left this phone.") }
     }
     override fun saveQuestion(title: String, question: String, history: Boolean, asNew: Boolean) {
         if (question.isBlank() || title.isBlank() || mutable.value.busy) return
@@ -308,6 +337,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
             val recipe = withContext(Dispatchers.IO) { store.savedQuestions().firstOrNull { it.id == id } } ?: return@startOperation
             val missing = withContext(Dispatchers.IO) { val memories = store.memory(); recipe.attachmentIds.count { key -> store.record(key)?.let { learning.eligible(it, settings, memories) } != true } }
             ensureActiveToken(token)
+            attachRows(withContext(Dispatchers.IO) { recipe.attachmentIds.mapNotNull { store.record(it) } })
             attachments = recipe.attachmentIds
             dismissQuestionReview()
             mutable.update { it.copy(savedQuestionDraft = recipe, savedQuestionOpenToken = id(), threadId = id(),
@@ -371,7 +401,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
             }
             ensureActiveToken(token)
             save(record.copy(answer = reply.text, summary = reply.summary, state = "ready"), token)
-            attachments = emptySet(); dismissQuestionReview()
+            dismissQuestionReview()
             mutable.update { it.copy(diagnostics = SignalDiagnosticReport(it.buildVersion, "provider_response", "answer_saved", payloadBytes = review.bytes)) }
             status("Answer saved on this phone.")
         }
@@ -549,11 +579,18 @@ open class AndroidSignalStation(private val context: Context, protected val watc
     }
     override fun capture() { startOperation { settings, token -> execute("Capture current context", settings, token, false, true, captureOnly = true) } }
     override fun analyzeRecord(id: String) {
+        openEvidenceDraft(setOf(id), "Analyze this saved capture. State when it was collected and which readings are missing. Cite its record ID.")
+    }
+    private fun openEvidenceDraft(ids: Set<String>, question: String) {
         if (mutable.value.busy) { status("A request is already running. Cancel it first."); return }
-        val record = mutable.value.records.find { it.id == id && it.state == "ready" } ?: mutable.value.selectedRecord?.takeIf { it.id == id && it.state == "ready" } ?: return
-        if (!SignalHistory.allowed(record, mutable.value.settings.enabled)) { status("This capture contains a disabled source. Enable it before sending it for analysis."); return }
-        attachments = setOf(id)
-        startOperation { settings, token -> execute("Analyze this saved capture. State when it was collected and which readings are missing. Cite its record ID.", settings, token, false, false) }
+        dismissQuestionReview()
+        startOperation { settings, token ->
+            val rows = withContext(Dispatchers.IO) { resolveEvidence(ids, settings, store.memory()) }
+            ensureActiveToken(token)
+            attachRows(rows)
+            draft(question)
+            status("${rows.size} records attached. Review the readings and send when ready.")
+        }
     }
     private fun buildVersion(): String = runCatching {
         val version = context.packageManager.getPackageInfo(context.packageName, 0).versionName
@@ -578,7 +615,12 @@ open class AndroidSignalStation(private val context: Context, protected val watc
     override fun openPermissionSettings() {
         context.startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:${context.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
-    override fun survey() { startOperation { settings, token -> execute("Summarize my current context.", settings, token, false, true) } }
+    override fun survey() { startOperation { settings, token ->
+        execute("Capture current context", settings, token, false, true, captureOnly = true)
+        ensureActiveToken(token)
+        draft("Summarize my current context using this capture. State its age and any missing readings.")
+        status("Capture attached. Review the readings before sending to your provider.")
+    } }
     override fun checkWatchConnection() {
         startOperation { settings, token ->
             val watch = selectedWatch(settings)
@@ -674,9 +716,9 @@ open class AndroidSignalStation(private val context: Context, protected val watc
         val candidates = if (captureOnly) emptyList() else if (history) projections.map { it.original } else withContext(Dispatchers.IO) { attachments.mapNotNull { store.record(it) }.filter { it.state == "ready" } }
         val currentMemory = withContext(Dispatchers.IO) { store.memory() }
         val safeCandidates = candidates.filter { withContext(Dispatchers.IO) { learning.eligible(it, settings, currentMemory) } }
-        val referenceExcerpts = boundedRecords(safeCandidates.map { row -> projections.firstOrNull { it.original.id == row.id }?.excerpt ?: row }, 64 * 1024)
+        val referenceExcerpts = SignalEvidenceBudget.excerpts(safeCandidates.map { row -> projections.firstOrNull { it.original.id == row.id }?.excerpt ?: row })
         val references = safeCandidates.filter { row -> referenceExcerpts.any { it.id == row.id } }
-        attachments = emptySet()
+        if (fromWatch != null) attachments = emptySet()
         var record = SignalRecord(id(), mutable.value.threadId, now(), question, provider = if (captureOnly) "local" else settings.provider, model = if (captureOnly) "" else settings.model, watchId = activeWatch, references = references.map { it.id }, endpoint = if (captureOnly) "" else settings.endpoint, kind = if (captureOnly) "capture" else "analysis")
         activeRecord = record.id
         save(record, token)
@@ -733,9 +775,11 @@ open class AndroidSignalStation(private val context: Context, protected val watc
         ensureActiveToken(token)
         if (captureOnly) {
             val summary = SignalCapture.summary(readings, omittedReadings)
-            save(record.copy(answer = summary, summary = summary, state = "ready"), token)
+            val saved = record.copy(answer = summary, summary = summary, state = "ready")
+            save(saved, token)
             ensureActiveToken(token)
-            mutable.update { it.copy(selectedRecordId = record.id, status = "Capture saved on this phone. Choose Analyze in History when ready.") }
+            if (fromWatch == null) { attachRows(listOf(saved)); dismissQuestionReview() }
+            mutable.update { it.copy(selectedRecordId = record.id, status = "Capture saved${if (fromWatch == null) " and attached in Ask" else " on this phone"}. No model request was made.") }
             collectionDiagnostics(readings, acquisitionStarted, "manual")
             return
         }
@@ -1167,7 +1211,12 @@ open class AndroidSignalStation(private val context: Context, protected val watc
             val settings = mutable.value.settings
             val records = withContext(Dispatchers.IO) { val memories = store.memory(); store.thread(id).filter { it.provider == settings.provider && it.model == settings.model && it.endpoint == settings.endpoint && learning.eligible(it, settings, memories) }.reversed() }
             if (records.isEmpty()) { status("This conversation has no eligible records under the current settings."); return@launch }
-            mutable.update { it.copy(threadId = id, records = records, status = "Conversation opened. Only eligible recent context will be sent.") }
+            val evidence = withContext(Dispatchers.IO) {
+                val latest = records.maxByOrNull { it.createdAt }
+                resolveEvidence(latest?.references.orEmpty().toSet(), settings, store.memory())
+            }
+            attachRows(evidence)
+            mutable.update { it.copy(threadId = id, records = records, status = "Conversation opened with ${evidence.size} linked records. Review the attachments before sending.") }
         }
     }
     override fun attachRecord(id: String) {
@@ -1176,9 +1225,14 @@ open class AndroidSignalStation(private val context: Context, protected val watc
         if (record.state != "ready" || !SignalHistory.allowed(record, mutable.value.settings.enabled)) { status("This record is available for local viewing; its sources must be enabled before sending."); return }
         attachments += id; status("Report attached to the next request.")
     }
+    override fun removeAttachment(id: String) {
+        if (mutable.value.busy) return
+        dismissQuestionReview()
+        attachments = attachments - id
+        mutable.update { it.copy(savedQuestionDraft = it.savedQuestionDraft?.let { recipe -> recipe.copy(attachmentIds = recipe.attachmentIds - id) }, status = "Attachment removed. The conversation and saved capture are unchanged.") }
+    }
     override fun compareRecords(first: String, second: String) {
-        attachments = setOf(first, second)
-        startOperation { settings, token -> execute("Compare these two attached reports. Cite their IDs, distinguish actual changes from gaps, and do not double-count repeated health days.", settings, token, false, false) }
+        openEvidenceDraft(setOf(first, second), "Compare these two attached reports. Cite their IDs, distinguish actual changes from gaps, and do not double-count repeated health days.")
     }
     override fun deleteRecord(id: String) = previewDeleteRecords(setOf(id))
     override fun deleteThread(id: String) {

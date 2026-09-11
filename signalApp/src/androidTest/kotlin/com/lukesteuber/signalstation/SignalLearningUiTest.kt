@@ -32,9 +32,9 @@ class SignalLearningUiTest {
         compose.onNodeWithContentDescription("Phone battery").performScrollTo().performClick()
         compose.onNodeWithText("Continue with these sources").performScrollTo().performClick()
         compose.onNodeWithText("Review collection permissions").performScrollTo().performClick()
-        compose.onNodeWithText("Open Capture").performScrollTo().performClick()
-        compose.onNodeWithText("A record of right now").assertExists()
-        compose.onNodeWithText("Capture readings").performScrollTo().performClick()
+        compose.onNodeWithText("Open Now").performScrollTo().performClick()
+        compose.onNodeWithText("Right now").assertExists()
+        compose.onNodeWithText("Capture once").performScrollTo().performClick()
 
         compose.runOnIdle {
             assertTrue(station.state.value.settings.onboardingComplete)
@@ -47,6 +47,57 @@ class SignalLearningUiTest {
             assertEquals(0, station.providerRequests)
             assertEquals(emptyList(), station.observationStarts)
         }
+    }
+
+    @Test fun captureAttachesAndRemovalPreservesDraftAndConversation() {
+        val station = LearningUiStation(baseState())
+        show(station)
+        compose.onNodeWithText("Capture once").performScrollTo().performClick()
+        compose.onNodeWithText("Latest observation").performScrollTo().assertIsDisplayed()
+        captureFixtureScreenshot("now-capture.png")
+        compose.runOnIdle { assertEquals(1, station.captures); assertEquals(0, station.providerRequests) }
+        compose.onNode(hasText("Ask") and hasClickAction()).performClick()
+        compose.onNodeWithText("Attached observations").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Your question").performScrollTo().performTextInput("What does this capture show?")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        compose.onNodeWithText("Remove", useUnmergedTree = true).performScrollTo().assertIsDisplayed().performClick()
+        compose.runOnIdle { assertTrue(station.state.value.attachedRecords.isEmpty(), "Remove must update the station without starting another thread") }
+        compose.onNode(hasScrollAction()).performScrollToNode(hasText("No capture attached. You can ask a general question or capture readings from Now."))
+        compose.onNodeWithText("No capture attached. You can ask a general question or capture readings from Now.").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("What does this capture show?").performScrollTo().assertExists()
+        captureFixtureScreenshot("ask-draft.png")
+        compose.runOnIdle {
+            assertTrue(station.state.value.attachedRecords.isEmpty())
+            assertEquals(1, station.state.value.records.size)
+            assertEquals(0, station.newThreads)
+            assertEquals(0, station.providerRequests)
+        }
+    }
+
+    @Test fun latestObservationPreparesAttachedQuestionAndOnlySendContactsProvider() = captureReview(1f)
+    @Test fun latestObservationReviewAtLargeText() = captureReview(2f)
+
+    private fun captureReview(fontScale: Float) {
+        val station = LearningUiStation(baseState().copy(settings = readySettings(), configuredProviders = setOf("openai")))
+        show(station, fontScale)
+        compose.onNodeWithText("Capture once").performScrollTo().performClick()
+        compose.onNodeWithText("Right now").performScrollTo().assertIsDisplayed()
+        captureFixtureScreenshot("now-overview-${fontScale.toInt()}.png")
+        compose.onNodeWithText("Ask about this").performScrollTo().performClick()
+        compose.onNodeWithText("Attached observations").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("What does this observation show?").performScrollTo().assertExists()
+        compose.runOnIdle { assertEquals(0, station.providerRequests); assertEquals(1, station.state.value.attachedRecords.size) }
+        captureFixtureScreenshot("ask-attached-${fontScale.toInt()}.png")
+        compose.onNodeWithText("Review context").performScrollTo().performClick()
+        compose.onNodeWithText("Review before sending").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("1 capture · 1 reading · 0 earlier turns").performScrollTo().assertIsDisplayed()
+        compose.runOnIdle { assertEquals(0, station.providerRequests) }
+        compose.onNodeWithText("Send question").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(1, station.providerRequests) }
+        captureFixtureScreenshot("capture-review-${fontScale.toInt()}.png")
+        compose.onNode(hasText("History") and hasClickAction()).performClick()
+        compose.onNodeWithText("Open record").performScrollTo().assertIsDisplayed()
+        captureFixtureScreenshot("history-overview-${fontScale.toInt()}.png")
     }
 
     @Test fun disabledSourceMemoryLeavesComposerButRemainsInspectable() {
@@ -69,7 +120,8 @@ class SignalLearningUiTest {
         compose.onNodeWithText(memory.text).assertDoesNotExist()
         compose.onNodeWithText("Review suggested context").assertDoesNotExist()
 
-        compose.onNodeWithText("Memory", useUnmergedTree = true).performClick()
+        compose.onNode(hasText("History") and hasClickAction()).performClick()
+        compose.onNode(hasText("Patterns") and hasClickAction()).performScrollTo().performClick()
         compose.onNodeWithText("Remembered").performScrollTo().performClick()
         compose.onNodeWithText(memory.text).performScrollTo().assertExists()
         compose.onNodeWithText("Not available for model context while its source is disabled or its evidence needs review.").performScrollTo().assertExists()
@@ -136,9 +188,10 @@ class SignalLearningUiTest {
         compose.onNodeWithText("Capture once").performScrollTo().assertIsDisplayed()
         captureFixtureScreenshot("today-font-200.png")
         compose.onNode(hasText("Ask") and hasClickAction()).assertIsDisplayed().performClick()
-        compose.onNodeWithText("What would you like to ask?").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Ask about your observations").performScrollTo().assertIsDisplayed()
 
-        compose.onNode(hasText("Memory") and hasClickAction()).assertIsDisplayed().performClick()
+        compose.onNode(hasText("History") and hasClickAction()).assertIsDisplayed().performClick()
+        compose.onNode(hasText("Patterns") and hasClickAction()).performScrollTo().performClick()
         compose.onNodeWithText("Remembered").performScrollTo().performClick()
         compose.onNodeWithText(example.text).performScrollTo().assertIsDisplayed()
         captureFixtureScreenshot("memory-font-200.png")
@@ -148,7 +201,7 @@ class SignalLearningUiTest {
 
         compose.onNode(hasText("Settings") and hasClickAction()).assertIsDisplayed().performClick()
         compose.onNodeWithText("Capture works without a provider key. Add a key when you want model analysis.").performScrollTo().assertIsDisplayed()
-        compose.onNode(hasText("Today") and hasClickAction()).assertIsDisplayed().performClick()
+        compose.onNode(hasText("Now") and hasClickAction()).assertIsDisplayed().performClick()
         compose.onNodeWithText("Capture once").performScrollTo().assertIsDisplayed()
         compose.runOnIdle { assertEquals(0, station.providerRequests) }
     }
@@ -185,21 +238,29 @@ class SignalLearningUiTest {
             settings = readySettings().copy(enabled = setOf(BATTERY, "location", "places.nearby"), lookups = SignalLookupSettings(nearbyPlaces = true)),
             sessions = listOf(SignalObservationSession("sensing-session", now - 120_000, now, setOf(BATTERY, "location"), state = "completed", captures = 3, attempts = 4))))
         show(station, fontScale)
+        compose.onNodeWithText("Changes and numeric history").performScrollTo().performClick()
         compose.onNode(hasScrollAction()).performScrollToNode(hasText("Numeric history · local"))
         compose.onNodeWithText("Numeric history · local").performScrollTo().performClick()
         compose.onNodeWithText("Exact values and evidence").performScrollTo().performClick()
         compose.onNodeWithText("Measurement table · phone local time").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Evidence · sensing-2").performScrollTo().assertIsDisplayed()
         captureFixtureScreenshot("sensing-table-${fontScale.toInt()}.png")
-        compose.onNode(hasText("Activity") and hasClickAction()).performClick()
-        compose.onNode(hasText("Nearby") and hasClickAction()).performClick()
+        compose.onNode(hasText("Now") and hasClickAction()).performClick()
+        compose.onNode(hasScrollAction()).performScrollToNode(hasText("Nearby") and hasClickAction())
+        compose.onNode(hasText("Nearby") and hasClickAction()).performScrollTo()
+        captureFixtureScreenshot("nearby-target-${fontScale.toInt()}.png")
+        Log.i("SignalScrollDebug", compose.onRoot().printToString())
+        compose.onNode(hasText("Nearby") and hasClickAction()).assertIsDisplayed().performClick()
+        captureFixtureScreenshot("nearby-navigation-${fontScale.toInt()}.png")
+        compose.onNode(hasScrollAction()).performScrollToNode(hasText("Keep a local record of your devices and familiar places. Radio activity can suggest changes around this phone; it cannot count people or reliably identify movement on its own."))
         compose.onNode(hasScrollAction()).performScrollToNode(hasText("Look up nearby places…"))
         compose.onNodeWithText("Look up nearby places…").performScrollTo().assertIsEnabled().performClick()
         compose.onNodeWithText("Review external lookup").assertIsDisplayed()
         compose.onNodeWithText("Exact outgoing request").performScrollTo().assertIsDisplayed()
         captureFixtureScreenshot("sensing-lookup-${fontScale.toInt()}.png")
         compose.onNodeWithText("Cancel").assertIsDisplayed().performClick()
-        compose.onNode(hasText("Sessions") and hasClickAction()).performClick()
+        compose.onNode(hasText("History") and hasClickAction()).performClick()
+        compose.onNode(hasText("Sessions") and hasClickAction()).performScrollTo().performClick()
         compose.onNode(hasScrollAction()).performScrollToNode(hasText("Inspect session evidence"))
         compose.onNodeWithText("Inspect session evidence").performScrollTo().performClick()
         compose.onNodeWithText("Inspect record · sensing-0").performScrollTo().assertIsDisplayed()
@@ -265,6 +326,7 @@ private class LearningUiStation(initial: SignalState) : SignalStation {
     override val state = MutableStateFlow(initial)
     var permissionRequests = 0
     var captures = 0
+    var newThreads = 0
     var providerRequests = 0
     var observationStops = 0
     var lookupSends = 0
@@ -278,7 +340,13 @@ private class LearningUiStation(initial: SignalState) : SignalStation {
     override fun sendReviewedLookup() { lookupSends++ }
     override fun dismissLookupReview() { state.value = state.value.copy(lookupReview = null) }
     override fun requestPermissions() { permissionRequests++ }
-    override fun capture() { captures++ }
+    override fun capture() {
+        captures++
+        val record = SignalRecord("ui-capture-$captures", "capture-thread", 1_789_000_000_000L, "Captured readings",
+            provider = "local", model = "", state = "ready", kind = "capture", sourceKeys = setOf("phone.battery"),
+            observations = listOf(SignalObservation("phone.battery", "phone", "78", "%", 1_789_000_000_000L)))
+        state.value = state.value.copy(records = state.value.records + record, attachedRecords = listOf(record), historyCount = captures.toLong())
+    }
     override fun applyDeletion(keepAsNotes: Set<String>) {
         retainedNotes += keepAsNotes.toSet()
         state.value = state.value.copy(deletionPreview = null)
@@ -299,20 +367,31 @@ private class LearningUiStation(initial: SignalState) : SignalStation {
     override fun saveProvider(model: String, endpoint: String, key: String) = Unit
     override fun saveKey(provider: String, key: String) = Unit
     override fun testProvider() { providerRequests++ }
-    override fun ask(text: String, searchHistory: Boolean) { state.value = state.value.copy(questionReview = SignalQuestionReview(text, listOf("user" to text), 0, 0, 0)) }
+    override fun ask(text: String, searchHistory: Boolean) {
+        val records = state.value.attachedRecords
+        val message = text + records.joinToString(separator = "", prefix = "") { record ->
+            "\nCapture ${record.id}: " + record.observations.joinToString { "${it.key} ${it.value} ${it.unit}" }
+        }
+        state.value = state.value.copy(questionReview = SignalQuestionReview(text, listOf("user" to message), records.size, 0, 0,
+            captureCount = records.count { it.kind == "capture" }, observationCount = records.sumOf { it.observations.size }))
+    }
     override fun sendReviewedQuestion() { providerRequests++ }
     override fun dismissQuestionReview() { state.value = state.value.copy(questionReview = null) }
     override fun openSavedQuestion(id: String) { state.value = state.value.copy(savedQuestionDraft = state.value.savedQuestions.first { it.id == id }, savedQuestionOpenToken = "opened", threadId = "saved-draft") }
-    override fun analyzeRecord(id: String) { providerRequests++ }
-    override fun survey() { providerRequests++ }
+    override fun analyzeRecord(id: String) {
+        attachRecord(id)
+        state.value = state.value.copy(questionDraft = "What does this observation show?", questionDraftToken = "draft-$id")
+    }
+    override fun survey() { capture(); analyzeRecord(state.value.records.last().id) }
     override fun installWatchApp() = Unit
     override fun openPermissionSettings() = Unit
     override fun recordOnWatch() = Unit
     override fun cancel() = Unit
-    override fun newThread() = Unit
+    override fun newThread() { newThreads++; state.value = state.value.copy(threadId = "new-$newThreads", attachedRecords = emptyList(), questionReview = null) }
     override fun selectRecord(id: String) = Unit
     override fun resumeThread(id: String) = Unit
-    override fun attachRecord(id: String) = Unit
+    override fun attachRecord(id: String) { state.value = state.value.copy(attachedRecords = listOf(state.value.records.first { it.id == id })) }
+    override fun removeAttachment(id: String) { state.value = state.value.copy(attachedRecords = state.value.attachedRecords.filterNot { it.id == id }, questionReview = null) }
     override fun compareRecords(first: String, second: String) = Unit
     override fun deleteRecord(id: String) = Unit
     override fun deleteThread(id: String) = Unit

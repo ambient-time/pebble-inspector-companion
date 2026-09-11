@@ -5,6 +5,8 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import coredevices.pebble.signal.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import java.security.KeyStore
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import java.util.UUID
@@ -16,14 +18,25 @@ class SignalMemoryLifecycleIntegrationTest {
     @Test fun correctionStaysAcceptedAndDeletionCanKeepOnlyExplicitPersonalNote() = runBlocking {
         assumeTrue(Build.MODEL.contains("sdk") || Build.FINGERPRINT.contains("generic") || Build.HARDWARE.contains("ranchu"))
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val station = (context.applicationContext as SignalApplication).station
-        val store = SignalStore(context)
         val key = "device.battery"
+        // Each run needs its own forgotten-pattern history. A successful prior run deliberately
+        // suppresses this same baseline; deleting that suppression would test the wrong behavior.
         val prefix = "synthetic-${UUID.randomUUID()}"
+        val store = SignalStore(context, prefix)
+        val noWatch = object : SignalWatchLink {
+            override val watches = MutableStateFlow(emptyList<SignalWatch>())
+            override val capabilities = SignalWatchCapabilities()
+            override fun initialize(scope: CoroutineScope) {}
+            override suspend fun isTrusted(session: SignalWatchSession) = false
+            override suspend fun launch(watchId: String) { error("No watch operation") }
+            override suspend fun install(watchId: String) { error("No watch installation") }
+        }
+        val station = AndroidSignalStation(context, noWatch, storeNamespace = prefix)
         val now = System.currentTimeMillis()
         val ids = (0..9).map { "$prefix-$it" }
         try {
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                scenario.onActivity { station.initialize() }
                 until { station.state.value.historyReady && !station.state.value.busy }
                 for ((n, id) in ids.withIndex()) {
                     val at = now - n / 2 * 86_400_000L - n % 2 * 7_200_000L
@@ -59,6 +72,12 @@ class SignalMemoryLifecycleIntegrationTest {
                 scenario.onActivity { station.applyDeletion(emptySet()) }
                 until { station.state.value.memories.none { it.id == note.id } }
             }
-        } finally { store.delete(store.deletionClosure(ids.toSet())); store.close() }
+        } finally {
+            withContext(Dispatchers.Main) { station.close() }
+            store.close()
+            context.deleteDatabase("$prefix-history.db")
+            context.deleteSharedPreferences("${prefix}_private")
+            KeyStore.getInstance("AndroidKeyStore").apply { load(null); deleteEntry("$prefix-station-v1") }
+        }
     }
 }

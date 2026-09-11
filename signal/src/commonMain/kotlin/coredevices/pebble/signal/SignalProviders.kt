@@ -29,6 +29,16 @@ class SignalProviders(http: HttpClient, private val secrets: SignalSecrets) {
 
     fun close() = client.close()
 
+    /** Local preflight uses the same encoding that will be transmitted. */
+    fun validateRequest(settings: SignalSettings, messages: List<Pair<String, String>>): Int =
+        validateEncodedRequest(request(settings, messages).second)
+
+    private fun validateEncodedRequest(body: JsonObject): Int {
+        val bytes = body.toString().encodeToByteArray().size
+        if (bytes > 256 * 1024) fail("The selected evidence is too large for one request. Choose fewer captures or start a new conversation. Nothing was sent.")
+        return bytes
+    }
+
     suspend fun transcriptionConfigured(): Boolean = try { !secrets.get("transcription").isNullOrBlank() }
         catch (e: CancellationException) { throw e }
         catch (_: Exception) { false }
@@ -43,6 +53,7 @@ class SignalProviders(http: HttpClient, private val secrets: SignalSecrets) {
             val key = secrets.get(settings.provider)?.takeIf { it.isNotBlank() }
                 ?: fail("Add a key for the selected provider in Settings.")
             val request = request(settings, messages)
+            validateEncodedRequest(request.second)
             val json = post(request.first, key, settings.provider, request.second.toString())
             val text = parseAnswer(settings.provider, json)
             if (text.isBlank()) fail("The provider returned no text. Check the selected model.")

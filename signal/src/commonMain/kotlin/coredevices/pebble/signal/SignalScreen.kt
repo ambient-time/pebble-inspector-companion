@@ -1,6 +1,17 @@
 package coredevices.pebble.signal
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.RadioButtonChecked
+import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.Arrangement
@@ -15,6 +26,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.AlertDialog
@@ -57,7 +69,7 @@ import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Instant
 
 private enum class SignalPage(val title: String) {
-    Today("Today"), Conversation("Ask"), Capture("Capture"), History("Activity"), Presence("Nearby"), Sessions("Sessions"), Memory("Memory"), Settings("Settings")
+    Today("Now"), Conversation("Ask"), Capture("Capture tools"), History("History"), Presence("Nearby"), Sessions("Sessions"), Memory("Patterns"), Sources("Sources"), Settings("Settings")
 }
 
 private data class SignalConfirmation(val title: String, val message: String, val action: () -> Unit)
@@ -98,10 +110,17 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
     }
     var confirmation by remember { mutableStateOf<SignalConfirmation?>(null) }
     var historyQuestion by remember { mutableStateOf(false) }
-    var attachmentId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(state.questionDraftToken) {
+        if (state.questionDraftToken.isNotBlank()) {
+            questionDraft = state.questionDraft
+            historyQuestion = false
+            page = SignalPage.Conversation
+            detailId = null
+        }
+    }
     LaunchedEffect(state.savedQuestionOpenToken) {
         state.savedQuestionDraft?.let { recipe ->
-            questionDraft = recipe.question; historyQuestion = recipe.searchHistory; attachmentId = null
+            questionDraft = recipe.question; historyQuestion = recipe.searchHistory
             page = SignalPage.Conversation; detailId = null
         }
     }
@@ -117,7 +136,7 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
     if (standalone && !state.settings.onboardingComplete) {
         SignalLearningSetup(state, station) { destination ->
             page = when (destination) {
-                SignalStartDestination.Capture -> SignalPage.Capture
+                SignalStartDestination.Capture -> SignalPage.Today
                 SignalStartDestination.Observe -> SignalPage.Sessions
                 SignalStartDestination.Ask -> SignalPage.Conversation
             }
@@ -127,7 +146,6 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
     BackHandler(enabled = fieldTestOpen || detailId != null || page != SignalPage.Today) {
         if (fieldTestOpen) fieldTestOpen = false else if (detailId != null) detailId = null else page = SignalPage.Today
     }
-    LaunchedEffect(state.threadId) { attachmentId = null }
     LaunchedEffect(page) {
         if (page in setOf(SignalPage.Today, SignalPage.History, SignalPage.Capture, SignalPage.Presence, SignalPage.Sessions)) station.searchSavedHistory("")
     }
@@ -137,31 +155,24 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
                 SignalAntennaGlyph()
                 Column(Modifier.weight(1f).padding(start = 12.dp)) {
                     SignalHeading("Signal Station")
-                    if (state.buildVersion.isNotBlank()) Text(state.buildVersion, style = MaterialTheme.typography.labelSmall)
                 }
                 TextButton(onClick = { page = SignalPage.Settings; detailId = null; fieldTestOpen = false }) { Text("Settings") }
             }
         }
-        FlowRow(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            listOf(SignalPage.Today to "Today", SignalPage.Conversation to "Ask", SignalPage.History to "Activity", SignalPage.Memory to "Memory").forEach { (destination, title) ->
-                val selected = if (destination == SignalPage.History) page in listOf(SignalPage.History, SignalPage.Capture, SignalPage.Presence, SignalPage.Sessions) else page == destination
-                FilterChip(selected = selected, onClick = { page = destination; detailId = null; fieldTestOpen = false }, label = { Text(title) })
+        if (page !in setOf(SignalPage.Today, SignalPage.Conversation, SignalPage.History) && detailId == null && !fieldTestOpen) {
+            TextButton(onClick = { page = if (page in setOf(SignalPage.Memory, SignalPage.Sessions)) SignalPage.History else SignalPage.Today }, modifier = Modifier.padding(horizontal = 8.dp)) {
+                Text(if (page in setOf(SignalPage.Memory, SignalPage.Sessions)) "Back to History" else "Back to Now")
             }
         }
-        if (page in listOf(SignalPage.History, SignalPage.Capture, SignalPage.Presence, SignalPage.Sessions) && detailId == null && !fieldTestOpen) {
-            FlowRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(SignalPage.History to "Saved activity", SignalPage.Capture to "Capture", SignalPage.Presence to "Nearby", SignalPage.Sessions to "Sessions").forEach { (destination, title) ->
-                    FilterChip(selected = page == destination, onClick = { page = destination }, label = { Text(title) })
-                }
+        if (state.busy) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) { SignalStatus(state) }
+                TextButton(onClick = station::cancel) { Text("Cancel") }
             }
         }
-
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) { SignalStatus(state) }
-            if (state.busy) TextButton(onClick = station::cancel) { Text("Cancel request") }
+        if (!state.busy && state.status.isNotBlank() && state.status !in setOf("Ask a question, or capture readings to explore later.", "Settings saved. Collection runs only when requested.", "New conversation.", "Credential saved on this phone.")) {
+            Text(state.status, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).semantics { liveRegion = LiveRegionMode.Polite },
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (state.wakePhase !in setOf("stopped", "error", "draft")) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -171,6 +182,7 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
         } else if (state.wakeDraft.isNotBlank() && page != SignalPage.Conversation) {
             TextButton(onClick = { page = SignalPage.Conversation; detailId = null }) { Text("Review voice draft") }
         }
+        Box(Modifier.weight(1f).fillMaxWidth()) {
         if (fieldTestOpen) {
             SignalFieldTestPage(state, station, fieldTestDraft) { fieldTestOpen = false }
         } else if (selected != null) {
@@ -180,7 +192,6 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
                 onBack = { detailId = null },
                 onAttach = {
                     station.attachRecord(selected.id)
-                    attachmentId = selected.id
                     detailId = null
                     page = SignalPage.Conversation
                     historyQuestion = false
@@ -206,17 +217,19 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
             }
         } else when (page) {
             SignalPage.Today -> SignalTodayPage(state, station,
-                onAsk = { page = SignalPage.Conversation }, onCapture = { page = SignalPage.Capture },
+                onAsk = { page = SignalPage.Conversation }, onCapture = station::capture,
+                onCaptureTools = { page = SignalPage.Capture },
+                onAnalyze = { station.analyzeRecord(it); page = SignalPage.Conversation },
                 onObserve = { page = SignalPage.Sessions }, onMemory = { page = SignalPage.Memory },
-                onDetail = { detailId = it; station.selectRecord(it) }, onSources = { page = SignalPage.Settings },
+                onDetail = { detailId = it; station.selectRecord(it) }, onSources = { page = SignalPage.Sources },
                 onNearby = { page = SignalPage.Presence })
             SignalPage.Memory -> SignalMemoryPage(state, station,
                 onEvidence = { detailId = it; station.selectRecord(it) }, onCapture = { page = SignalPage.Capture },
-                onNearby = { page = SignalPage.Presence }, onSources = { page = SignalPage.Settings })
-            SignalPage.Sessions -> SignalSessionsPage(state, station, onSources = { page = SignalPage.Settings }, onDetail = { station.selectRecord(it); detailId = it })
+                onNearby = { page = SignalPage.Presence }, onSources = { page = SignalPage.Sources })
+            SignalPage.Sessions -> SignalSessionsPage(state, station, onSources = { page = SignalPage.Sources }, onDetail = { station.selectRecord(it); detailId = it })
             SignalPage.Capture -> SignalCapturePage(state, station,
                 onDetail = { detailId = it; station.selectRecord(it) },
-                onSources = { page = SignalPage.Settings },
+                onSources = { page = SignalPage.Sources },
                 onManageWatch = onManageWatch,
                 onFieldTest = { fieldTestOpen = true },
             )
@@ -228,12 +241,12 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
                     station.ask(questionDraft.trim(), historyQuestion)
                 },
                 searchHistory = historyQuestion,
-                attachment =
-                attachmentId?.let { id -> state.selectedRecord?.takeIf { it.id == id } ?: state.records.firstOrNull { it.id == id } },
                 onHistoryChange = { historyQuestion = it; station.dismissQuestionReview() },
+                onSources = { page = SignalPage.Sources },
+                onChooseAttachment = { page = SignalPage.History },
                 onDetail = { detailId = it; station.selectRecord(it) },
                 onSettings = { page = SignalPage.Settings },
-                onNewThread = { station.newThread(); questionDraft = ""; attachmentId = null; historyQuestion = false },
+                onNewThread = { station.newThread(); questionDraft = ""; historyQuestion = false },
             )
             SignalPage.History -> SignalHistory(
                 state, station,
@@ -245,9 +258,27 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
                     historyQuestion = false
                 },
                 onConfirm = { confirmation = it },
+                onSessions = { page = SignalPage.Sessions }, onPatterns = { page = SignalPage.Memory },
             )
             SignalPage.Presence -> SignalPresencePage(station, state) { detailId = it; station.selectRecord(it) }
+            SignalPage.Sources -> SignalSourcesPage(state, station, onSettings = { page = SignalPage.Settings })
             SignalPage.Settings -> SignalConfiguration(state, station, onManageWatch) { confirmation = it }
+        }
+        }
+        NavigationBar(containerColor = MaterialTheme.colorScheme.surface, windowInsets = WindowInsets(0, 0, 0, 0)) {
+            listOf(SignalPage.Today, SignalPage.Conversation, SignalPage.History).forEach { destination ->
+                val active = when (destination) {
+                    SignalPage.Today -> page in setOf(SignalPage.Today, SignalPage.Capture, SignalPage.Presence, SignalPage.Sources)
+                    SignalPage.History -> page in setOf(SignalPage.History, SignalPage.Sessions, SignalPage.Memory)
+                    else -> page == destination
+                }
+                NavigationBarItem(selected = active, onClick = { page = destination; detailId = null; fieldTestOpen = false },
+                    icon = { Icon(when (destination) {
+                        SignalPage.Today -> Icons.Outlined.RadioButtonChecked
+                        SignalPage.Conversation -> Icons.Outlined.ChatBubbleOutline
+                        else -> Icons.Outlined.History
+                    }, contentDescription = null) }, label = { Text(destination.title) }, alwaysShowLabel = true)
+            }
         }
     }
     SignalDeletionDialog(state, station)
@@ -272,10 +303,11 @@ private fun SignalConversation(
     onDraft: (String) -> Unit,
     onSend: () -> Unit,
     searchHistory: Boolean,
-    attachment: SignalRecord?,
     onHistoryChange: (Boolean) -> Unit,
     onDetail: (String) -> Unit,
     onSettings: () -> Unit,
+    onSources: () -> Unit,
+    onChooseAttachment: () -> Unit,
     onNewThread: () -> Unit,
 ) {
     var saveTitle by remember { mutableStateOf<String?>(null) }
@@ -288,11 +320,18 @@ private fun SignalConversation(
     var contextOpen by remember { mutableStateOf(false) }
     LaunchedEffect(draft) { station.suggestMemory(draft) }
     LaunchedEffect(state.threadId) { station.loadConversation() }
-    val records = state.records.filter { it.threadId == state.threadId }.sortedByDescending { it.createdAt }
+    val records = state.records.filter { it.threadId == state.threadId && it.provider != "local" }.sortedBy { it.createdAt }
+    val conversationScroll = rememberLazyListState()
+    LaunchedEffect(records.lastOrNull()?.id) {
+        if (records.isNotEmpty()) conversationScroll.scrollToItem(records.size)
+    }
+    LaunchedEffect(state.questionDraftToken) {
+        if (state.questionDraftToken.isNotBlank()) conversationScroll.scrollToItem(records.size + 1)
+    }
     val ready = state.settings.provider in state.configuredProviders && state.settings.model.isNotBlank()
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), state = conversationScroll, contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
-            SignalHeading("What would you like to ask?")
+            SignalHeading("Ask about your observations")
             if (ready) {
                 Text("${providerLabel(state.settings.provider)} · ${state.settings.model}", style = MaterialTheme.typography.bodySmall)
             } else {
@@ -300,8 +339,29 @@ private fun SignalConversation(
                 Button(onClick = onSettings, enabled = !state.busy) { Text("Set up answers") }
             }
         }
+        items(records, key = { it.id }) { record ->
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("You · ${signalDateTime(record.createdAt)}", style = MaterialTheme.typography.labelMedium)
+                SelectionContainer { Text(record.question, style = MaterialTheme.typography.titleMedium) }
+                HorizontalDivider()
+                Text("${providerLabel(record.provider)} · ${if (record.state == "ready") "Reply ready" else record.state.replace('_', ' ')}", Modifier.semantics { liveRegion = LiveRegionMode.Polite }, style = MaterialTheme.typography.labelMedium)
+                SignalResponse(record.answer, record.summary.ifBlank { if (record.state == "working") "Waiting for ${providerLabel(record.provider)}…" else record.state })
+                if (record.state in setOf("error", "interrupted", "cancelled")) {
+                    Text("Your question is saved. Review it before sending again.", style = MaterialTheme.typography.bodySmall)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { onDraft(record.question) }, enabled = !state.busy) { Text("Edit question") }
+                        TextButton(onClick = onSettings, enabled = !state.busy) { Text("Check provider") }
+                    }
+                }
+                if (record.references.isNotEmpty()) Text("${signalCount(record.references.distinct().size, "linked observation")}", style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = { onDetail(record.id) }) { Text("Readings and details") }
+            }
+            }
+        }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (records.isNotEmpty()) TextButton(onClick = onNewThread, enabled = !state.busy) { Text("New conversation") }
                 OutlinedTextField(draft, onDraft, Modifier.fillMaxWidth(),
                     label = { Text(if (searchHistory) "Question about saved history" else "Your question") },
                     supportingText = { Text("Type or use keyboard dictation. No watch is needed.") },
@@ -316,10 +376,25 @@ private fun SignalConversation(
                     if (!state.settings.enabled.containsAll(recipe.sourceKeys)) Text("Some saved sources are disabled. Review them in Settings.")
                     TextButton(onClick = station::dismissSavedQuestion, enabled = !state.busy) { Text("Use current context / remove saved attachments") }
                 }
-                if (attachment != null) {
-                    Text("Attached: ${signalDateTime(attachment.createdAt)} · ${attachment.question}")
-                    TextButton(onClick = onNewThread, enabled = !state.busy) { Text("Remove attachment / new conversation") }
+                if (state.attachedRecords.isEmpty()) {
+                    Text("No capture attached. You can ask a general question or capture readings from Now.", style = MaterialTheme.typography.bodySmall)
+                } else {
+                    Text("Attached observations", Modifier.semantics { heading(); liveRegion = LiveRegionMode.Polite }, style = MaterialTheme.typography.titleSmall)
+                    state.attachedRecords.forEach { attachment ->
+                        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(signalDateTime(attachment.createdAt), style = MaterialTheme.typography.titleSmall)
+                                Text(signalObservationCoverage(attachment), style = MaterialTheme.typography.bodySmall)
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    TextButton(onClick = { onDetail(attachment.id) }) { Text("Inspect") }
+                                    TextButton(onClick = { station.removeAttachment(attachment.id) }, enabled = !state.busy,
+                                        modifier = Modifier.semantics { contentDescription = "Remove observation from ${signalDateTime(attachment.createdAt)}" }) { Text("Remove") }
+                                }
+                            }
+                        }
+                    }
                 }
+                TextButton(onClick = onChooseAttachment, enabled = !state.busy) { Text("Attach from History") }
                 SignalSuggestedMemoryContext(state, station, onDetail)
                 if (state.historyLoading) Text("Loading this conversation before sending…", Modifier.semantics { liveRegion = LiveRegionMode.Polite }, style = MaterialTheme.typography.bodySmall)
                 Button(onClick = onSend, enabled = !state.busy && !state.historyLoading && draft.isNotBlank(), modifier = Modifier.fillMaxWidth().sizeIn(minHeight = 48.dp)) {
@@ -328,8 +403,9 @@ private fun SignalConversation(
                 state.questionReview?.let { review ->
                     SignalHeading("Review before sending")
                     Text("${providerLabel(state.settings.provider)} · ${state.settings.model}")
-                    Text("${review.recordCount} records · ${review.memoryCount} memories · ${review.bytes} bytes")
-                    Text("History is ranked and bounded. Dates and source restrictions are applied to the evidence below.")
+                    Text("${signalCount(review.captureCount, "capture")} · ${signalCount(review.observationCount, "reading")} · ${signalCount(review.priorTurnCount, "earlier turn")}")
+                    Text("${signalCount(review.memoryCount, "memory")} · ${review.bytes} message bytes", style = MaterialTheme.typography.bodySmall)
+                    if (review.omittedObservations > 0) Text("${review.omittedObservations} readings omitted to fit. The originals remain in History.")
                     if (review.omittedRecords > 0) Text("${review.omittedRecords} records omitted by the size limit.")
                     var showEvidence by remember(review) { mutableStateOf(false) }
                     TextButton(onClick = { showEvidence = !showEvidence }) { Text(if (showEvidence) "Hide exact message text" else "Show exact message text") }
@@ -339,28 +415,7 @@ private fun SignalConversation(
                     TextButton(onClick = station::dismissQuestionReview, enabled = !state.busy) { Text("Back to editing") }
                 }
                 Text(if (searchHistory) "Includes matching saved history from enabled sources."
-                    else "Sends your question, attached records, this conversation and any selected memory above. New readings are collected from Capture.", style = MaterialTheme.typography.bodySmall)
-            }
-        }
-        if (records.isNotEmpty()) item {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Conversation", Modifier.weight(1f).semantics { heading() }, style = MaterialTheme.typography.titleMedium)
-                TextButton(onClick = onNewThread, enabled = !state.busy) { Text("New conversation") }
-            }
-        }
-        items(records, key = { it.id }) { record ->
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                HorizontalDivider()
-                Text(record.question, style = MaterialTheme.typography.titleMedium)
-                SignalResponse(record.answer, record.summary.ifBlank { if (record.state == "working") "Waiting for ${providerLabel(record.provider)}…" else record.state })
-                if (record.state in setOf("error", "interrupted", "cancelled")) {
-                    Text("Your question is saved. Review it before sending again.", style = MaterialTheme.typography.bodySmall)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { onDraft(record.question) }, enabled = !state.busy) { Text("Edit question") }
-                        TextButton(onClick = onSettings, enabled = !state.busy) { Text("Check provider") }
-                    }
-                }
-                TextButton(onClick = { onDetail(record.id) }) { Text("Readings and details") }
+                    else "Review your question, attached observations and selected memory before sending. Nothing is sent automatically.", style = MaterialTheme.typography.bodySmall)
             }
         }
         item {
@@ -377,9 +432,9 @@ private fun SignalConversation(
             if (contextOpen || searchHistory) {
                 SignalToggle("Ask about saved history", searchHistory, !state.busy,
                     "Sends matching local records to the selected provider.", onHistoryChange)
-                SignalSourcePreview(state.sources, state.settings.enabled, "Sources for Capture & analyze")
-                OutlinedButton(onClick = station::survey, enabled = ready && !state.busy && state.settings.enabled.isNotEmpty()) { Text("Capture & analyze") }
-                TextButton(onClick = onSettings) { Text("Choose sources") }
+                SignalSourcePreview(state.sources, state.settings.enabled, "Sources for a new capture")
+                OutlinedButton(onClick = station::survey, enabled = !state.busy && state.settings.enabled.isNotEmpty()) { Text("Capture and prepare question") }
+                TextButton(onClick = onSources) { Text("Choose sources") }
             }
         }
     }
@@ -393,6 +448,8 @@ private fun SignalHistory(
     onAskHistory: () -> Unit,
     onCompare: (String, String) -> Unit,
     onConfirm: (SignalConfirmation) -> Unit,
+    onSessions: () -> Unit,
+    onPatterns: () -> Unit,
 ) {
     var query by remember { mutableStateOf("") }
     var from by remember { mutableStateOf("") }
@@ -416,6 +473,10 @@ private fun SignalHistory(
     ) {
         item {
             SignalHeading("History")
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onSessions) { Text("Sessions") }
+                OutlinedButton(onClick = onPatterns) { Text("Patterns") }
+            }
             Text("Saved on this phone. Searching here is local; asking about history sends matching evidence to your provider.")
             OutlinedTextField(query, { query = it; station.searchSavedHistory(it) }, Modifier.fillMaxWidth(), label = { Text("Search questions, answers, and readings") })
             Text("${state.historyCount} stored records · ${signalStorageLabel(state.storageBytes)} · showing ${state.records.size} records", style = MaterialTheme.typography.bodySmall)
@@ -507,7 +568,7 @@ private fun SignalDetail(
         if (signalSupportsLocalChanges(record)) item { SignalTrendPanel(record, state, onReference) }
         item {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onAnalyze, enabled = !state.busy && record.state == "ready" && record.observations.isNotEmpty() && state.settings.provider in state.configuredProviders && state.settings.model.isNotBlank() && SignalHistory.allowed(record, state.settings.enabled)) { Text("Analyze readings") }
+                Button(onClick = onAnalyze, enabled = !state.busy && record.state == "ready" && record.observations.isNotEmpty() && SignalHistory.allowed(record, state.settings.enabled)) { Text("Ask about this") }
                 OutlinedButton(onClick = onAttach, enabled = !state.busy && record.state == "ready" && SignalHistory.allowed(record, state.settings.enabled)) { Text("Attach to conversation") }
                 if (record.kind != "capture" && record.provider != "local") OutlinedButton(onClick = onResume, enabled = !state.busy) { Text("Resume conversation") }
                 TextButton(onClick = onDelete, enabled = !state.busy && state.historyReady) { Text("Delete record") }
@@ -599,16 +660,6 @@ private fun SignalConfiguration(state: SignalState, station: SignalStation, onMa
         item {
             SignalHeading("Settings")
             Text("Capture works without a provider key. Add a key when you want model analysis.")
-            Text(state.buildVersion, style = MaterialTheme.typography.bodySmall)
-            TextButton(onClick = { uriHandler.openUri("https://dr.eamer.dev/downloads/apps/signal-station/") }) { Text("Download page and guide") }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = { station.updateSettings(settings.copy(onboardingComplete = false)) }, enabled = !state.busy) { Text("Revisit setup guide") }
-                onManageWatch?.let { TextButton(onClick = it) { Text("Watch connection") } }
-                OutlinedButton(onClick = station::installWatchApp, enabled = !state.busy && state.watchCapabilities.install && state.watches.any { it.id == settings.watchId && it.connected }) { Text("Install watch app") }
-            }
-            Text(state.watchCapabilities.description)
-            Text("Watch buttons: Up captures readings · Select asks · Down opens history. Your Pebble app keeps ownership of pairing and watch settings.")
-            if (state.installStatus.isNotBlank()) Text(state.installStatus)
             SignalHeading("Answer provider")
         }
         item {
@@ -667,6 +718,20 @@ private fun SignalConfiguration(state: SignalState, station: SignalStation, onMa
             }
             SignalToggle("Confirm transcript on watch", settings.confirmTranscript, !state.busy, onChange = { station.updateSettings(settings.copy(confirmTranscript = it)) })
             SignalToggle("Reduce watch motion", settings.reducedMotion, !state.busy, onChange = { station.updateSettings(settings.copy(reducedMotion = it)) })
+        }
+        item {
+            HorizontalDivider()
+            SignalHeading("About and watch connection")
+            Text(state.buildVersion, style = MaterialTheme.typography.bodySmall)
+            TextButton(onClick = { uriHandler.openUri("https://dr.eamer.dev/downloads/apps/signal-station/") }) { Text("Download page and guide") }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = { station.updateSettings(settings.copy(onboardingComplete = false)) }, enabled = !state.busy) { Text("Revisit setup guide") }
+                onManageWatch?.let { TextButton(onClick = it) { Text("Watch connection") } }
+                OutlinedButton(onClick = station::installWatchApp, enabled = !state.busy && state.watchCapabilities.install && state.watches.any { it.id == settings.watchId && it.connected }) { Text("Install watch app") }
+            }
+            Text(state.watchCapabilities.description)
+            Text("Watch buttons: Up captures readings · Select asks · Down opens history. Your Pebble app keeps ownership of pairing and watch settings.")
+            if (state.installStatus.isNotBlank()) Text(state.installStatus)
         }
         item {
             HorizontalDivider()

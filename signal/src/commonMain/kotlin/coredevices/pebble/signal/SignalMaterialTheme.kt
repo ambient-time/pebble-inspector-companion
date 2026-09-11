@@ -24,9 +24,9 @@ internal fun SignalMaterialTheme(content: @Composable () -> Unit) {
         secondaryContainer = Color(0xFF2B4B52), onSecondaryContainer = Color(0xFFC5E9EF),
         tertiary = Color(0xFFF5B441), onTertiary = Color(0xFF402D00),
         tertiaryContainer = Color(0xFF5C4200), onTertiaryContainer = Color(0xFFFFDF99),
-        background = Color(0xFF040912), onBackground = Color(0xFFE3EAF2),
-        surface = Color(0xFF091522), onSurface = Color(0xFFE3EAF2),
-        surfaceVariant = Color(0xFF283A45), onSurfaceVariant = Color(0xFFBDCCD4),
+        background = Color(0xFF101416), onBackground = Color(0xFFE3EAF2),
+        surface = Color(0xFF151B1E), onSurface = Color(0xFFE3EAF2),
+        surfaceVariant = Color(0xFF253034), onSurfaceVariant = Color(0xFFBDCCD4),
         outline = Color(0xFF879BA5), outlineVariant = Color(0xFF3B4F59),
         inverseSurface = Color(0xFFE3EAF2), inverseOnSurface = Color(0xFF152530), inversePrimary = Color(0xFF00666C),
         surfaceTint = Color(0xFF5CD9FF),
@@ -60,4 +60,13 @@ internal fun SignalAntennaGlyph() {
     }
 }
 
-internal fun signalCount(count: Int, singular: String): String = "$count $singular${if (count == 1) "" else "s"}"
+internal fun signalCount(count: Int, singular: String): String = "$count ${if (count == 1) singular else if (singular == "memory") "memories" else "${singular}s"}"
+
+/** Coverage counts retain missing outcomes rather than implying that they are measured zeroes. */
+internal fun signalObservationCoverage(record: SignalRecord): String {
+    val missing = record.observations.count { it.status !in setOf("available", "fresh", "cached", "stale", "partial", "estimate", "coarse_estimate", "candidate", "observed", "inside", "outside", "recorded", "modeled", "forecast", "timestamp_unknown") }
+    val measured = record.observations.size - missing
+    val sources = record.sourceKeys.size.takeIf { it > 0 } ?: record.observations.map { it.key }.distinct().size
+    return "${signalCount(measured, "reading")} from ${signalCount(sources, "source")}" +
+        if (missing > 0) " · $missing unavailable" else ""
+}

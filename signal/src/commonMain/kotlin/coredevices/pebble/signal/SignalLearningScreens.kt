@@ -93,7 +93,7 @@ internal fun SignalLearningSetup(state: SignalState, station: SignalStation, onC
             }
             item {
                 Button(onClick = { complete(destination!!) }, enabled = !state.busy, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                    Text(if (destination == SignalStartDestination.Observe) "Choose session length" else "Open Capture")
+                    Text(if (destination == SignalStartDestination.Observe) "Choose session length" else "Open Now")
                 }
                 TextButton(onClick = { sourcesSaved = false }) { Text("Change sources") }
             }
@@ -103,65 +103,98 @@ internal fun SignalLearningSetup(state: SignalState, station: SignalStation, onC
 
 @Composable
 internal fun SignalTodayPage(state: SignalState, station: SignalStation, onAsk: () -> Unit, onCapture: () -> Unit,
+    onCaptureTools: () -> Unit, onAnalyze: (String) -> Unit,
     onObserve: () -> Unit, onMemory: () -> Unit, onDetail: (String) -> Unit, onSources: () -> Unit, onNearby: () -> Unit) {
     val latest = state.records.filter { signalSupportsLocalChanges(it) && it.observations.isNotEmpty() && it.state == "ready" }.maxByOrNull { it.createdAt }
     val sourceIssues = state.sourceStatus.filter { it.key in state.settings.enabled && signalSourceNeedsAttention(it) }
     val proposals = state.memories.filter { it.state == "proposed" || it.needsReview }.take(3)
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    var sourceIssuesOpen by remember { mutableStateOf(false) }
+    var trendsOpen by remember { mutableStateOf(false) }
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
         item {
-            Text("Today", Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineMedium)
-            Text("Understand your surroundings. Remember what matters.")
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Right now", Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineMedium)
+            Text("Save an observation. Ask about what changed.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
         item {
-            Button(onClick = onCapture, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Capture once") }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onObserve) { Text("Observe for a while") }
-                TextButton(onClick = onAsk) { Text("Ask a question") }
-                TextButton(onClick = onNearby) { Text("Nearby") }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onCapture, enabled = !state.busy && state.settings.enabled.isNotEmpty(), modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text(if (state.busy) "Collecting…" else "Capture once") }
+                Text("${signalCount(state.settings.enabled.size, "source")} selected · saved on this phone", style = MaterialTheme.typography.bodySmall)
+                if (state.settings.enabled.isEmpty()) Text("Choose at least one source to begin.")
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = onObserve) { Text("Observe for a while") }
+                    TextButton(onClick = onSources) { Text("Choose sources") }
+                }
             }
-            Text("${signalCount(state.settings.enabled.size, "source")} enabled · captures stay on this phone", style = MaterialTheme.typography.bodySmall)
-            if (state.settings.enabled.isEmpty()) TextButton(onClick = onSources) { Text("Choose sources") }
+        }
+        if (latest != null) item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LearningHeading("Latest observation")
+                    Text(signalDateTime(latest.createdAt), style = MaterialTheme.typography.labelLarge)
+                    Text(signalObservationCoverage(latest))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { onAnalyze(latest.id) }, enabled = !state.busy) { Text("Ask about this") }
+                        TextButton(onClick = { onDetail(latest.id) }) { Text("Inspect readings") }
+                    }
+                    Text("Review the attached readings before sending to your provider.", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            TextButton(onClick = { trendsOpen = !trendsOpen }, modifier = Modifier.semantics { stateDescription = if (trendsOpen) "Expanded" else "Collapsed" }) {
+                Text(if (trendsOpen) "Hide changes and numeric history" else "Changes and numeric history")
+            }
+            }
+        } else item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Your first observation will appear here. Capturing works without a provider key.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            TextButton(onClick = onAsk) { Text("Ask without a capture") }
+            }
+        }
+        if (latest != null && trendsOpen) {
+            item { SignalLocalChangesAction(latest, state) { station.summarizeChanges(latest.id) } }
+            item { SignalTrendPanel(latest, state, onDetail) }
         }
         if (sourceIssues.isNotEmpty()) item {
-            LearningHeading("Sources to review")
-            Text("Other available sources can still be captured.", style = MaterialTheme.typography.bodySmall)
-            sourceIssues.take(3).forEach { SignalSourceStatusRow(it, state, station, onSources) }
-            if (sourceIssues.size > 3) TextButton(onClick = onSources) { Text("Review all ${sourceIssues.size} source issues") }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = { sourceIssuesOpen = !sourceIssuesOpen }, modifier = Modifier.semantics { stateDescription = if (sourceIssuesOpen) "Expanded" else "Collapsed" }) {
+                Text("${signalCount(sourceIssues.size, "source")} ${if (sourceIssues.size == 1) "needs" else "need"} review")
+            }
+            if (sourceIssuesOpen) {
+                Text("Other available sources can still be captured.", style = MaterialTheme.typography.bodySmall)
+                sourceIssues.forEach { SignalSourceStatusRow(it, state, station, onSources) }
+            }
+            }
         }
-        if (state.savedQuestions.isNotEmpty()) item {
-            LearningHeading("Saved questions")
-            Text("Open a draft, review its current context, then send when ready.")
+        state.observationSession?.takeIf { it.state in setOf("running", "paused") }?.let { session -> item {
+            Card { Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                LearningHeading("Observation in progress")
+                Text("${signalCount(session.captures, "capture")} saved · ends ${signalDateTime(session.endsAt)}")
+                Text(session.status, Modifier.semantics { liveRegion = LiveRegionMode.Polite }, style = MaterialTheme.typography.bodySmall)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = station::stopObservation) { Text("Stop observing") }
+                    TextButton(onClick = onObserve) { Text("Session details") }
+                }
+            } }
+        } }
+        item {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            HorizontalDivider()
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onNearby) { Text("Nearby") }
+                OutlinedButton(onClick = onCaptureTools) { Text("Capture tools") }
+                TextButton(onClick = onMemory) { Text(if (proposals.isEmpty()) "Patterns" else "Patterns · ${proposals.size} to review") }
+            }
+            Text("Nearby places and wireless readings · source presets and field trials · local learning", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
+        if (state.savedQuestions.isNotEmpty()) item { LearningHeading("Saved questions") }
         items(state.savedQuestions, key = { "question:${it.id}" }) { recipe ->
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { station.openSavedQuestion(recipe.id) }, enabled = !state.busy) { Text(recipe.title) }
                 TextButton(onClick = { station.deleteSavedQuestion(recipe.id) }, enabled = !state.busy) { Text("Delete ${recipe.title}") }
             }
-        }
-        state.observationSession?.let { session -> item { SignalSessionSummary(session, state, station, onSources) } }
-        if (latest != null) item {
-            HorizontalDivider()
-            LearningHeading("Latest observation")
-            Text(signalDateTime(latest.createdAt), style = MaterialTheme.typography.labelLarge)
-            Text(latest.summary.ifBlank { "${signalCount(latest.observations.size, "reading")} saved" })
-            TextButton(onClick = { onDetail(latest.id) }) { Text("Inspect readings") }
-            SignalLocalChangesAction(latest, state) { station.summarizeChanges(latest.id) }
-            SignalTrendPanel(latest, state, onDetail)
-            if (state.settings.placeFences.isEmpty()) {
-                Text("Give a familiar place a name to make future observations easier to understand.", style = MaterialTheme.typography.bodySmall)
-                TextButton(onClick = onNearby) { Text("Name a familiar place") }
-            }
-        } else item { Text("Your first capture will appear here. Choose its sources, save it, then inspect the evidence.") }
-        item {
-            HorizontalDivider()
-            LearningHeading(if (state.settings.learningEnabled) "Learning from your observations" else "Memory, when you are ready")
-            Text(state.learningStatus)
-            if (!state.settings.learningEnabled) Text("Learning looks for patterns in eligible saved and future observations on this phone. Suggestions become remembered knowledge only after your review.")
-            TextButton(onClick = onMemory) { Text(if (proposals.isEmpty()) "Open Memory" else "Review ${signalCount(proposals.size, "suggestion")}") }
-        }
-        items(proposals, key = { it.id }) { memory ->
-            Text(memory.proposedText.takeIf { memory.needsReview && it.isNotBlank() } ?: memory.text)
-            Text(memory.coverage, style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -321,7 +354,7 @@ internal fun SignalMemoryPage(state: SignalState, station: SignalStation, onEvid
     } }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
-            Text("Memory", Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineMedium)
+            Text("Patterns", Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineMedium)
             Text("What this phone remembers, with the evidence and your corrections.")
             if (!state.settings.learningEnabled) SignalLearningControls(state, station)
             else Text(state.learningStatus, Modifier.semantics { liveRegion = LiveRegionMode.Polite })
