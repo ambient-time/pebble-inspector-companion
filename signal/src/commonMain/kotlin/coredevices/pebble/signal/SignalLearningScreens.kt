@@ -104,7 +104,7 @@ internal fun SignalLearningSetup(state: SignalState, station: SignalStation, onC
 @Composable
 internal fun SignalTodayPage(state: SignalState, station: SignalStation, onAsk: () -> Unit, onCapture: () -> Unit,
     onCaptureTools: () -> Unit, onAnalyze: (String) -> Unit,
-    onObserve: () -> Unit, onMemory: () -> Unit, onDetail: (String) -> Unit, onSources: () -> Unit, onNearby: () -> Unit) {
+    onObserve: () -> Unit, onMemory: () -> Unit, onDetail: (String) -> Unit, onSources: () -> Unit, onNearby: () -> Unit, onLive: () -> Unit) {
     val latest = state.records.filter { signalSupportsLocalChanges(it) && it.observations.isNotEmpty() && it.state == "ready" }.maxByOrNull { it.createdAt }
     val sourceIssues = state.sourceStatus.filter { it.key in state.settings.enabled && signalSourceNeedsAttention(it) }
     val proposals = state.memories.filter { it.state == "proposed" || it.needsReview }.take(3)
@@ -120,6 +120,7 @@ internal fun SignalTodayPage(state: SignalState, station: SignalStation, onAsk: 
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onCapture, enabled = !state.busy && state.settings.enabled.isNotEmpty(), modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text(if (state.busy) "Collecting…" else "Capture once") }
+                OutlinedButton(onClick = onLive, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Live view") }
                 Text("${signalCount(state.settings.enabled.size, "source")} selected · saved on this phone", style = MaterialTheme.typography.bodySmall)
                 if (state.settings.enabled.isEmpty()) Text("Choose at least one source to begin.")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

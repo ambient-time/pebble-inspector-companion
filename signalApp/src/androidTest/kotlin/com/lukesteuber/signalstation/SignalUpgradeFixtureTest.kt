@@ -21,7 +21,7 @@ class SignalUpgradeFixtureTest {
         val store = SignalStore(context)
         try {
             if (mode == "seed") {
-                assertTrue(version == 6L || version == 8L, "Seed a published build 6 or 8 before upgrading.")
+                assertTrue(version == 6L || version == 8L || version == 9L, "Seed a published build 6, 8 or 9 before upgrading.")
                 // Decode the original wire shapes so this fixture also runs against published builds.
                 store.settings(Json.decodeFromString<SignalSettings>("""{"onboardingComplete":true,"learningEnabled":true,"provider":"xai","model":"upgrade-fixture-model","recognition":"stock","enabled":["device.battery"]}"""))
                 store.put("xai", "synthetic-upgrade-credential-never-sent")
@@ -29,7 +29,7 @@ class SignalUpgradeFixtureTest {
                 store.saveQuestion(Json.decodeFromString<SavedQuestion>("""{"id":"upgrade-fixture-question","title":"Fixture question","question":"What changed?","sourceKeys":["device.battery"],"attachmentIds":["upgrade-fixture-record"]}"""))
                 store.saveMemory(Json.decodeFromString<SignalMemory>("""{"id":"upgrade-fixture-memory","fingerprint":"upgrade-fixture-pattern","kind":"baseline","text":"My corrected fixture wording","state":"confirmed","createdAt":1789080000000,"evaluatedAt":1789080000000,"sourceKeys":["device.battery"],"revision":4,"evidence":[{"recordId":"upgrade-fixture-record","observationIds":["upgrade-fixture-reading"],"collectedAt":1789080000000,"description":"Fixture evidence"}]}"""))
             } else {
-                assertTrue(version >= 9)
+                assertTrue(version >= 10)
                 assertEquals("xai", store.settings().provider)
                 assertEquals("upgrade-fixture-model", store.settings().model)
                 assertEquals(setOf("device.battery"), store.settings().enabled)

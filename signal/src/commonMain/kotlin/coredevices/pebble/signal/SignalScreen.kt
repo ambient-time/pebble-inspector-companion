@@ -69,7 +69,7 @@ import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Instant
 
 private enum class SignalPage(val title: String) {
-    Today("Now"), Conversation("Ask"), Capture("Capture tools"), History("History"), Presence("Nearby"), Sessions("Sessions"), Memory("Patterns"), Sources("Sources"), Settings("Settings")
+    Today("Now"), Live("Live view"), Conversation("Ask"), Capture("Capture tools"), History("History"), Presence("Nearby"), Sessions("Sessions"), Memory("Patterns"), Sources("Sources"), Settings("Settings")
 }
 
 private data class SignalConfirmation(val title: String, val message: String, val action: () -> Unit)
@@ -222,7 +222,8 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
                 onAnalyze = { station.analyzeRecord(it); page = SignalPage.Conversation },
                 onObserve = { page = SignalPage.Sessions }, onMemory = { page = SignalPage.Memory },
                 onDetail = { detailId = it; station.selectRecord(it) }, onSources = { page = SignalPage.Sources },
-                onNearby = { page = SignalPage.Presence })
+                onNearby = { page = SignalPage.Presence }, onLive = { page = SignalPage.Live })
+            SignalPage.Live -> SignalLivePage(state, station, onSources = { page = SignalPage.Sources })
             SignalPage.Memory -> SignalMemoryPage(state, station,
                 onEvidence = { detailId = it; station.selectRecord(it) }, onCapture = { page = SignalPage.Capture },
                 onNearby = { page = SignalPage.Presence }, onSources = { page = SignalPage.Sources })
@@ -268,7 +269,7 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
         NavigationBar(containerColor = MaterialTheme.colorScheme.surface, windowInsets = WindowInsets(0, 0, 0, 0)) {
             listOf(SignalPage.Today, SignalPage.Conversation, SignalPage.History).forEach { destination ->
                 val active = when (destination) {
-                    SignalPage.Today -> page in setOf(SignalPage.Today, SignalPage.Capture, SignalPage.Presence, SignalPage.Sources)
+                    SignalPage.Today -> page in setOf(SignalPage.Today, SignalPage.Live, SignalPage.Capture, SignalPage.Presence, SignalPage.Sources)
                     SignalPage.History -> page in setOf(SignalPage.History, SignalPage.Sessions, SignalPage.Memory)
                     else -> page == destination
                 }

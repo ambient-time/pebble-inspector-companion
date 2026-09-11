@@ -149,3 +149,38 @@ run on an emulator; physical Android battery behavior, Health Connect account
 access and the Pebble connection still need device testing. The earlier lab
 companion remains withdrawn while its reported watch settings reset is
 unresolved. Use the separate Signal Station package and the existing Pebble app.
+
+
+## Live signals around you
+
+Open **Live view** on Now, choose Bluetooth signal strength or Wi-Fi signal and
+frequency in Sources, review radio permissions, then tap **Start scanning**.
+The view groups observations into strong (at least −60 dBm), medium (−75 to
+−61 dBm), and faint (below −75 dBm) bands. Tap an observation for its recent
+strength samples, age, advertised details and a label for this scan session.
+Names, identifiers and Bluetooth services each retain their own source switch.
+A session label is included in a saved snapshot only when that radio's names
+source is enabled. It does not enroll a device for future recognition.
+
+This is useful for comparing signal strength while placing your own beacon,
+seeing which access points are visible, and saving a scene to compare later.
+Bluetooth counts are advertisers and Wi-Fi counts are access points. Silent
+phones are invisible, one device can advertise several identities, and changing
+addresses can appear as new observations. Cellular context describes network
+cells, not nearby handsets. No phone count, people count, bearing or distance
+is established by this view.
+
+Collection stops on leaving the view, backgrounding the app, changing sources,
+or after five minutes. Bluetooth uses bounded scan windows. Wi-Fi requests a
+new scan at most once every 35 seconds and shows available cached results in
+between; Android can throttle or deny updates. Fresh readings are at most 15
+seconds old. Older readings fade and disappear after 60 seconds. Repeated
+cached readings do not create new samples. The view retains up to 128 entries
+and twelve recent strengths per entry; it is not a complete radio census.
+
+Nothing is saved or sent automatically. **Save snapshot** freezes fresh readings
+into local history. **Ask about this scene** saves and attaches those readings
+to a draft, then opens Ask. Review and Send remain separate actions. Snapshots
+include measurement times and coverage; stale readings are excluded. Paired
+watch behavior is unchanged. Cooperative ranging and optional ESP32 positioning
+are future work and are not simulated by the strength bands.

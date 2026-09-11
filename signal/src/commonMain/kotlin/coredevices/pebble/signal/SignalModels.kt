@@ -84,6 +84,7 @@ data class SignalSourceCoverage(
 data class SignalSource(val key: String, val name: String, val group: String, val available: Boolean = true)
 data class SignalWatch(val id: String, val name: String, val connected: Boolean, val connectionId: String = id, val appOpen: Boolean = false, val connectionStatus: String = "")
 data class SignalState(
+    val live: SignalLiveState = SignalLiveState(),
     val attachedRecords: List<SignalRecord> = emptyList(),
     val questionDraft: String = "",
     val questionDraftToken: String = "",
@@ -151,6 +152,11 @@ interface SignalStation {
     fun testProvider()
     fun ask(text: String, searchHistory: Boolean = false)
     fun capture()
+    fun startLiveSignals() {}
+    fun stopLiveSignals() {}
+    fun saveLiveScene(ask: Boolean = false) {}
+    fun requestLivePermissions() {}
+    fun labelLiveSignal(id: String, label: String) {}
     fun analyzeRecord(id: String)
     fun installWatchApp()
     fun openPermissionSettings()

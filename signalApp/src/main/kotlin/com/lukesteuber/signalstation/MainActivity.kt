@@ -13,6 +13,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
 
 class MainActivity : ComponentActivity() {
+    override fun onStop() {
+        (application as SignalApplication).station.stopLiveSignals()
+        super.onStop()
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val app = application as SignalApplication
