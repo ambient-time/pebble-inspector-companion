@@ -21,6 +21,8 @@ data class SignalSettings(
     val weatherPlace: SignalPlace? = null,
     val presenceTargets: List<SignalPresenceTarget> = emptyList(),
     val placeFences: List<SignalPlaceFence> = emptyList(),
+    val lookups: SignalLookupSettings = SignalLookupSettings(),
+    val observationMode: String = "standard",
 )
 
 @Serializable
@@ -109,6 +111,7 @@ data class SignalState(
     val presenceCandidates: List<SignalRadioCandidate> = emptyList(),
     val presenceStatus: String = "Check nearby signals when ready.",
     val placeLookup: SignalPlaceLookup? = null,
+    val lookupReview: SignalLookupReview? = null,
     val memories: List<SignalMemory> = emptyList(),
     val memorySuggestions: List<SignalMemory> = emptyList(),
     val useMemory: Boolean = true,
@@ -177,6 +180,9 @@ interface SignalStation {
     fun savePlaceFence(fence: SignalPlaceFence)
     fun removePlaceFence(id: String)
     fun lookupNearbyPlace()
+    fun prepareLookup(kind: String, recordId: String) {}
+    fun sendReviewedLookup() {}
+    fun dismissLookupReview() {}
     fun enableLearning(enabled: Boolean) {}
     fun reviewMemory(id: String, action: String, text: String = "") {}
     fun saveMemoryNote(text: String) {}
@@ -223,4 +229,5 @@ data class SavedQuestion(
 data class SignalDiagnosticReport(
     val build: String, val stage: String, val result: String,
     val elapsedMs: Long = 0, val payloadBytes: Int = 0,
+    val sourceOutcomes: Map<String, String> = emptyMap(), val scheduler: String = "",
 )

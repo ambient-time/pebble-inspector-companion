@@ -147,6 +147,11 @@ class SignalStore(context: Context, private val namespace: String = "signal", pr
         dao.clearParents(record.id)
         dao.edges((record.references + record.memoryReferences.keys.map { "m:$it" }).distinct().map { SignalEdge(it, record.id) })
     }
+    suspend fun linkedDocument(id: String, type: String, value: String, parents: List<String>) = database.withTransaction {
+        document(id, type, value)
+        dao.clearParents(id)
+        dao.edges(parents.distinct().map { SignalEdge(it, id) })
+    }
     suspend fun deletionClosure(initial: Set<String>): Set<String> {
         val seen = initial.toMutableSet(); var pending = initial
         while (pending.isNotEmpty()) {

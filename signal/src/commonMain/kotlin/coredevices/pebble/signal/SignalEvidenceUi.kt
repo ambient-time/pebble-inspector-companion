@@ -55,7 +55,8 @@ internal fun SignalRecordCoverage(record: SignalRecord, sources: List<SignalSour
 }
 
 internal fun signalSourceNeedsAttention(source: SignalSourceStatus): Boolean =
-    source.omitted > 0 || source.status !in setOf("fresh", "available", "ready", "observed", "inside", "outside")
+    source.omitted > 0 || source.status !in setOf("fresh", "available", "ready", "observed", "inside", "outside",
+        "recorded", "modeled", "candidate", "estimate", "coarse_estimate", "lookup_not_requested", "empty_observation", "deferred", "import_separate")
 
 @Composable
 internal fun SignalSourceStatusRow(source: SignalSourceStatus, state: SignalState, station: SignalStation,

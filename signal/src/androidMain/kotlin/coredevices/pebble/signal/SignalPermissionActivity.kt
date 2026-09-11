@@ -25,10 +25,11 @@ class SignalPermissionActivity : Activity() {
                 add(Manifest.permission.RECORD_AUDIO)
                 if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
             }
-            if ((intent.getBooleanExtra("weatherDeviceLocation", false) && enabled.any { it in SignalWeather.keys }) || enabled.any { it == "location" || it.startsWith("wifi") || it.startsWith("bluetooth") || it.startsWith("presence.") }) {
+            if ((intent.getBooleanExtra("weatherDeviceLocation", false) && enabled.any { it in SignalWeather.keys }) || enabled.any { it == "location" || it.startsWith("wifi") || it.startsWith("bluetooth") || it.startsWith("presence.") || it.startsWith("cellular") }) {
                 add(Manifest.permission.ACCESS_COARSE_LOCATION); add(Manifest.permission.ACCESS_FINE_LOCATION)
             }
             if (enabled.any { it.startsWith("bluetooth") || it == "presence.bluetooth" } && Build.VERSION.SDK_INT >= 31) { add(Manifest.permission.BLUETOOTH_SCAN); add(Manifest.permission.BLUETOOTH_CONNECT) }
+            if (enabled.any { it.startsWith("cellular") }) add(Manifest.permission.READ_PHONE_STATE)
             if (enabled.any { it == "sensor.18" || it == "sensor.19" } && Build.VERSION.SDK_INT >= 29) add(Manifest.permission.ACTIVITY_RECOGNITION)
             if ("sensor.21" in enabled) { if (Build.VERSION.SDK_INT >= 36 && applicationInfo.targetSdkVersion >= 36) add("android.permission.health.READ_HEART_RATE") else add(Manifest.permission.BODY_SENSORS) }
         }.distinct().filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }

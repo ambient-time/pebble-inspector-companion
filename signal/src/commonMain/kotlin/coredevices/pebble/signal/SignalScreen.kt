@@ -129,7 +129,7 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
     }
     LaunchedEffect(state.threadId) { attachmentId = null }
     LaunchedEffect(page) {
-        if (page in setOf(SignalPage.Today, SignalPage.History, SignalPage.Capture, SignalPage.Presence)) station.searchSavedHistory("")
+        if (page in setOf(SignalPage.Today, SignalPage.History, SignalPage.Capture, SignalPage.Presence, SignalPage.Sessions)) station.searchSavedHistory("")
     }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).then(if (standalone) Modifier.statusBarsPadding().navigationBarsPadding() else Modifier).imePadding()) {
         run {
@@ -213,7 +213,7 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
             SignalPage.Memory -> SignalMemoryPage(state, station,
                 onEvidence = { detailId = it; station.selectRecord(it) }, onCapture = { page = SignalPage.Capture },
                 onNearby = { page = SignalPage.Presence }, onSources = { page = SignalPage.Settings })
-            SignalPage.Sessions -> SignalSessionsPage(state, station) { page = SignalPage.Settings }
+            SignalPage.Sessions -> SignalSessionsPage(state, station, onSources = { page = SignalPage.Settings }, onDetail = { station.selectRecord(it); detailId = it })
             SignalPage.Capture -> SignalCapturePage(state, station,
                 onDetail = { detailId = it; station.selectRecord(it) },
                 onSources = { page = SignalPage.Settings },
@@ -436,11 +436,14 @@ private fun SignalHistory(
                 Button(onClick = onAskHistory, enabled = !state.busy && state.records.isNotEmpty()) { Text("Ask about history") }
                 OutlinedButton(onClick = { val ids = selected.toList(); onCompare(ids[0], ids[1]) }, enabled = selected.size == 2 && !state.busy) { Text("Compare ${selected.size}/2") }
                 TextButton(onClick = {
-                    onConfirm(SignalConfirmation("Export history?", "The export contains your questions, answers, and enabled or previously saved readings. Choose where to share it.") { station.shareHistory("json") })
+                    onConfirm(SignalConfirmation("Export history?", "The export contains your questions, answers, and readings whose sources are currently enabled. Choose where to share it.") { station.shareHistory("json") })
                 }, enabled = state.records.isNotEmpty() && !state.busy) { Text("Export JSON") }
                 TextButton(onClick = {
-                    onConfirm(SignalConfirmation("Export history?", "The export contains your questions, answers, and saved readings. Choose where to share it.") { station.shareHistory("markdown") })
+                    onConfirm(SignalConfirmation("Export history?", "The export contains your questions, answers, and readings whose sources are currently enabled. Choose where to share it.") { station.shareHistory("markdown") })
                 }, enabled = state.records.isNotEmpty() && !state.busy) { Text("Export Markdown") }
+                TextButton(onClick = {
+                    onConfirm(SignalConfirmation("Export numeric readings?", "CSV includes currently enabled numeric readings with units, timestamps, status and provenance. Page filters do not limit this export.") { station.shareHistory("csv") })
+                }, enabled = state.records.isNotEmpty() && !state.busy) { Text("Export CSV") }
                 TextButton(onClick = { station.previewDeleteRecords(null) }, enabled = state.historyReady && state.historyCount > 0 && !state.busy) { Text("Review deletion of all history") }
             }
             Text("${records.size} ${if (records.size == 1) "record" else "records"} · select two surveys to compare", style = MaterialTheme.typography.bodySmall)
@@ -501,6 +504,7 @@ private fun SignalDetail(
         }
         item { SignalResponse(record.answer, record.summary.ifBlank { "No answer saved." }) }
         if (signalSupportsLocalChanges(record)) item { SignalLocalChangesAction(record, state, onChanges) }
+        if (signalSupportsLocalChanges(record)) item { SignalTrendPanel(record, state, onReference) }
         item {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onAnalyze, enabled = !state.busy && record.state == "ready" && record.observations.isNotEmpty() && state.settings.provider in state.configuredProviders && state.settings.model.isNotBlank() && SignalHistory.allowed(record, state.settings.enabled)) { Text("Analyze readings") }
@@ -595,6 +599,8 @@ private fun SignalConfiguration(state: SignalState, station: SignalStation, onMa
         item {
             SignalHeading("Settings")
             Text("Capture works without a provider key. Add a key when you want model analysis.")
+            Text(state.buildVersion, style = MaterialTheme.typography.bodySmall)
+            TextButton(onClick = { uriHandler.openUri("https://dr.eamer.dev/downloads/apps/signal-station/") }) { Text("Download page and guide") }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = { station.updateSettings(settings.copy(onboardingComplete = false)) }, enabled = !state.busy) { Text("Revisit setup guide") }
                 onManageWatch?.let { TextButton(onClick = it) { Text("Watch connection") } }
@@ -626,7 +632,7 @@ private fun SignalConfiguration(state: SignalState, station: SignalStation, onMa
             state.diagnostics?.let { report ->
                 Text("${report.stage.replace('_', ' ')}: ${report.result.replace('_', ' ')} · ${report.elapsedMs} ms · ${report.payloadBytes} message bytes")
                 TextButton(onClick = station::shareDiagnostics, enabled = !state.busy) { Text("Share diagnostic report") }
-                Text("The report contains build, stage, result, timing and size only. Your question, keys and readings are excluded.", style = MaterialTheme.typography.bodySmall)
+                Text("The report contains build, timing, size, source outcomes and scheduler state. Your question, keys and readings are excluded.", style = MaterialTheme.typography.bodySmall)
             }
             Text("The test sends a short question using the saved model and key. Provider charges may apply.", style = MaterialTheme.typography.bodySmall)
             TextButton(onClick = {

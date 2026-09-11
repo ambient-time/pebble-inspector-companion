@@ -14,6 +14,7 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 
 internal enum class SignalStartDestination { Capture, Observe, Ask }
@@ -145,6 +146,7 @@ internal fun SignalTodayPage(state: SignalState, station: SignalStation, onAsk: 
             Text(latest.summary.ifBlank { "${signalCount(latest.observations.size, "reading")} saved" })
             TextButton(onClick = { onDetail(latest.id) }) { Text("Inspect readings") }
             SignalLocalChangesAction(latest, state) { station.summarizeChanges(latest.id) }
+            SignalTrendPanel(latest, state, onDetail)
             if (state.settings.placeFences.isEmpty()) {
                 Text("Give a familiar place a name to make future observations easier to understand.", style = MaterialTheme.typography.bodySmall)
                 TextButton(onClick = onNearby) { Text("Name a familiar place") }
@@ -169,55 +171,106 @@ private fun SignalSessionSummary(session: SignalObservationSession, state: Signa
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         LearningHeading("Observation session")
         Text(session.status, Modifier.semantics { liveRegion = LiveRegionMode.Polite })
-        Text("${session.state.replace('_', ' ')} · ${signalCount(session.captures, "capture")} · ends ${signalDateTime(session.endsAt)}", style = MaterialTheme.typography.bodySmall)
-        session.lastSuccessAt?.let { Text("Last saved ${signalDateTime(it)}", style = MaterialTheme.typography.bodySmall) }
+        Text("${session.state.replace('_', ' ')} · ${signalObservationModeName(session.mode)} · ${session.captures} saved captures · scheduled end ${signalDateTime(session.endsAt)}", style = MaterialTheme.typography.bodySmall)
+        Text(if (session.attempts == 0 && session.captures > 0) "Attempt count was not recorded for this session." else "${session.attempts} collection attempts",
+            style = MaterialTheme.typography.bodySmall)
+        if (session.sourceKeys.any { it.startsWith("healthconnect.") }) Text("Health imports are recorded separately below; new reads require background health access.", style = MaterialTheme.typography.bodySmall)
+        session.lastSuccessAt?.let { Text("Last successful reading ${signalDateTime(it)}", style = MaterialTheme.typography.bodySmall) }
+        if (session.sourceKeys.any { it.startsWith("healthconnect.") } && session.state in setOf("running", "paused")) Text(state.healthStatus, style = MaterialTheme.typography.bodySmall)
         if (session.state in setOf("running", "paused")) OutlinedButton(onClick = station::stopObservation) { Text("Stop observing") }
-        state.sourceStatus.filter { it.key in session.sourceKeys }.forEach { source ->
+        val outcomes = if (session.state in setOf("running", "paused")) state.sourceStatus.filter { it.key in session.sourceKeys } else emptyList()
+        if (outcomes.isNotEmpty()) Text("Latest source outcomes · these are not session totals", style = MaterialTheme.typography.labelLarge)
+        outcomes.forEach { source ->
             SignalSourceStatusRow(source, state, station, onSources)
         }
     }
 }
 
 @Composable
-internal fun SignalSessionsPage(state: SignalState, station: SignalStation, onSources: () -> Unit) {
+internal fun SignalSessionsPage(state: SignalState, station: SignalStation, onSources: () -> Unit, onDetail: (String) -> Unit = {}) {
     var minutes by remember { mutableStateOf("60") }
-    var selected by remember { mutableStateOf(state.settings.enabled) }
-    LaunchedEffect(state.settings.enabled) { selected = selected.intersect(state.settings.enabled) }
-    val active = state.observationSession?.state in setOf("running", "paused")
+    var mode by remember(state.settings.observationMode) { mutableStateOf(state.settings.observationMode) }
+    val sessionKeys = state.settings.enabled - setOf("places.nearby", "location.radio")
+    var selected by remember { mutableStateOf(sessionKeys) }
+    LaunchedEffect(sessionKeys) { selected = selected.intersect(sessionKeys) }
+    val activeSession = state.observationSession?.takeIf { it.state in setOf("running", "paused") }
+    val active = activeSession != null
+    val pendingMode = mode != state.settings.observationMode
+    val pastSessions = (listOfNotNull(state.observationSession) + state.sessions).distinctBy { it.id }
+        .filter { it.id != activeSession?.id }.sortedByDescending { it.startedAt }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
             LearningHeading("Observe for a while")
             Text("Collect selected readings during a timed session. A notification shows that observation is active and lets you stop it. Android can delay or interrupt individual readings.")
             Text("Starting a session does not enable learning or send observations to a model.", style = MaterialTheme.typography.bodySmall)
         }
-        state.observationSession?.let { session -> item { SignalSessionSummary(session, state, station, onSources) } }
+        activeSession?.let { session -> item { SignalSessionSummary(session, state, station, onSources) } }
         if (!active) {
             item {
+                SignalChoice("Collection mode", mode, listOf("standard" to "Standard", "battery_saver" to "Battery saver"), !state.busy) { mode = it }
+                Text(if (mode == "battery_saver") "Uses fewer scheduled collection attempts. Brief changes may be missed." else "Uses the standard collection schedule.",
+                    style = MaterialTheme.typography.bodySmall)
+                if (pendingMode) {
+                    OutlinedButton(onClick = { station.updateSettings(state.settings.copy(observationMode = mode)) }, enabled = !state.busy) { Text("Save collection mode") }
+                    Text("Save the mode before starting a session. Your source choices stay the same.", style = MaterialTheme.typography.bodySmall)
+                }
                 SignalChoice("Session length", minutes, listOf("15" to "15 minutes", "60" to "1 hour", "240" to "4 hours"), !state.busy) { minutes = it }
                 LearningHeading("Sources for this session")
                 Text("Select from your enabled sources. Sources you leave off remain available for manual capture.", style = MaterialTheme.typography.bodySmall)
+                if (sessionKeys != state.settings.enabled) Text("External lookups are reviewed separately in Nearby; sessions do not send them.", style = MaterialTheme.typography.bodySmall)
             }
-            items(state.sources.filter { it.key in state.settings.enabled }, key = { it.key }) { source ->
+            items(state.sources.filter { it.key in sessionKeys }, key = { it.key }) { source ->
                 SignalToggle(source.name, source.key in selected, !state.busy, if (source.available) null else "Access or a connected device may be needed") {
                     selected = if (it) selected + source.key else selected - source.key
                 }
             }
             item {
-                if (state.settings.enabled.isEmpty()) Text("Enable at least one source to begin.")
+                if (sessionKeys.isEmpty()) Text("Enable at least one collection source to begin.")
                 TextButton(onClick = onSources) { Text("Change enabled sources") }
-                Button(onClick = { station.startObservation(minutes.toInt(), selected.intersect(state.settings.enabled)) }, enabled = !state.busy && selected.intersect(state.settings.enabled).isNotEmpty(),
+                Button(onClick = { station.startObservation(minutes.toInt(), selected.intersect(sessionKeys)) }, enabled = !state.busy && !pendingMode && selected.intersect(sessionKeys).isNotEmpty(),
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Start observation session") }
                 Text("No automatic restart after reboot or force-stop. Watch readings are available only while its existing Signal Station connection is open.", style = MaterialTheme.typography.bodySmall)
             }
         }
         item { HorizontalDivider(); LearningHeading("Past sessions") }
-        if (state.sessions.isEmpty()) item { Text("Completed and interrupted sessions will appear here.") }
-        items(state.sessions.filter { it.id != state.observationSession?.id }, key = { it.id }) { session ->
+        if (pastSessions.isEmpty()) item { Text("Completed and interrupted sessions will appear here.") }
+        items(pastSessions, key = { it.id }) { session ->
+            var expanded by remember(session.id) { mutableStateOf(false) }
+            var visibleRecords by remember(session.id) { mutableStateOf(10) }
             Text(signalDateTime(session.startedAt), style = MaterialTheme.typography.labelLarge)
-            Text("${session.state.replace('_', ' ')} · ${signalCount(session.captures, "capture")}")
+            Text("${session.state.replace('_', ' ')} · ${signalObservationModeName(session.mode)} · ${session.captures} saved captures")
+            Text(if (session.attempts == 0 && session.captures > 0) "Attempt count was not recorded for this session." else "${session.attempts} collection attempts",
+                style = MaterialTheme.typography.bodySmall)
             Text(session.status, style = MaterialTheme.typography.bodySmall)
+            TextButton(onClick = { expanded = !expanded }, modifier = Modifier.heightIn(min = 48.dp).semantics {
+                stateDescription = if (expanded) "Expanded" else "Collapsed"
+            }) { Text(if (expanded) "Hide session evidence" else "Inspect session evidence") }
+            if (expanded) {
+                val records = state.records.filter { it.sessionId == session.id }.sortedBy { it.createdAt }
+                Text("${records.size} loaded records from this session. Other records may be outside this history page or deleted.", style = MaterialTheme.typography.bodySmall)
+                Text("Coverage counts describe stored rows, including unavailable outcomes. They are not a count of successful measurements or complete session coverage.", style = MaterialTheme.typography.bodySmall)
+                records.take(visibleRecords).forEach { record ->
+                    HorizontalDivider()
+                    Text("${signalDateTime(record.createdAt)} · ${record.state.replace('_', ' ')}", style = MaterialTheme.typography.labelLarge)
+                    if (record.coverage.isNotEmpty()) SignalRecordCoverage(record, state.sources)
+                    else Text("Detailed coverage was not saved with this record.", style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = { onDetail(record.id) }) { Text("Inspect record · ${record.id}") }
+                }
+                if (records.size > visibleRecords) TextButton(onClick = { visibleRecords += 10 }) {
+                    Text("Show more session records · ${records.size - visibleRecords} remaining")
+                }
+                if (state.historyHasMore) OutlinedButton(onClick = station::loadMoreHistory, enabled = !state.busy && !state.historyLoading) {
+                    Text(if (state.historyLoading) "Loading older activity…" else "Load older activity")
+                }
+            }
         }
     }
+}
+
+private fun signalObservationModeName(mode: String): String = when (mode) {
+    "standard" -> "Standard"
+    "battery_saver" -> "Battery saver"
+    else -> "Unknown mode"
 }
 
 @Composable

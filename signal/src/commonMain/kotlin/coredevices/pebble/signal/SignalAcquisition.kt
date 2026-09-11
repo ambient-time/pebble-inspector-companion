@@ -45,9 +45,9 @@ object SignalBudget {
         return SignalBudgetResult(retained, groups.map { (key, rows) ->
             val kept = counts[key] ?: 0
             // Probe-level truncation is additional to the attachment's fair budget.
-            val probeOmitted = rows.mapNotNull { it.fields["omitted"]?.toIntOrNull() }.maxOrNull() ?: 0
+            val probeOmitted = rows.mapNotNull { it.fields["omitted"]?.toIntOrNull()?.coerceIn(0, 100_000) }.sum()
             SignalSourceCoverage(key, rows.size + probeOmitted, kept, rows.size - kept + probeOmitted,
-                attempted = rows.any { it.status !in setOf("disabled", "rate_limited", "deferred", "background_unavailable") },
+                attempted = rows.any { it.status !in setOf("disabled", "rate_limited", "deferred", "background_unavailable", "lookup_not_requested") },
                 status = if (kept < rows.size || probeOmitted > 0) "partial" else rows.firstOrNull()?.status ?: "unavailable")
         })
     }
@@ -62,9 +62,9 @@ object SignalSensorFeatures {
         val times = samples.mapNotNull { it.measuredAt }.filter { it <= collectedAt }
         fun row(metric: String, number: Double, count: Int) = SignalObservation(
             key, "phone", number.toString(), unit, collectedAt, times.maxOrNull(),
-            status = if (times.isEmpty()) "invalid_samples" else "fresh", period = if (cumulativeCounter) "since_reboot" else "sample_window",
+            status = if (times.size != samples.size) "invalid_samples" else if (samples.any { it.accuracy <= 0 && it.accuracy != Int.MIN_VALUE }) "unreliable" else "fresh", period = if (cumulativeCounter) "since_reboot" else "sample_window",
             windowStart = times.minOrNull(), windowEnd = times.maxOrNull(), identity = sensorType,
-            number = number, metric = metric, sampleCount = count, accuracy = samples.lastOrNull()?.accuracy,
+            number = number, metric = metric, sampleCount = count, accuracy = samples.lastOrNull()?.accuracy?.takeUnless { it == Int.MIN_VALUE },
         )
         if (samples.isEmpty()) return emptyList()
         if (eventCounter) return listOf(row("observed_events", samples.size.toDouble(), samples.size))

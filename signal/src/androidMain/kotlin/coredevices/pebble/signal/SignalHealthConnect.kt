@@ -132,7 +132,15 @@ internal fun mapHealthRecord(key: String, row: Record, id: String, importedAt: L
     val origin = row.metadata.dataOrigin.packageName
     val observation = SignalObservation(key, "health_connect:$origin", number.toString(), unit, importedAt, end, "recorded",
         interval.endTime.atZone(interval.endZoneOffset ?: ZoneId.systemDefault()).toLocalDate().toString(), if (instantaneous) "instant" else "interval:${end - start}", start, end, identity = origin, id = "$id:0", number = number,
-        sampleCount = if (row is HeartRateRecord) row.samples.size else null)
+        sampleCount = if (row is HeartRateRecord) row.samples.size else null,
+        fields = buildMap {
+            put("recordingMethod", row.metadata.recordingMethod.toString())
+            row.metadata.device?.let { device ->
+                device.manufacturer?.let { put("deviceManufacturer", it.take(100)) }
+                device.model?.let { put("deviceModel", it.take(100)) }
+                put("deviceType", device.type.toString())
+            }
+        })
     val details = when (row) {
         is HeartRateRecord -> healthSeries(row.samples).map { sample ->
             val at = sample.time.toEpochMilli()
@@ -153,7 +161,7 @@ internal fun mapHealthRecord(key: String, row: Record, id: String, importedAt: L
             }
             observation.copy(value = name, number = null, unit = "", metric = "sleep_stage", period = "stage",
                 measuredAt = to, windowStart = from, windowEnd = to, sampleCount = 1, id = "$id:stage:$from:$to:${stage.stage}",
-                fields = mapOf("stage" to name, "durationMinutes" to ((to - from) / 60_000.0).toString()))
+                fields = observation.fields + mapOf("stage" to name, "durationMinutes" to ((to - from) / 60_000.0).toString()))
         }
         else -> emptyList()
     }

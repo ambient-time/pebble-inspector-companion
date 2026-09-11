@@ -43,6 +43,8 @@ data class SignalObservationSession(
     val lastAttemptAt: Long? = null,
     val lastSuccessAt: Long? = null,
     val captures: Int = 0,
+    val attempts: Int = 0,
+    val mode: String = "standard",
 )
 
 data class SignalSourceStatus(
@@ -129,8 +131,8 @@ object SignalLearning {
                         "Observed inside on ${supportive.size} of ${days.size} sampled days. Unsampled time is unknown. Timezone: ${zone.id}.", setOf(placeId))
             }
         }
-        originals.flatMap { r -> r.observations.filter { it.number != null && fresh(it) && !it.key.startsWith("wifi") && !it.key.startsWith("bluetooth") && !it.key.startsWith("presence.") }
-            .map { r to it } }.groupBy { (r, o) -> "${o.source}|${r.watchId}|${o.key}${o.metric.takeIf { it.isNotBlank() }?.let { ":$it" }.orEmpty()}|${o.unit}|${o.period}|${o.identity}|${zone.id}" }.forEach { (identity, rows) ->
+        originals.flatMap { r -> r.observations.filter { it.number != null && fresh(it) && !it.key.startsWith("wifi") && !it.key.startsWith("bluetooth") && !it.key.startsWith("presence.") && !it.key.startsWith("cellular") && it.period != "since_reboot" }
+            .map { r to it } }.groupBy { (r, o) -> "${o.source}|${r.watchId}|${o.key}${o.metric.takeIf { it.isNotBlank() }?.let { ":$it" }.orEmpty()}|${o.unit}|${o.period}|${o.identity}${listOf("deviceManufacturer", "deviceModel", "deviceType").mapNotNull { key -> o.fields[key] }.takeIf { it.isNotEmpty() }?.joinToString(":", prefix = "|device:").orEmpty()}|${zone.id}" }.forEach { (identity, rows) ->
                 val samples = rows.sortedByDescending { it.first.createdAt }.distinctBy { (_, o) -> if (o.period == "day") "${o.date}:${o.windowStart}:${o.windowEnd}" else "${o.measuredAt}" }
                 val days = samples.map { (_, o) -> o.date ?: date(o.measuredAt!!) }.distinct()
                 if (samples.size >= 10 && days.size >= 5) {

@@ -31,17 +31,17 @@ class SignalObservationService : Service() {
             val notification = notification("Starting selected observations…")
             if (Build.VERSION.SDK_INT >= 29) {
                 var types = if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
-                if (pending.sourceKeys.any { it == "location" || it.startsWith("presence.") || it.startsWith("wifi") || it.startsWith("weather.") } && (granted(Manifest.permission.ACCESS_FINE_LOCATION) || granted(Manifest.permission.ACCESS_COARSE_LOCATION))) types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+                if (pending.sourceKeys.any { it == "location" || it.startsWith("presence.") || it.startsWith("wifi") || it.startsWith("weather.") || it.startsWith("cellular") } && (granted(Manifest.permission.ACCESS_FINE_LOCATION) || granted(Manifest.permission.ACCESS_COARSE_LOCATION))) types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
                 if (pending.sourceKeys.any { it.startsWith("bluetooth") || it == "presence.bluetooth" } && (Build.VERSION.SDK_INT < 31 || granted(Manifest.permission.BLUETOOTH_SCAN))) types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
                 if (Build.VERSION.SDK_INT >= 34 && "sensor.21" in pending.sourceKeys && (granted(Manifest.permission.BODY_SENSORS) || granted("android.permission.health.READ_HEART_RATE"))) types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH
                 startForeground(6110, notification, types)
             } else startForeground(6110, notification)
         } catch (_: Exception) { owner.finishObservation(id, "interrupted", "Android did not allow the session to start. Review collection permissions and try again."); stopSelf(); return START_NOT_STICKY }
         job = serviceScope.launch {
-            val deadline = SystemClock.elapsedRealtime() + (pending.endsAt - pending.startedAt)
+            val deadline = SystemClock.elapsedRealtime() + SignalSchedule.remaining(pending.startedAt, pending.endsAt, System.currentTimeMillis())
             try {
                 owner.activateObservation(id)
-                while (isActive && SystemClock.elapsedRealtime() < deadline && System.currentTimeMillis() < pending.endsAt) {
+                while (isActive && SystemClock.elapsedRealtime() < deadline) {
                     val battery = getSystemService(BatteryManager::class.java)
                     val power = getSystemService(PowerManager::class.java)
                     val level = battery.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
@@ -55,10 +55,12 @@ class SignalObservationService : Service() {
                     if (!notificationsEnabled()) { owner.finishObservation(id, "stopped", pause!!); break }
                     if (pause != null) owner.observationStatus(id, "paused", pause) else {
                         owner.observationStatus(id, "running", "Collecting selected sources. Android may delay individual readings.")
-                        withTimeoutOrNull(minOf(90_000L, (deadline - SystemClock.elapsedRealtime()).coerceAtLeast(1), (pending.endsAt - System.currentTimeMillis()).coerceAtLeast(1))) { owner.collectObservation(id) }
+                        withTimeoutOrNull(minOf(90_000L, (deadline - SystemClock.elapsedRealtime()).coerceAtLeast(1))) { owner.collectObservation(id) }
                     }
                     notifications.notify(6110, notification(pause ?: "Observing until ${java.time.Instant.ofEpochMilli(pending.endsAt).atZone(java.time.ZoneId.systemDefault()).toLocalTime().withSecond(0).withNano(0)}. Tap Stop to end."))
-                    delay(minOf(5 * 60_000L, (deadline - SystemClock.elapsedRealtime()).coerceAtLeast(1)))
+                    val wait = minOf(owner.observationDelayMillis(id), (deadline - SystemClock.elapsedRealtime()).coerceAtLeast(1))
+                    if (awaitSignalTransition(this@SignalObservationService, pending.sourceKeys, wait,
+                            if (pending.mode == "battery_saver") 5 * 60_000L else 60_000L)) owner.observationTransition(id)
                 }
                 owner.finishObservation(id, "completed", "Observation session ended.")
             } finally { stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }

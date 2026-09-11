@@ -52,6 +52,7 @@ object SignalChanges {
             if (removed.isNotEmpty()) append("Sources absent from the newer record: ${removed.sorted().joinToString()}.\n")
             val omitted = (previous.coverage + current.coverage).sumOf { it.omitted }
             if (omitted > 0) append("$omitted readings were omitted from these saved records; comparisons cover retained evidence.\n")
+            SignalRadioChanges.describe(previous, current).forEach { append(it); append('\n') }
             changes.take(40).forEach { append(it); append('\n') }
             if (changes.size > 40) append("${changes.size - 40} additional changes omitted from this summary.\n")
             append("Only matching sources, watch, metric, unit and measurement periods are compared. Cached, missing, duplicate and old readings are unknown. No continuous coverage or model request.")
@@ -61,7 +62,7 @@ object SignalChanges {
             state = "ready", sourceKeys = scope(previous) + scope(current), references = listOf(previous.id, current.id), kind = "changes")
     }
 
-    private fun identity(o: SignalObservation) = listOf(o.key, o.source, o.identity, o.metric, o.unit, o.date.takeIf { o.period == "day" }, o.period)
+    private fun identity(o: SignalObservation) = listOf(o.key, o.source, o.identity, o.metric, o.unit, o.fields["deviceManufacturer"], o.fields["deviceModel"], o.fields["deviceType"], o.date.takeIf { o.period == "day" }, o.period)
     private fun compatibleWindow(a: SignalObservation, b: SignalObservation): Boolean {
         if (a.windowStart == null && a.windowEnd == null && b.windowStart == null && b.windowEnd == null) return true
         val da = a.windowEnd?.let { end -> a.windowStart?.let { end - it } } ?: return false
@@ -77,6 +78,7 @@ object SignalChanges {
             if (o.status == "not_observed") return o.identity.startsWith("target:")
             return o.status in setOf("observed", "inside", "outside") && timely(o)
         }
+        if (o.key.startsWith("cellular") || o.period == "since_reboot") return false
         if (o.key == "bluetooth" || o.key.startsWith("bluetooth.") || o.key == "wifi" || o.key.startsWith("wifi.")) return false
         if (o.source.startsWith("health_connect:")) return SignalLearning.fresh(o)
         return o.status in setOf("fresh", "available") && timely(o)
