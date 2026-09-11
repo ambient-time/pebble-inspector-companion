@@ -34,6 +34,7 @@ class PebbleAppLink(
         refresh()
     }
     fun availableApps() = picker.getAllEligibleApps().filter { it != "coredevices.coreapp.inspectorlab" }
+    suspend fun selectedApp() = picker.getCurrentlySelectedApp()
     suspend fun selectApp(packageName: String?) = withContext(Dispatchers.Main.immediate) {
         selection.withLock {
             require(packageName == null || packageName in availableApps()) { "Pebble host is no longer installed" }
@@ -59,7 +60,13 @@ class PebbleAppLink(
         watchJob = scope.launch {
             if (picker.getCurrentlySelectedApp() == null) return@launch
             information.getConnectedWatches().flowOn(Dispatchers.IO)
-                .catch { emit(emptyList()) }.collect { connected ->
+                .retryWhen { _, _ ->
+                    // A restarted host/provider must not permanently end discovery.
+                    // Clear sessions first so stale callbacks cannot remain trusted.
+                    emit(emptyList())
+                    delay(1_000)
+                    true
+                }.collect { connected ->
                     val removed = (sessions.keys + pendingOpen.keys + appJobs.keys) - connected.map { it.id.value }.toSet()
                     removed.forEach { appJobs.remove(it)?.cancel(); closed(it) }
                     mutable.value = connected.map {
@@ -70,7 +77,11 @@ class PebbleAppLink(
                         if (watch.id.value !in appJobs) {
                             appJobs[watch.id.value] = launch {
                                 information.getActiveApp(watch.id).flowOn(Dispatchers.IO)
-                                    .catch { emit(null) }.collect { active ->
+                                    .retryWhen { _, _ ->
+                                        emit(null)
+                                        delay(1_000)
+                                        true
+                                    }.collect { active ->
                                         if (active?.id?.toString() == AndroidSignalStation.APP_UUID) opened(watch.id.value)
                                         else closed(watch.id.value)
                                     }

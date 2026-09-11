@@ -166,6 +166,29 @@ removes reports that used it and suppresses that pattern from being proposed
 again. Provider keys and unrelated personal notes stay in place. Nothing here
 changes pairing, firmware or watch settings.
 
+## Optional Pebble connection
+
+Keep using the Pebble app that already manages your watch. In Signal Station,
+open **Settings → Connected devices → Watch connection**. Choose **Use Pebble**
+(or the name of your existing compatible app), select your connected watch,
+then tap **Check connection**. The chooser shows the selected app and how many
+watches it reports; **Open Pebble** takes you there if a watch is disconnected.
+“Watch acknowledged the connection” confirms a message reached the watch.
+
+On the watch's home screen, **Up** saves selected readings, **Select** starts
+dictation when the watch and Pebble service support it, and **Down** shows recent
+saved history. Up and Down need no provider key. Within a report, Up and Down
+scroll; Back returns home or cancels an active request. Choose individual watch
+and health sources on the phone before capturing. When the phone is in the
+background, restricted phone sources are marked unavailable rather than silently
+reusing old readings. Watch readings can still be saved through the host link.
+
+The stock Pebble app, standalone Android app, and Diorite emulator have completed
+connection, button capture, background capture, history and app-restart checks.
+These are emulator results. Watch installation remains paused pending physical
+validation and the earlier settings-reset investigation; this update does not
+remove that hold or replace the public watch package.
+
 This is a development preview. Android storage, UI, mapping and service checks
 run on an emulator; physical Android battery behavior, Health Connect account
 access and the Pebble connection still need device testing. The earlier lab

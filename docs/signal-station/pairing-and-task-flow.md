@@ -14,8 +14,10 @@ history. Phone readiness is distinct from an actual watch acknowledgement.
 
 The former companion fork is withdrawn following the unresolved settings-wipe
 report. Its custom transcription hook is not part of the independent app.
-Watch installation remains held; stock-host exchange and physical-watch
-validation must be demonstrated separately. See [separation](separation.md).
+Watch installation remains held. Stock-host exchange now has isolated Android
+and Diorite emulator evidence for connection, capture, background capture,
+history and reopening the phone app. Physical-watch validation and live
+dictation remain separate. See [integration evidence](pebble-integration.md).
 
 Question drafts survive navigation and provider failures in memory. Saved
 questions persist encrypted until deleted. Opening a saved question performs no

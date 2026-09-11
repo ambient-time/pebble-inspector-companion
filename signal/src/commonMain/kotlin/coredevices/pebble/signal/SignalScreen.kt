@@ -813,7 +813,7 @@ private fun SignalConfiguration(state: SignalState, station: SignalStation, onMa
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = { ui.values.keys.filter { it.startsWith("onboarding.") }.toList().forEach(ui.values::remove); station.updateSettings(settings.copy(onboardingComplete = false)) }, enabled = !state.busy) { Text("Revisit setup guide") }
                 onManageWatch?.let { TextButton(onClick = it) { Text("Watch connection") } }
-                OutlinedButton(onClick = station::installWatchApp, enabled = !state.busy && state.watchCapabilities.install && state.watches.any { it.id == settings.watchId && it.connected }) { Text("Install watch app") }
+                if (state.watchCapabilities.install) OutlinedButton(onClick = station::installWatchApp, enabled = !state.busy && state.watches.any { it.id == settings.watchId && it.connected }) { Text("Install watch app") }
             }
             Text(state.watchCapabilities.description)
             Text("Watch buttons: Up captures readings · Select asks · Down opens history. Your Pebble app keeps ownership of pairing and watch settings.")

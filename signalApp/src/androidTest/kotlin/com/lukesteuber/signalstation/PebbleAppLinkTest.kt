@@ -35,6 +35,60 @@ class PebbleAppLinkTest {
     }
     private suspend fun until(check: () -> Boolean) { withTimeout(15000) { while (!check()) delay(25) } }
 
+    @Test fun providerFailuresRetireSessionsAndRecoverWithoutReselectingHost() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val loseWatches = CompletableDeferred<Unit>()
+        val loseActiveApp = CompletableDeferred<Unit>()
+        val watchAttempts = java.util.concurrent.atomic.AtomicInteger()
+        val appAttempts = java.util.concurrent.atomic.AtomicInteger()
+        val callers = CopyOnWriteArrayList<SignalWatchSession>()
+        val information = object : PebbleInfoRetriever {
+            override fun getConnectedWatches() = flow {
+                val attempt = watchAttempts.incrementAndGet()
+                emit(listOf(connected))
+                if (attempt == 1) { loseWatches.await(); error("Host provider restarted") }
+                awaitCancellation()
+            }
+            override fun getActiveApp(watch: WatchIdentifier) = flow {
+                val attempt = appAttempts.incrementAndGet()
+                emit(running)
+                if (attempt == 1) { loseActiveApp.await(); error("Active-app provider restarted") }
+                awaitCancellation()
+            }
+        }
+        val sender = Proxy.newProxyInstance(PebbleSender::class.java.classLoader, arrayOf(PebbleSender::class.java)) { _, method, _ ->
+            if (method.name == "sendDataToPebble") mapOf(watch to TransmissionResult.Success) else null
+        } as PebbleSender
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+        val link = withContext(Dispatchers.Main.immediate) {
+            PebbleAppLink(context, Picker(), information) { sender }.also {
+                it.request = { _, _, _, caller -> callers += caller; SignalWatchResponse("""{"configured":false,"enabled":[]}""", 200) }
+                it.initialize(scope)
+            }
+        }
+        try {
+            until { callers.isNotEmpty() }
+            val first = callers.last()
+            loseActiveApp.complete(Unit)
+            until { callers.last() !== first }
+            assertFalse(withContext(Dispatchers.Main.immediate) { link.isTrusted(first) })
+            val second = callers.last()
+            loseWatches.complete(Unit)
+            until { callers.last() !== second }
+            assertFalse(withContext(Dispatchers.Main.immediate) { link.isTrusted(second) })
+            assertTrue(withContext(Dispatchers.Main.immediate) { link.isTrusted(callers.last()) })
+            assertEquals(2, watchAttempts.get())
+            link.selectApp(null)
+            val attempts = appAttempts.get()
+            delay(1200)
+            assertEquals(attempts, appAttempts.get())
+            assertTrue(link.watches.value.isEmpty())
+        } finally {
+            link.selectApp(null)
+            scope.cancel()
+        }
+    }
+
     @Test fun selectsAndDisconnectsWithRealSenderBeforeAnyWatchConnection() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val picker = Picker(null)
