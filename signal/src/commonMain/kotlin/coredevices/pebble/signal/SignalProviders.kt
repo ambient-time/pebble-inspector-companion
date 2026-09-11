@@ -226,6 +226,11 @@ class SignalProviders(http: HttpClient, private val secrets: SignalSecrets) {
         }
 
         private fun errorCode(root: JsonObject): String? {
+            // xAI also returns a string error for invalid keys. Classify this known
+            // envelope without including any upstream text in the displayed error.
+            if ((root["code"] as? JsonPrimitive)?.contentOrNull == "invalid-argument" &&
+                (root["error"] as? JsonPrimitive)?.contentOrNull?.startsWith("Incorrect API key provided.") == true)
+                return "invalid_api_key"
             val error = root["error"] as? JsonObject ?: return null
             val allowed = setOf("invalid_api_key", "authentication_error", "permission_error", "model_not_found",
                 "insufficient_quota", "rate_limit_exceeded", "rate_limit_error", "context_length_exceeded",
@@ -241,8 +246,8 @@ class SignalProviders(http: HttpClient, private val secrets: SignalSecrets) {
             val code = runCatching { errorCode(Json.parseToJsonElement(body).jsonObject) }.getOrNull()
             val message = when {
                 code == "context_length_exceeded" -> "The conversation exceeds this model's context limit. Start a new conversation."
-                code == "insufficient_quota" -> "Provider credit or quota is exhausted. Check billing and usage."
-                status == 401 || status == 403 -> "Provider authentication failed. Check the key and model access."
+                status == 402 || code == "insufficient_quota" -> "Provider credit or quota is exhausted. Check billing and usage."
+                status == 401 || status == 403 || code in setOf("invalid_api_key", "authentication_error", "UNAUTHENTICATED") -> "Provider authentication failed. Check the key and model access."
                 status == 429 -> "Provider limit reached. Check usage before trying again."
                 status in 300..399 -> "Provider redirect refused. Check the endpoint."
                 status == 400 || status == 404 || status == 422 -> "Provider rejected the request. Check the model and endpoint."

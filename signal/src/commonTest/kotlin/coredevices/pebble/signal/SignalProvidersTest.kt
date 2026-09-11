@@ -56,7 +56,7 @@ class SignalProvidersTest {
     }
 
     @Test fun errorsDoNotEchoProviderBodyOrRetry() = runBlocking {
-        for (status in listOf(302, 401, 403, 429, 500)) {
+        for (status in listOf(302, 401, 402, 403, 429, 500)) {
             var calls = 0
             val http = HttpClient(MockEngine {
                 calls++
@@ -86,6 +86,25 @@ class SignalProvidersTest {
             entered.await(); job.cancelAndJoin(); stopped.await()
             assertTrue(job.isCancelled)
         } finally { providers.close(); http.close() }
+    }
+
+    @Test fun paymentAndStringAuthenticationErrorsGiveTheRightRemedyWithoutEchoingTheBody() = runBlocking {
+        val cases = listOf(
+            Triple(402, """{"error":{"code":402,"message":"private billing details"}}""", "Check billing and usage"),
+            Triple(400, """{"code":"invalid-argument","error":"Incorrect API key provided. private key details"}""", "Check the key and model access"),
+            Triple(400, """{"code":"invalid-argument","error":"private unrelated request problem"}""", "Check the model and endpoint"),
+        )
+        for ((status, body, remedy) in cases) {
+            var requests = 0
+            val http = HttpClient(MockEngine { requests++; respond(body, HttpStatusCode.fromValue(status)) })
+            val providers = SignalProviders(http, Keys())
+            try {
+                val error = assertFailsWith<SignalProviderException> { providers.answer(SignalSettings(provider = "xai"), listOf("user" to "Synthetic check")) }
+                assertTrue(error.message.orEmpty().contains(remedy))
+                assertFalse(error.message.orEmpty().contains("private"))
+                assertEquals(1, requests)
+            } finally { providers.close(); http.close() }
+        }
     }
 
     @Test fun incompleteAnswersAreNotSavedAsCompleteTextOrMisreportedAsModelErrors() {
