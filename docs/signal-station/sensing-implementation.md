@@ -37,8 +37,22 @@ September 10, before release preparation:
 - Android lint passed. Standalone debug APK built.
 - Independent runtime validator/critic reviews identified and drove fixes for SIM attribution, source-off step deltas, cache lineage, delayed permissions, session history search, hidden lookup errors and session health feedback. The bounded Claude and Grok CLI review attempts returned empty-content/service errors and supplied no usable opinions.
 
-These checks do not establish physical sensor accuracy, real Health Connect import, battery performance, an in-place upgrade from the distributed build, or watch safety. No public files or store entries have been updated at this checkpoint.
+These core checks did not establish physical sensor accuracy, real Health Connect import, battery performance, an in-place upgrade from the distributed build, or watch safety. The release checks below supersede the packaging and distribution status of that checkpoint.
 
-## Remaining work
+## Delivered preview
 
-Final visual/upgrade/package checks, release descriptors, download publication and the existing Pebble hidden draft remain in progress. The recovered Pebble watch remains excluded from installation tests.
+Android **0.3.0-sensing-dev (7)** was frozen from `49fa5f7e86d61020501ba144d5087e07e440b145` and published on September 10. This documentation update is later than the frozen binary. The signing certificate matches public build 6. A two-install emulator fixture seeded the downloaded public build with settings, a synthetic key, original history, a saved question and a corrected memory, then verified those values after upgrading without uninstalling. The final distributed APK passed the verification phase again.
+
+Two additional interaction tests cover nearby lookup review, numeric evidence tables and session records at normal and 200% text size, bringing Android instrumentation coverage to 28 tests. Settled screenshots were visually inspected. All 77 release-toolkit tests and two addon-builder contract tests passed.
+
+The APK, guide, source archive and checksum files are published. Twenty-two public HTTP responses across `dr.eamer.dev` and `lukesteuber.com` matched the staged bytes, including both APK responses with the correct attachment and MIME headers. The minimal page was checked at desktop and 390-pixel widths. The Downloads index now includes a Signal Station source-archive card under For Developers; other products' data is preserved and lists remain alphabetical. Ambient Time already links to the same page in its collapsed beta-app section.
+
+Install: <https://lukesteuber.com/downloads/apps/signal-station/>. APK SHA-256: `3e3e055b74103a39c7e93a38c3b71fd405985bd481f5e9cecb64217b9677964b`.
+
+The messaging-only Pebble addon **1.5.0** is a saved **Draft** in the existing **Unlisted** app `37360ca4d9764881bd1d6f4d`. Its pinned watch source is `df0250600d237467e5b3525d40ad2cd4fcf825da`. All six declared targets build; UUID, companion package and absence of embedded PKJS were inspected. Fresh native menu images were verified for Basalt, Chalk, Diorite and Emery and added to the listing. Flint and Gabbro emulators stayed on a clock after installation/launch requests, so those attempts do not count as passing app render evidence. The pre-existing published 1.2.0 release inside the unlisted app was preserved. Public watch download 1.4.0 remains unchanged and installation-held.
+
+The machine-readable Android receipt lives in the release toolkit at `docs/releases/signal-station-0.3.0-build-7.json`; the watch receipt is `store/publication-1.5.0.json` in the native watch repository. Both distinguish build, emulator, upload and physical evidence.
+
+## Device follow-up
+
+Real sensor accuracy, Health Connect account behavior, battery/long-session behavior and stock Pebble-host exchange require physical-device checks. The watch-settings reset is unresolved. The recovered owner watch was not installed or modified; its installation hold remains. Flint/Gabbro native render evidence and controlled watch acceptance are prerequisites to any public watch promotion.
