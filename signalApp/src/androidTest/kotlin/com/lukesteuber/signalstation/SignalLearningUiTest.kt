@@ -189,6 +189,7 @@ class SignalLearningUiTest {
         compose.onNodeWithText("Numeric history · local").performScrollTo().performClick()
         compose.onNodeWithText("Exact values and evidence").performScrollTo().performClick()
         compose.onNodeWithText("Measurement table · phone local time").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Evidence · sensing-2").performScrollTo().assertIsDisplayed()
         captureFixtureScreenshot("sensing-table-${fontScale.toInt()}.png")
         compose.onNode(hasText("Activity") and hasClickAction()).performClick()
         compose.onNode(hasText("Nearby") and hasClickAction()).performClick()
@@ -222,6 +223,8 @@ class SignalLearningUiTest {
     private fun captureFixtureScreenshot(name: String) {
         compose.waitForIdle()
         val instrumentation = InstrumentationRegistry.getInstrumentation()
+        // Dialog window/ripple animations can continue after Compose's test clock becomes idle.
+        instrumentation.uiAutomation.waitForIdle(500, 5_000)
         val directory = requireNotNull(instrumentation.targetContext.getExternalFilesDir("signal-ui-review"))
         check(directory.isDirectory || directory.mkdirs())
         val file = File(directory, name)
