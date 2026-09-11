@@ -45,13 +45,25 @@ class SignalLiveIntegrationTest {
             assertTrue(requests.isEmpty()); assertFalse(station.state.value.live.running)
             val count = acquisitions
             delay(5200); assertEquals(count, acquisitions)
+            val draft = station.state.value.questionDraft
+            val draftToken = station.state.value.questionDraftToken
+            withContext(Dispatchers.Main) { station.startLiveSignals() }
+            until { station.state.value.live.entries.isNotEmpty() && acquisitions > count }
+            withContext(Dispatchers.Main) { station.saveLiveScene(false) }
+            until { !station.state.value.busy }
+            val savedOnly = station.state.value.records.first { it.kind == "capture" && it.id != record.id }
+            assertNotNull(store.record(savedOnly.id), "Save-only must persist its new snapshot")
+            assertEquals(record.id, station.state.value.attachedRecords.single().id, "Save-only must preserve existing evidence")
+            assertEquals(draft, station.state.value.questionDraft)
+            assertEquals(draftToken, station.state.value.questionDraftToken)
+            assertTrue(requests.isEmpty(), "Saving must not send to a provider")
             withContext(Dispatchers.Main) { station.ask(station.state.value.questionDraft, false) }
             until { !station.state.value.busy }
             assertEquals(1, station.state.value.questionReview?.captureCount)
             withContext(Dispatchers.Main) { station.sendReviewedQuestion() }
             until { !station.state.value.busy }
             assertEquals(1, requests.size); assertContains(requests.single(), record.id); assertContains(requests.single(), "-57")
-            assertFalse(requests.single().contains("hidden-"))
+            assertFalse(requests.single().contains("hidden-")); assertFalse(requests.single().contains(savedOnly.id))
             assertEquals(record.observations, store.record(record.id)?.observations)
             until { !station.state.value.busy && !station.state.value.historyLoading }
             withContext(Dispatchers.Main) { station.startLiveSignals() }

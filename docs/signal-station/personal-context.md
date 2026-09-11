@@ -8,6 +8,10 @@ the Pebble app you already have; its connection still needs physical-watch testi
 
 Start on **Now**. **Capture now** saves a moment and attaches it in Ask.
 Choose **Ask about this** on the saved observation to open an editable question.
+The capture summary distinguishes readings that were fresh when collected,
+older or cached readings, estimates, partial results and missing sources. Imported
+period records retain their measurement dates. Inspect readings for exact times;
+a saved capture is not a live measurement.
 Use **Record over time** for a 15-minute, one-hour or four-hour session. Select the sources you
 want for that session. Android asks for the permissions those sources need.
 You can decline a permission and continue using the other sources.
@@ -22,7 +26,8 @@ chosen end time and do not restart after Android stops the app. Wake listening
 is a separate choice; observation sessions do not record ambient audio or video.
 
 **History** contains saved captures, nearby checks, recording sessions and reports.
-Filter the timeline by type, capture date, source or text. Dates describe when a
+Use **Today**, **Last 7 days** or **Last 30 days**, or filter by type, capture
+date, source or text. **More actions** holds export and deletion. Dates describe when a
 record was captured or saved; individual readings retain their own measurement
 dates. Results come from the full saved history, including older pages.
 
@@ -39,7 +44,13 @@ data** in Storage is a separate action that includes eligible records, memories,
 sessions and saved questions. Exports remain temporary share files, removed from
 the app cache after ten minutes or when affected history is deleted.
 
-Open **Around me** from Now. **Signals** shows live radios and separately labeled
+In Ask, an empty question offers starting prompts when evidence is attached.
+A question with no readings can still be sent; **Add evidence** lets you choose
+readings first. Suggestions prepare a draft and never send it.
+
+Open **Around me** from Now. **Save snapshot** saves live readings to History
+without changing an existing question or its attachments. **Ask** saves a
+snapshot and prepares a question for review. **Signals** shows live radios and separately labeled
 saved wireless and cellular context. **Places** holds phone location, map lookups
 and familiar places. **My devices** holds enrolled devices and their saved sightings. Wi-Fi channel counts describe received advertisements,
 not channel utilization. An advertised open network does not establish internet

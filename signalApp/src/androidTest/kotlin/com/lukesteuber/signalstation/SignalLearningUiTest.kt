@@ -26,6 +26,39 @@ import kotlin.test.assertTrue
 class SignalLearningUiTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
 
+    @Test fun emptyEvidenceRecoveryKeepsQuestionAndDoesNotSend() {
+        val station = LearningUiStation(baseState().copy(settings = readySettings(), configuredProviders = setOf("openai")))
+        show(station)
+        compose.onNode(hasText("Ask") and hasClickAction()).performClick()
+        compose.onNodeWithText("Your question").performTextInput("What can I learn here?")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        compose.onNodeWithText("Review question").performClick()
+        compose.onNodeWithText("Add evidence").performScrollTo().performClick()
+        compose.onNodeWithText("No capture attached.").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Back to question").performScrollTo().performClick()
+        compose.onNodeWithText("What can I learn here?").assertExists()
+        compose.runOnIdle { assertEquals(0, station.captures); assertEquals(0, station.providerRequests) }
+    }
+
+    @Test fun historyQuickDatesApplyWithoutOpeningCustomFields() {
+        val station = LearningUiStation(baseState())
+        show(station)
+        compose.onNode(hasText("History") and hasClickAction()).performClick()
+        compose.onNodeWithText("Last 7 days").performScrollTo().performClick()
+        compose.runOnIdle {
+            val today = java.time.LocalDate.now()
+            assertEquals(today.minusDays(6).toString(), station.state.value.scopedHistory.query.fromDate)
+            assertEquals(today.toString(), station.state.value.scopedHistory.query.throughDate)
+            assertEquals(0, station.providerRequests)
+        }
+        compose.onNodeWithText("Today").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(station.state.value.scopedHistory.query.fromDate, station.state.value.scopedHistory.query.throughDate) }
+        compose.onNode(hasScrollAction()).performScrollToNode(hasText("More actions"))
+        compose.onNodeWithText("More actions").performClick()
+        compose.onNodeWithText("Review deletion of these results").performScrollTo().assertExists()
+        captureFixtureScreenshot("history-quick-dates.png")
+    }
+
     @Test fun onboardingCanReachAndCaptureWithoutWatchOrProvider() {
         val station = LearningUiStation(baseState().copy(settings = SignalSettings()))
         show(station)

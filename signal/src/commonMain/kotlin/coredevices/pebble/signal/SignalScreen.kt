@@ -66,6 +66,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.minus
+import kotlin.time.Clock
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
@@ -371,6 +374,10 @@ private fun SignalConversation(
                     var exact by remember(review) { mutableStateOf(false) }
                     TextButton(onClick = { exact = !exact }) { Text(if (exact) "Hide exact message text" else "Show exact message text") }
                     if (exact) SelectionContainer { Column { review.messages.forEach { (role, text) -> Text("$role\n$text") } } }
+                    if (review.recordCount == 0 && review.captureCount == 0 && review.observationCount == 0 && review.memoryCount == 0 && review.priorTurnCount == 0) {
+                        Text("No saved readings are included. You can send an ordinary question, or add evidence first.")
+                        TextButton(onClick = { station.dismissQuestionReview(); panel = "context" }) { Text("Add evidence") }
+                    }
                     Text("Only Send contacts your provider. It may use credits.")
                     if (!ready) OutlinedButton(onClick = onSettings) { Text("Set up answers") }
                     Button(onClick = station::sendReviewedQuestion, enabled = !state.busy && ready, modifier = Modifier.fillMaxWidth().sizeIn(minHeight = 48.dp)) { Text("Send question") }
@@ -436,6 +443,18 @@ private fun SignalConversation(
                 if (ready) Text("${providerLabel(state.settings.provider)} · ${state.settings.model}", style = MaterialTheme.typography.bodySmall)
                 else { Text("Add your provider key and model when you want a reply. Your question stays here."); OutlinedButton(onClick = onSettings) { Text("Set up answers") } }
                 TextButton(onClick = { panel = "saved" }) { Text("Saved questions") }
+                if (records.isEmpty() && !keyboardOpen) {
+                    if (state.attachedRecords.isNotEmpty() || state.evidenceSelection != null) {
+                        Text("Your selected evidence is attached. Choose a starting question or write your own.", style = MaterialTheme.typography.bodySmall)
+                        if (draft.isBlank()) {
+                            TextButton(onClick = { onDraft("Summarize the attached observations. State their age and distinguish measurements from estimates.") }, enabled = !state.busy) { Text("Summarize these readings") }
+                            TextButton(onClick = { onDraft("Which readings are missing, old or uncertain in the attached observations? Explain what can and cannot be concluded.") }, enabled = !state.busy) { Text("Explain missing readings") }
+                        }
+                    } else {
+                        Text("Ask an ordinary question, or add readings about your surroundings.", style = MaterialTheme.typography.bodySmall)
+                        TextButton(onClick = { panel = "context" }) { Text("Add readings") }
+                    }
+                }
             }
             items(records, key = { it.id }) { record ->
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -483,6 +502,7 @@ private fun SignalHistory(
     var kind by signalUiState("history.kind") { "all" }
     var selected by signalUiState("history.selected") { emptySet<String>() }
     var toolsOpen by signalUiState("history.tools") { false }
+    var moreActions by signalUiState("history.moreActions") { false }
     val requested = SignalHistoryQuery(text = query, kind = kind, fromDate = from, throughDate = to, sourceKeys = source.takeIf { it.isNotBlank() }?.let { setOf(it) } ?: emptySet())
     val results = state.scopedHistory
     LaunchedEffect(Unit) { if (results.updatedAt == 0L && !results.loading) station.queryHistory(requested) }
@@ -501,9 +521,20 @@ private fun SignalHistory(
                 OutlinedButton(onClick = onSessions) { Text("Recordings") }
                 OutlinedButton(onClick = onPatterns) { Text("Patterns") }
             }
-            Text("Saved evidence on this phone. Apply filters to prepare one selection for questions, comparison and export.")
+            Text("Find saved readings and answers.")
             OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), label = { Text("Search questions, answers, and readings") })
             SignalChoice("Record type", kind, listOf("all" to "All records", "captures" to "Captures", "conversations" to "Conversations", "reports" to "Reports and imports")) { kind = it }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(1 to "Today", 7 to "Last 7 days", 30 to "Last 30 days").forEach { (days, label) ->
+                    TextButton(onClick = {
+                        val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
+                        from = today.minus(days - 1, DateTimeUnit.DAY).toString(); to = today.toString()
+                        selected = emptySet()
+                        station.queryHistory(requested.copy(fromDate = from, throughDate = to))
+                    }, enabled = !results.loading && !state.busy) { Text(label) }
+                }
+            }
+            if (from.isNotBlank() || to.isNotBlank()) Text("Saved ${from.ifBlank { "any time" }} through ${to.ifBlank { "any time" }}", style = MaterialTheme.typography.bodySmall)
             TextButton(onClick = { toolsOpen = !toolsOpen }) { Text(if (toolsOpen) "Hide filters" else "Date and source filters") }
             if (toolsOpen) {
                 OutlinedTextField(from, { from = it }, Modifier.fillMaxWidth(), label = { Text("From date · YYYY-MM-DD") }, singleLine = true, isError = from.isNotBlank() && fromDate == null)
@@ -518,21 +549,24 @@ private fun SignalHistory(
             }
             if (results.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
             if (results.error.isNotBlank()) Text(results.error, color = MaterialTheme.colorScheme.error)
-            Text("${results.matchingCount} matching results · ${selected.size} selected · ${state.historyCount} stored records", Modifier.semantics { liveRegion = LiveRegionMode.Polite })
-            Text("${signalStorageLabel(state.storageBytes)} stored. Disabled-source evidence stays inspectable; sharing includes eligible sources only.", style = MaterialTheme.typography.bodySmall)
+            Text("${results.matchingCount} results · ${selected.size} selected", Modifier.semantics { liveRegion = LiveRegionMode.Polite })
             if (pending) Text("Apply changed filters before using these results.")
-            else if (results.updatedAt > 0) Text("Results fixed at ${signalDateTime(results.updatedAt)}. Refresh to include new records.", style = MaterialTheme.typography.bodySmall)
+            else if (results.updatedAt > 0) Text("Updated ${signalDateTime(results.updatedAt)} · refresh for new records.", style = MaterialTheme.typography.bodySmall)
         }
         item {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { station.openHistoryQuestion(ids) }, enabled = usable) { Text(if (ids == null) "Ask about these results" else "Ask about selected") }
-                OutlinedButton(onClick = { station.openHistoryQuestion(selected, compare = true) }, enabled = usable && selected.size == 2 && SignalHistoryScope.comparable(results.records.filter { it.id in selected })) { Text("Compare selected (${selected.size}/2)") }
+                if (selected.isNotEmpty()) OutlinedButton(onClick = { station.openHistoryQuestion(selected, compare = true) }, enabled = usable && selected.size == 2 && SignalHistoryScope.comparable(results.records.filter { it.id in selected })) { Text("Compare selected (${selected.size}/2)") }
             }
-            Text("Actions use ${actionCount} ${if (ids == null) "matching" else "selected"} records. Questions are reviewed before sending.")
+            Text("Uses ${actionCount} ${if (ids == null) "matching" else "selected"} records.", style = MaterialTheme.typography.bodySmall)
+            TextButton(onClick = { moreActions = !moreActions }) { Text(if (moreActions) "Hide more actions" else "More actions") }
+            if (moreActions) {
+            Text("${signalStorageLabel(state.storageBytes)} stored. Disabled-source evidence stays inspectable; sharing includes eligible sources only.", style = MaterialTheme.typography.bodySmall)
             SignalChoice("Export these results", "", listOf("" to "Choose format", "json" to "JSON", "markdown" to "Markdown", "csv" to "CSV"), usable) { format ->
                 if (format.isNotBlank()) onConfirm(SignalConfirmation("Export these results?", "Share eligible evidence from $actionCount records using the applied filters. Other app data is excluded.") { station.shareHistorySelection(format, ids) })
             }
             TextButton(onClick = { station.previewDeleteHistorySelection(ids) }, enabled = usable) { Text("Review deletion of these results") }
+            }
             if (selected.isNotEmpty()) TextButton(onClick = { selected = emptySet() }) { Text("Clear selection") }
         }
         if (results.records.isEmpty() && !results.loading) item { Text("No records match these filters.") }
@@ -716,7 +750,7 @@ private fun SignalConfiguration(state: SignalState, station: SignalStation, onMa
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { station.saveProvider(model, endpoint, key); key = "" },
                     enabled = !state.busy && model.isNotBlank() && (key.isNotBlank() || settings.provider in state.configuredProviders) && (settings.provider != "custom" || endpoint.startsWith("https://"))) { Text("Save answer setup") }
-                OutlinedButton(onClick = station::checkAnswerSetup, enabled = !state.busy && !pendingProfile && key.isBlank()) { Text("Check answer setup") }
+                OutlinedButton(onClick = station::checkAnswerSetup, enabled = !state.busy && !pendingProfile && key.isBlank()) { Text("Check local setup") }
                 OutlinedButton(onClick = station::testProvider, enabled = !state.busy && !pendingProfile && key.isBlank() && settings.model.isNotBlank() && settings.provider in state.configuredProviders) { Text("Test with provider") }
             }
             if (pendingProfile || key.isNotBlank()) Text("Save these changes before testing or asking.", style = MaterialTheme.typography.bodySmall)

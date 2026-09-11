@@ -644,9 +644,11 @@ open class AndroidSignalStation(private val context: Context, protected val watc
                 sourceKeys = kept.observations.map { it.key }.toSet(), coverage = kept.coverage)
             save(record, token)
             ensureActiveToken(token)
-            attachRows(listOf(record))
-            if (ask) draft("Describe this live signal snapshot. Compare signal strengths and scan coverage, cite the record ID, and distinguish observations from unknown device types, distance and direction.")
-            status(if (ask) "Scene attached to Ask. Review before sending." else "Live snapshot saved and attached. Open Ask when ready.")
+            if (ask) {
+                attachRows(listOf(record))
+                draft("Describe this live signal snapshot. Compare signal strengths and scan coverage, cite the record ID, and distinguish observations from unknown device types, distance and direction.")
+            }
+            status(if (ask) "Scene attached to Ask. Review before sending." else "Live snapshot saved in History. Your question and attachments are unchanged.")
         }
     }
     override fun capture() { startOperation { settings, token -> execute("Capture current context", settings, token, false, true, captureOnly = true) } }

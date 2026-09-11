@@ -61,12 +61,3 @@ internal fun SignalAntennaGlyph() {
 }
 
 internal fun signalCount(count: Int, singular: String): String = "$count ${if (count == 1) singular else if (singular == "memory") "memories" else "${singular}s"}"
-
-/** Coverage counts retain missing outcomes rather than implying that they are measured zeroes. */
-internal fun signalObservationCoverage(record: SignalRecord): String {
-    val missing = record.observations.count { it.status !in setOf("available", "fresh", "cached", "stale", "partial", "estimate", "coarse_estimate", "candidate", "observed", "inside", "outside", "recorded", "modeled", "forecast", "timestamp_unknown") }
-    val measured = record.observations.size - missing
-    val sources = record.sourceKeys.size.takeIf { it > 0 } ?: record.observations.map { it.key }.distinct().size
-    return "${signalCount(measured, "reading")} from ${signalCount(sources, "source")}" +
-        if (missing > 0) " · $missing unavailable" else ""
-}

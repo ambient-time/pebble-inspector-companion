@@ -109,7 +109,7 @@ internal fun SignalTodayPage(state: SignalState, station: SignalStation, onAsk: 
     onObserve: () -> Unit, onMemory: () -> Unit, onDetail: (String) -> Unit, onSources: () -> Unit, onNearby: () -> Unit, onLive: () -> Unit) {
     val latest = state.records.filter { signalSupportsLocalChanges(it) && it.observations.isNotEmpty() && it.state == "ready" }.maxByOrNull { it.createdAt }
     val sourceIssues = state.sourceStatus.filter { it.key in state.settings.enabled && signalSourceNeedsAttention(it) }
-    val proposals = state.memories.filter { it.state == "proposed" || it.needsReview }.take(3)
+    val proposals = state.memories.filter { it.state == "proposed" || it.needsReview }
     var sourceIssuesOpen by signalUiState("today.issues") { false }
     var trendsOpen by signalUiState("today.trends") { false }
     LazyColumn(Modifier.fillMaxSize(), state = signalListState("today"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
@@ -132,7 +132,7 @@ internal fun SignalTodayPage(state: SignalState, station: SignalStation, onAsk: 
         }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onCapture, enabled = !state.busy && state.settings.enabled.isNotEmpty(), modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text(if (state.busy) "Collecting…" else "Capture now") }
+                Button(onClick = onCapture, enabled = !state.busy && state.settings.enabled.isNotEmpty(), modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Capture now") }
                 OutlinedButton(onClick = onLive, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Around me") }
                 Text("${signalCount(state.settings.enabled.size, "source")} selected · saved on this phone", style = MaterialTheme.typography.bodySmall)
                 if (state.settings.enabled.isEmpty()) Text("Choose at least one source to begin.")
@@ -140,6 +140,17 @@ internal fun SignalTodayPage(state: SignalState, station: SignalStation, onAsk: 
                     OutlinedButton(onClick = onObserve) { Text("Record over time") }
                     TextButton(onClick = onSources) { Text("Choose sources") }
                 }
+            }
+        }
+        if (sourceIssues.isNotEmpty()) item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = { sourceIssuesOpen = !sourceIssuesOpen }, modifier = Modifier.semantics { stateDescription = if (sourceIssuesOpen) "Expanded" else "Collapsed" }) {
+                Text("${signalCount(sourceIssues.size, "source")} ${if (sourceIssues.size == 1) "needs" else "need"} review")
+            }
+            if (sourceIssuesOpen) {
+                Text("Latest reported outcomes; a new capture may differ. Other sources can still be captured.", style = MaterialTheme.typography.bodySmall)
+                sourceIssues.forEach { SignalSourceStatusRow(it, state, station, onSources) }
+            }
             }
         }
         if (latest != null) item {
@@ -154,7 +165,6 @@ internal fun SignalTodayPage(state: SignalState, station: SignalStation, onAsk: 
                         TextButton(onClick = { onDetail(latest.id) }) { Text("Inspect readings") }
                         TextButton(onClick = { station.summarizeChanges(latest.id) }, enabled = !state.busy && SignalChanges.baseline(latest, state.records, state.settings.enabled) != null) { Text("Compare with previous") }
                     }
-                    Text("Review the attached readings before sending to your provider.", style = MaterialTheme.typography.bodySmall)
                 }
             }
             TextButton(onClick = { trendsOpen = !trendsOpen }, modifier = Modifier.semantics { stateDescription = if (trendsOpen) "Expanded" else "Collapsed" }) {
@@ -170,17 +180,6 @@ internal fun SignalTodayPage(state: SignalState, station: SignalStation, onAsk: 
         if (latest != null && trendsOpen) {
             item { SignalLocalChangesAction(latest, state) { station.summarizeChanges(latest.id) } }
             item { SignalTrendPanel(latest, state, onDetail) }
-        }
-        if (sourceIssues.isNotEmpty()) item {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            TextButton(onClick = { sourceIssuesOpen = !sourceIssuesOpen }, modifier = Modifier.semantics { stateDescription = if (sourceIssuesOpen) "Expanded" else "Collapsed" }) {
-                Text("${signalCount(sourceIssues.size, "source")} ${if (sourceIssues.size == 1) "needs" else "need"} review")
-            }
-            if (sourceIssuesOpen) {
-                Text("Other available sources can still be captured.", style = MaterialTheme.typography.bodySmall)
-                sourceIssues.forEach { SignalSourceStatusRow(it, state, station, onSources) }
-            }
-            }
         }
 
         item {
