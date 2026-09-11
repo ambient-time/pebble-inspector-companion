@@ -7,6 +7,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
@@ -28,13 +30,13 @@ class SignalLearningUiTest {
         val station = LearningUiStation(baseState().copy(settings = SignalSettings()))
         show(station)
 
-        compose.onNodeWithText("Capture once").performScrollTo().performClick()
+        compose.onNodeWithText("Capture now").performScrollTo().performClick()
         compose.onNodeWithContentDescription("Phone battery").performScrollTo().performClick()
         compose.onNodeWithText("Continue with these sources").performScrollTo().performClick()
         compose.onNodeWithText("Review collection permissions").performScrollTo().performClick()
         compose.onNodeWithText("Open Now").performScrollTo().performClick()
         compose.onNodeWithText("Right now").assertExists()
-        compose.onNodeWithText("Capture once").performScrollTo().performClick()
+        compose.onNodeWithText("Capture now").performScrollTo().performClick()
 
         compose.runOnIdle {
             assertTrue(station.state.value.settings.onboardingComplete)
@@ -52,19 +54,21 @@ class SignalLearningUiTest {
     @Test fun captureAttachesAndRemovalPreservesDraftAndConversation() {
         val station = LearningUiStation(baseState())
         show(station)
-        compose.onNodeWithText("Capture once").performScrollTo().performClick()
+        compose.onNodeWithText("Capture now").performScrollTo().performClick()
         compose.onNodeWithText("Latest observation").performScrollTo().assertIsDisplayed()
         captureFixtureScreenshot("now-capture.png")
         compose.runOnIdle { assertEquals(1, station.captures); assertEquals(0, station.providerRequests) }
         compose.onNode(hasText("Ask") and hasClickAction()).performClick()
-        compose.onNodeWithText("Attached observations").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Your question").performScrollTo().performTextInput("What does this capture show?")
+        compose.onNodeWithText("Evidence · 1 attached").assertIsDisplayed()
+        compose.onNodeWithText("Your question").performTextInput("What does this capture show?")
         androidx.test.espresso.Espresso.closeSoftKeyboard()
-        compose.onNodeWithText("Remove", useUnmergedTree = true).performScrollTo().assertIsDisplayed().performClick()
+        compose.onNodeWithText("Evidence · 1 attached").performClick()
+        compose.onNodeWithText("Remove observation", useUnmergedTree = true).performScrollTo().assertIsDisplayed().performClick()
         compose.runOnIdle { assertTrue(station.state.value.attachedRecords.isEmpty(), "Remove must update the station without starting another thread") }
-        compose.onNode(hasScrollAction()).performScrollToNode(hasText("No capture attached. You can ask a general question or capture readings from Now."))
-        compose.onNodeWithText("No capture attached. You can ask a general question or capture readings from Now.").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("What does this capture show?").performScrollTo().assertExists()
+        compose.onNode(hasScrollAction()).performScrollToNode(hasText("No capture attached."))
+        compose.onNodeWithText("No capture attached.").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Back to question").performScrollTo().performClick()
+        compose.onNodeWithText("What does this capture show?").assertExists()
         captureFixtureScreenshot("ask-draft.png")
         compose.runOnIdle {
             assertTrue(station.state.value.attachedRecords.isEmpty())
@@ -80,15 +84,15 @@ class SignalLearningUiTest {
     private fun captureReview(fontScale: Float) {
         val station = LearningUiStation(baseState().copy(settings = readySettings(), configuredProviders = setOf("openai")))
         show(station, fontScale)
-        compose.onNodeWithText("Capture once").performScrollTo().performClick()
+        compose.onNodeWithText("Capture now").performScrollTo().performClick()
         compose.onNodeWithText("Right now").performScrollTo().assertIsDisplayed()
         captureFixtureScreenshot("now-overview-${fontScale.toInt()}.png")
         compose.onNodeWithText("Ask about this").performScrollTo().performClick()
-        compose.onNodeWithText("Attached observations").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("What does this observation show?").performScrollTo().assertExists()
+        compose.onNodeWithText("Evidence · 1 attached").assertIsDisplayed()
+        compose.onNodeWithText("What does this observation show?").assertExists()
         compose.runOnIdle { assertEquals(0, station.providerRequests); assertEquals(1, station.state.value.attachedRecords.size) }
         captureFixtureScreenshot("ask-attached-${fontScale.toInt()}.png")
-        compose.onNodeWithText("Review context").performScrollTo().performClick()
+        compose.onNodeWithText("Review question").performClick()
         compose.onNodeWithText("Review before sending").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("1 capture · 1 reading · 0 earlier turns").performScrollTo().assertIsDisplayed()
         compose.runOnIdle { assertEquals(0, station.providerRequests) }
@@ -96,6 +100,7 @@ class SignalLearningUiTest {
         compose.runOnIdle { assertEquals(1, station.providerRequests) }
         captureFixtureScreenshot("capture-review-${fontScale.toInt()}.png")
         compose.onNode(hasText("History") and hasClickAction()).performClick()
+        compose.onNode(hasScrollAction()).performScrollToNode(hasText("Open record"))
         compose.onNodeWithText("Open record").performScrollTo().assertIsDisplayed()
         captureFixtureScreenshot("history-overview-${fontScale.toInt()}.png")
     }
@@ -109,7 +114,9 @@ class SignalLearningUiTest {
         show(station)
 
         compose.onNodeWithText("Ask", useUnmergedTree = true).performClick()
-        compose.onNodeWithText("Your question").performScrollTo().performTextInput("What do my battery readings show?")
+        compose.onNodeWithText("Your question").performTextInput("What do my battery readings show?")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        compose.onNodeWithText("Evidence · 0 attached").performClick()
         compose.onNodeWithText("1 relevant memory selected for this question.").performScrollTo().assertExists()
         compose.onNodeWithText(memory.text).assertExists()
 
@@ -154,13 +161,13 @@ class SignalLearningUiTest {
         val station = LearningUiStation(baseState())
         show(station)
 
-        compose.onNodeWithText("Observe for a while").performScrollTo().performClick()
+        compose.onNodeWithText("Record over time").performScrollTo().performClick()
         compose.onNodeWithText("Session length: 1 hour").performScrollTo().assertExists()
         compose.onNodeWithContentDescription("Phone battery").performScrollTo().assertIsOn()
-        compose.onNodeWithText("Start observation session").performScrollTo().performClick()
+        compose.onNodeWithText("Start recording").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(listOf(60 to setOf(BATTERY)), station.observationStarts) }
 
-        compose.onNodeWithText("Stop observing").performScrollTo().performClick()
+        compose.onNodeWithText("Stop recording").performScrollTo().performClick()
         compose.runOnIdle {
             assertEquals(1, station.observationStops)
             assertEquals("stopped", station.state.value.observationSession?.state)
@@ -185,7 +192,7 @@ class SignalLearningUiTest {
         ))
         show(station, fontScale = 2f)
 
-        compose.onNodeWithText("Capture once").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Capture now").performScrollTo().assertIsDisplayed()
         captureFixtureScreenshot("today-font-200.png")
         compose.onNode(hasText("Ask") and hasClickAction()).assertIsDisplayed().performClick()
         compose.onNodeWithText("Ask about your observations").performScrollTo().assertIsDisplayed()
@@ -200,9 +207,10 @@ class SignalLearningUiTest {
         compose.onNodeWithText("Close").assertIsDisplayed().performClick()
 
         compose.onNode(hasText("Settings") and hasClickAction()).assertIsDisplayed().performClick()
+        compose.onNodeWithText("Answers").performScrollTo().performClick()
         compose.onNodeWithText("Capture works without a provider key. Add a key when you want model analysis.").performScrollTo().assertIsDisplayed()
         compose.onNode(hasText("Now") and hasClickAction()).assertIsDisplayed().performClick()
-        compose.onNodeWithText("Capture once").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Capture now").performScrollTo().assertIsDisplayed()
         compose.runOnIdle { assertEquals(0, station.providerRequests) }
     }
 
@@ -210,10 +218,11 @@ class SignalLearningUiTest {
         val recipe = SavedQuestion("saved", "Morning check", "What changed?", searchHistory = true)
         val station = LearningUiStation(baseState().copy(settings = readySettings(), configuredProviders = setOf("openai"), savedQuestions = listOf(recipe)))
         show(station, fontScale = 2f)
-        compose.onNode(hasScrollAction()).performScrollToNode(hasText("Morning check"))
-        compose.onNodeWithText("Morning check").performClick()
-        compose.onNodeWithText("Question about saved history").performScrollTo().assertExists()
-        compose.onNodeWithText("Review context").performScrollTo().performClick()
+        compose.onNode(hasText("Ask") and hasClickAction()).performClick()
+        compose.onNodeWithText("Saved questions").performScrollTo().performClick()
+        compose.onNodeWithText("Open question").performScrollTo().performClick()
+        compose.onNodeWithText("Your question").assertExists()
+        compose.onNodeWithText("Review question").performClick()
         compose.onNodeWithText("Review before sending").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Show exact message text").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(0, station.providerRequests); assertEquals(0, station.captures); assertEquals(0, station.permissionRequests) }
@@ -246,13 +255,13 @@ class SignalLearningUiTest {
         compose.onNodeWithText("Evidence · sensing-2").performScrollTo().assertIsDisplayed()
         captureFixtureScreenshot("sensing-table-${fontScale.toInt()}.png")
         compose.onNode(hasText("Now") and hasClickAction()).performClick()
-        compose.onNode(hasScrollAction()).performScrollToNode(hasText("Nearby") and hasClickAction())
-        compose.onNode(hasText("Nearby") and hasClickAction()).performScrollTo()
+        compose.onNode(hasScrollAction()).performScrollToNode(hasText("Around me") and hasClickAction())
+        compose.onNode(hasText("Around me") and hasClickAction()).performScrollTo()
         captureFixtureScreenshot("nearby-target-${fontScale.toInt()}.png")
         Log.i("SignalScrollDebug", compose.onRoot().printToString())
-        compose.onNode(hasText("Nearby") and hasClickAction()).assertIsDisplayed().performClick()
+        compose.onNode(hasText("Around me") and hasClickAction()).assertIsDisplayed().performClick()
         captureFixtureScreenshot("nearby-navigation-${fontScale.toInt()}.png")
-        compose.onNode(hasScrollAction()).performScrollToNode(hasText("Keep a local record of your devices and familiar places. Radio activity can suggest changes around this phone; it cannot count people or reliably identify movement on its own."))
+        compose.onNodeWithText("Places").performClick()
         compose.onNode(hasScrollAction()).performScrollToNode(hasText("Look up nearby places…"))
         compose.onNodeWithText("Look up nearby places…").performScrollTo().assertIsEnabled().performClick()
         compose.onNodeWithText("Review external lookup").assertIsDisplayed()
@@ -260,7 +269,7 @@ class SignalLearningUiTest {
         captureFixtureScreenshot("sensing-lookup-${fontScale.toInt()}.png")
         compose.onNodeWithText("Cancel").assertIsDisplayed().performClick()
         compose.onNode(hasText("History") and hasClickAction()).performClick()
-        compose.onNode(hasText("Sessions") and hasClickAction()).performScrollTo().performClick()
+        compose.onNode(hasText("Recordings") and hasClickAction()).performScrollTo().performClick()
         compose.onNode(hasScrollAction()).performScrollToNode(hasText("Inspect session evidence"))
         compose.onNodeWithText("Inspect session evidence").performScrollTo().performClick()
         compose.onNodeWithText("Inspect record · sensing-0").performScrollTo().assertIsDisplayed()
@@ -268,12 +277,82 @@ class SignalLearningUiTest {
         compose.runOnIdle { assertEquals(0, station.providerRequests); assertEquals(0, station.captures); assertEquals(0, station.lookupSends) }
     }
 
+    @Test fun providerSetupReturnsToQuestionAndKeepsDraft() {
+        val station = LearningUiStation(baseState())
+        show(station)
+        compose.onNode(hasText("Ask") and hasClickAction()).performClick()
+        compose.onNodeWithText("Your question").performTextInput("Keep this question through setup")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        compose.onNodeWithText("Set up answers").performScrollTo().performClick()
+        compose.onNodeWithText("Model ID").performScrollTo().assertExists()
+        compose.onNodeWithText("Back", substring = false).performClick()
+        compose.onNodeWithText("Keep this question through setup").assertExists()
+        compose.runOnIdle { assertEquals(0, station.providerRequests) }
+    }
+
+    @Test fun retainedSessionSurvivesActivityRecreationAndKeyboardAtDoubleText() {
+        val station = LearningUiStation(baseState())
+        show(station, 2f)
+        compose.onNode(hasText("Ask") and hasClickAction()).performClick()
+        compose.onNodeWithText("Your question").performClick().performTextInput("A draft that survives rotation")
+        val activity = compose.activity
+        val imeType = androidx.core.view.WindowInsetsCompat.Type.ime()
+        var previousHeight = -1
+        var settledChecks = 0
+        compose.waitUntil(10_000) {
+            val insets = androidx.core.view.ViewCompat.getRootWindowInsets(activity.window.decorView)
+            val height = insets?.getInsets(imeType)?.bottom ?: 0
+            settledChecks = if (height > 0 && height == previousHeight) settledChecks + 1 else 0
+            previousHeight = height
+            insets?.isVisible(imeType) == true && settledChecks >= 3
+        }
+        compose.waitForIdle()
+        compose.onNodeWithText("Review question").assertIsDisplayed()
+        val reviewBounds = compose.onNodeWithText("Review question").fetchSemanticsNode().boundsInWindow
+        compose.runOnIdle {
+            val decor = activity.window.decorView
+            val insets = requireNotNull(androidx.core.view.ViewCompat.getRootWindowInsets(decor))
+            val keyboardTop = decor.height - insets.getInsets(imeType).bottom
+            assertTrue(reviewBounds.bottom <= keyboardTop, "Review button must be entirely above the visible keyboard: $reviewBounds / $keyboardTop")
+        }
+        captureFixtureScreenshot("ask-keyboard-320-font-200.png")
+        // Pointer input, not a semantics action: an overlaid IME would intercept this tap.
+        compose.onNodeWithText("Review question").performTouchInput { click() }
+        compose.waitUntil(5_000) { station.state.value.questionReview != null }
+        compose.onNodeWithText("Review before sending").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Back to question").performScrollTo().performClick()
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        compose.onNodeWithText("Set up answers").performScrollTo().performClick()
+        compose.activityRule.scenario.recreate()
+        show(station, 2f)
+        compose.onNodeWithText("Model ID").performScrollTo().assertExists()
+        compose.onNodeWithText("Back", substring = false).performClick()
+        compose.onNodeWithText("A draft that survives rotation").assertExists()
+        compose.runOnIdle { assertEquals(0, station.providerRequests) }
+    }
+
+    @Test fun historyFiltersSurviveSettingsAndActionsUseFrozenQuery() {
+        val station = LearningUiStation(baseState())
+        show(station)
+        compose.onNodeWithText("Capture now").performScrollTo().performClick()
+        compose.onNode(hasText("History") and hasClickAction()).performClick()
+        compose.onNodeWithText("Search questions, answers, and readings").performScrollTo().performTextInput("battery")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        compose.onNodeWithText("Apply filters").performScrollTo().performClick()
+        compose.onNode(hasText("Settings") and hasClickAction()).performClick()
+        compose.onNodeWithText("Back", substring = false).performClick()
+        compose.onNodeWithText("battery").performScrollTo().assertExists()
+        compose.onNodeWithText("Ask about these results").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals("battery", station.askedScope?.text); assertEquals(0, station.providerRequests) }
+    }
+
     private fun show(station: LearningUiStation, fontScale: Float? = null) {
         compose.activityRule.scenario.onActivity { activity ->
+            val retained = androidx.lifecycle.ViewModelProvider(activity)[SignalUiViewModel::class.java].session
             activity.setLearningTestContent {
-                if (fontScale == null) SignalScreen(station, standalone = true)
+                if (fontScale == null) SignalScreen(station, standalone = true, uiSession = retained)
                 else CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale)) {
-                    SignalScreen(station, standalone = true)
+                    androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.then(if (fontScale == 2f) androidx.compose.ui.Modifier.widthIn(max = 320.dp) else androidx.compose.ui.Modifier)) { SignalScreen(station, standalone = true, uiSession = retained) }
                 }
             }
         }
@@ -330,9 +409,15 @@ private class LearningUiStation(initial: SignalState) : SignalStation {
     var providerRequests = 0
     var observationStops = 0
     var lookupSends = 0
+    var askedScope: SignalHistoryQuery? = null
+    override fun openHistoryQuestion(ids: Set<String>?, compare: Boolean) { askedScope = state.value.scopedHistory.query }
     val observationStarts = mutableListOf<Pair<Int, Set<String>>>()
     val retainedNotes = mutableListOf<Set<String>>()
 
+    override fun queryHistory(query: SignalHistoryQuery) {
+        val rows = state.value.records
+        state.value = state.value.copy(scopedHistory = SignalScopedHistory(query = query, records = rows, recordIds = rows.map { it.id }.toSet(), matchingCount = rows.size, updatedAt = System.currentTimeMillis()))
+    }
     override fun updateSettings(settings: SignalSettings) { state.value = state.value.copy(settings = settings) }
     override fun prepareLookup(kind: String, recordId: String) {
         state.value = state.value.copy(lookupReview = SignalLookupProviders.prepare(kind, state.value.records.first { it.id == recordId }, state.value.settings, System.currentTimeMillis()).review)

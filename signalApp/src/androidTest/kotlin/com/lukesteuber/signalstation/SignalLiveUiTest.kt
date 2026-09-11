@@ -29,6 +29,24 @@ class SignalLiveUiTest {
     @Test fun liveSignalsAreExplicitInspectableAndStopOnLeaving() = journey(1f)
     @Test fun liveSignalsRemainUsableAtDoubleText() = journey(2f)
 
+    @Test fun inspectionSurvivesExpiryAndChangingPanesDoesNotRestart() {
+        val station = LiveUiStation()
+        compose.activityRule.scenario.onActivity { activity ->
+            ComposeView(activity).also { view -> view.setContent { SignalScreen(station, standalone = true) }; activity.setContentView(view) }
+        }
+        compose.onNodeWithText("Around me").performScrollTo().performClick()
+        compose.onNodeWithText("Start scanning").performClick()
+        liveNode("Test beacon").performClick()
+        compose.runOnIdle { station.state.value = station.state.value.copy(live = station.state.value.live.copy(entries = emptyList())) }
+        compose.onNodeWithText("Signal history").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Done").performClick()
+        compose.onNodeWithText("Places").performClick()
+        compose.runOnIdle { assertFalse(station.state.value.live.running) }
+        compose.onNodeWithText("Signals").performClick()
+        compose.onNodeWithText("Start scanning").assertExists()
+        compose.runOnIdle { assertEquals(1, station.starts) }
+    }
+
     private fun journey(scale: Float) {
         val station = LiveUiStation()
         compose.activityRule.scenario.onActivity { activity ->
@@ -45,10 +63,10 @@ class SignalLiveUiTest {
                 activity.setContentView(view)
             }
         }
-        compose.onNodeWithText("Live view").performScrollTo().performClick()
+        compose.onNodeWithText("Around me").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(0, station.starts) }
         liveNode("Save snapshot").assertIsNotEnabled()
-        liveNode("Start scanning").performClick()
+        compose.onNodeWithText("Start scanning").performClick()
         compose.runOnIdle { assertEquals(1, station.starts) }
         liveNode("Recently seen").assertIsDisplayed()
         screenshot("live-overview-$scale.png")
@@ -68,10 +86,10 @@ class SignalLiveUiTest {
         compose.runOnIdle { assertEquals(listOf(false), station.saves) }
         liveNode("Ask about this scene").performClick()
         compose.runOnIdle { assertEquals(listOf(false, true), station.saves) }
-        liveNode("Stop scanning").performClick()
+        compose.onNodeWithText("Stop scanning").performClick()
         compose.runOnIdle { assertFalse(station.state.value.live.running) }
-        liveNode("Start scanning").performClick()
-        compose.onNodeWithText("Back to Now").performClick()
+        compose.onNodeWithText("Start scanning").performClick()
+        compose.onNodeWithText("Back").performClick()
         compose.runOnIdle { assertEquals(2, station.stops); assertFalse(station.state.value.live.running) }
         compose.onNodeWithText("Right now").assertExists()
     }

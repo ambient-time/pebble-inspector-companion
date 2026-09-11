@@ -36,8 +36,13 @@ open class AndroidSignalStation(private val context: Context, protected val watc
     private var memoryQuery = ""
     private var activeMemories = emptyList<SignalMemory>()
     private data class PreparedQuestion(val settings: SignalSettings, val currentSettings: SignalSettings, val thread: String,
-        val originals: List<SignalRecord>, val memories: List<SignalMemory>, val review: SignalQuestionReview)
+        val originals: List<SignalRecord>, val memories: List<SignalMemory>, val review: SignalQuestionReview,
+        val selection: SignalEvidenceSelection? = null)
     private var preparedQuestion: PreparedQuestion? = null
+    private var scopedSearch: Job? = null
+    private var scopedGeneration = 0L
+    private var scopedSelection: SignalEvidenceSelection? = null
+    private var scopedSettings: SignalSettings? = null
     private val collectors by lazy { SignalCollectors(context) }
     private val liveSession by lazy { SignalLiveSession(scope,
         acquire = { settings, activeWifi -> liveAcquisition?.invoke(settings, activeWifi) ?: collectors.acquire(settings, activeWifi) },
@@ -86,7 +91,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
         mutable.update { it.copy(questionDraft = question, questionDraftToken = id(), savedQuestionDraft = null) }
     }
     private fun attachRows(rows: List<SignalRecord>) {
-        mutable.update { it.copy(attachedRecords = rows.distinctBy { row -> row.id }) }
+        mutable.update { it.copy(evidenceSelection = null, attachedRecords = rows.distinctBy { row -> row.id }) }
         attachments = rows.map { it.id }.toSet()
     }
     private suspend fun resolveEvidence(ids: Set<String>, settings: SignalSettings, memory: List<SignalMemory>): List<SignalRecord> {
@@ -202,6 +207,10 @@ open class AndroidSignalStation(private val context: Context, protected val watc
                         store.settings(sanitized)
                     }
                     val configuredProviders = withContext(Dispatchers.IO) { configured() }
+                    if (old.enabled != sanitized.enabled) {
+                        scopedSearch?.cancel(); ++scopedGeneration; scopedSelection = null; scopedSettings = null
+                        mutable.update { it.copy(scopedHistory = SignalScopedHistory(query = it.scopedHistory.query, error = "Sources changed. Refresh these results.")) }
+                    }
                     val newThread = old.enabled != sanitized.enabled || old.watchId != sanitized.watchId || old.provider != sanitized.provider || old.endpoint != sanitized.endpoint || old.model != sanitized.model || old.weatherPlace != sanitized.weatherPlace || old.weatherLocation != sanitized.weatherLocation || old.presenceTargets != sanitized.presenceTargets || old.placeFences != sanitized.placeFences
                     mutable.update { it.copy(settings = sanitized, configuredProviders = configuredProviders, presenceCandidates = it.presenceCandidates.filter { candidate -> "presence.${candidate.radio}" in sanitized.enabled }, placeLookup = null, threadId = if (newThread) id() else it.threadId, status = "Settings saved. Collection runs only when requested.") }
                 } }
@@ -270,6 +279,10 @@ open class AndroidSignalStation(private val context: Context, protected val watc
         startOperation { settings, token -> prepareQuestion(text, searchHistory, settings, token) }
     }
     private suspend fun prepareQuestion(text: String, searchHistory: Boolean, currentSettings: SignalSettings, token: Long) {
+        mutable.value.evidenceSelection?.let { selection ->
+            prepareScopedQuestion(text, currentSettings, token, selection)
+            return
+        }
         val picked = if (mutable.value.useMemory) mutable.value.memorySuggestions.toList() else emptyList()
         val recipe = mutable.value.savedQuestionDraft
         val selected = (recipe?.attachmentIds.orEmpty() + attachments).toSet()
@@ -324,7 +337,10 @@ open class AndroidSignalStation(private val context: Context, protected val watc
         if (question.isBlank() || title.isBlank() || mutable.value.busy) return
         val existing = mutable.value.savedQuestionDraft
         val recipe = SavedQuestion(if (asNew) id() else existing?.id ?: id(), title.trim().take(100), question.trim().take(8000),
-            existing?.sourceKeys ?: mutable.value.settings.enabled, (existing?.attachmentIds.orEmpty() + attachments).toSet(), history, mutable.value.useMemory)
+            mutable.value.evidenceSelection?.sourceKeys ?: existing?.sourceKeys ?: mutable.value.settings.enabled,
+            if (mutable.value.evidenceSelection?.query != null) emptySet() else (mutable.value.evidenceSelection?.recordIds ?: (existing?.attachmentIds.orEmpty() + attachments).toSet()),
+            history, if (mutable.value.evidenceSelection != null) false else mutable.value.useMemory,
+            historyQuery = mutable.value.evidenceSelection?.query, scopedEvidence = mutable.value.evidenceSelection != null, projectionQuery = mutable.value.evidenceSelection?.projectionQuery)
         startOperation { _, token ->
             withContext(NonCancellable) { persistence.withLock {
                 ensureActiveToken(token)
@@ -339,6 +355,22 @@ open class AndroidSignalStation(private val context: Context, protected val watc
         if (mutable.value.busy) return
         startOperation { settings, token ->
             val recipe = withContext(Dispatchers.IO) { store.savedQuestions().firstOrNull { it.id == id } } ?: return@startOperation
+            if (recipe.historyQuery != null || recipe.scopedEvidence) {
+                if (!settings.enabled.containsAll(recipe.sourceKeys)) throw SignalProviderException("Some saved sources are disabled. Review the saved question sources before opening it.")
+                val resolved = withContext(Dispatchers.IO) {
+                    val all = resolveScope(recipe.historyQuery ?: recipe.projectionQuery ?: SignalHistoryQuery(), settings.copy(enabled = recipe.sourceKeys))
+                    if (recipe.historyQuery != null) all else {
+                        if (!all.first.recordIds.containsAll(recipe.attachmentIds)) throw SignalProviderException("Saved attachments changed or became unavailable. Choose evidence again.")
+                        pruneSelection(all.first.copy(query = null), recipe.attachmentIds) to all.second.filter { it.id in recipe.attachmentIds }
+                    }
+                }
+                ensureActiveToken(token)
+                attachRows(resolved.second.take(30))
+                mutable.update { it.copy(savedQuestionDraft = recipe, savedQuestionOpenToken = id(), threadId = id(),
+                    useMemory = false, evidenceSelection = resolved.first, records = emptyList(), selectedRecordId = null,
+                    status = "Saved query resolved to ${resolved.first.matchedCount} current results. Review before sending.") }
+                return@startOperation
+            }
             val missing = withContext(Dispatchers.IO) { val memories = store.memory(); recipe.attachmentIds.count { key -> store.record(key)?.let { learning.eligible(it, settings, memories) } != true } }
             ensureActiveToken(token)
             attachRows(withContext(Dispatchers.IO) { recipe.attachmentIds.mapNotNull { store.record(it) } })
@@ -351,7 +383,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
     }
     override fun dismissSavedQuestion() {
         dismissQuestionReview(); attachments = emptySet()
-        mutable.update { it.copy(savedQuestionDraft = null, status = "Using current sources. Saved attachments removed from this draft; the saved question is unchanged.") }
+        mutable.update { it.copy(evidenceSelection = null, savedQuestionDraft = null, status = "Using current sources. Saved attachments removed from this draft; the saved question is unchanged.") }
     }
     override fun deleteSavedQuestion(id: String) {
         if (mutable.value.busy) return
@@ -371,14 +403,15 @@ open class AndroidSignalStation(private val context: Context, protected val watc
             val valid = persistence.withLock { withContext(Dispatchers.IO) {
                 val memory = store.memory()
                 currentSettings == prepared.currentSettings && mutable.value.threadId == prepared.thread &&
-                    prepared.originals.all { original -> store.record(original.id)?.let { it == original && learning.eligible(it, settings, memory) } == true } &&
+                    preparedEvidenceValid(prepared, memory) &&
                     prepared.memories.all { m -> memory.any { it == m && SignalLearning.eligible(it, settings) } }
             } }
             if (!valid) { dismissQuestionReview(); throw SignalProviderException("Context changed. Review your question again before sending.") }
             var record = SignalRecord(id(), prepared.thread, now(), review.question, provider = settings.provider, model = settings.model,
                 endpoint = settings.endpoint, references = prepared.originals.map { it.id }.distinct(),
-                sourceKeys = prepared.originals.flatMap { it.sourceKeys + it.observations.map { o -> o.key } }.toSet() + prepared.memories.flatMap { it.sourceKeys },
-                memoryReferences = prepared.memories.associate { it.id to it.revision })
+                sourceKeys = prepared.selection?.sourceKeys ?: (prepared.originals.flatMap { it.sourceKeys + it.observations.map { o -> o.key } }.toSet() + prepared.memories.flatMap { it.sourceKeys }),
+                memoryReferences = prepared.memories.associate { it.id to it.revision },
+                evidenceScope = prepared.selection?.let { withContext(Dispatchers.IO) { pruneSelection(it, prepared.originals.map { row -> row.id }.toSet()) } })
             activeRecord = record.id
             activeRequest = nextId(); activeWatch = settings.watchId; requestedSources = settings.enabled
             claimedRequests += activeWatch to activeRequest!!
@@ -396,7 +429,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
                 ensureActiveToken(token)
                 val memory = withContext(Dispatchers.IO) { store.memory() }
                 if (mutable.value.settings != prepared.currentSettings || !withContext(Dispatchers.IO) {
-                    prepared.originals.all { original -> store.record(original.id)?.let { it == original && learning.eligible(it, settings, memory) } == true } &&
+                    preparedEvidenceValid(prepared, memory) &&
                     prepared.memories.all { m -> memory.any { it == m && SignalLearning.eligible(it, settings) } }
                 }) throw SignalProviderException("Context changed before transmission. Review it again.")
                 phase = "provider_response"
@@ -621,6 +654,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
         openEvidenceDraft(setOf(id), "Analyze this saved capture. State when it was collected and which readings are missing. Cite its record ID.")
     }
     private fun openEvidenceDraft(ids: Set<String>, question: String) {
+        clearEvidenceSelection()
         if (mutable.value.busy) { status("A request is already running. Cancel it first."); return }
         dismissQuestionReview()
         startOperation { settings, token ->
@@ -1155,6 +1189,227 @@ open class AndroidSignalStation(private val context: Context, protected val watc
         selected
     }
 
+    private fun revision(record: SignalRecord): String = MessageDigest.getInstance("SHA-256")
+        .digest(json.encodeToString(record).toByteArray()).joinToString("") { "%02x".format(it) }
+
+    private suspend fun scopeEligible(row: SignalRecord, settings: SignalSettings, memories: List<SignalMemory>): Boolean {
+        // Only independent measured frames can be split into sources. Derived evidence keeps its full provenance gate.
+        if (row.references.isEmpty() && row.memoryReferences.isEmpty() && row.observations.isNotEmpty() &&
+            (row.kind in setOf("capture", "observation", "health_import") || row.provider == "local")) return true
+        return learning.eligible(row, settings, memories)
+    }
+
+    private suspend fun resolveScope(query: SignalHistoryQuery, settings: SignalSettings): Pair<SignalEvidenceSelection, List<SignalRecord>> {
+        val memory = store.memory()
+        val effective = settings.copy(enabled = SignalHistoryScope.sources(query, settings.enabled))
+        val revisions = linkedMapOf<String, String>()
+        val records = mutableListOf<SignalRecord>()
+        store.queryLocal(query) { original, projected ->
+            revisions[original.id] = revision(original)
+            records += projected
+        }
+        records.sortWith(compareByDescending<SignalRecord> { it.createdAt }.thenBy { it.id })
+        val ids = records.map { it.id }.toSet()
+        // Pin linked evidence too: changing an ancestor invalidates a prepared derived answer.
+        val pending = ArrayDeque(ids)
+        val visited = mutableSetOf<String>()
+        while (pending.isNotEmpty()) {
+            currentCoroutineContext().ensureActive()
+            val key = pending.removeFirst()
+            if (!visited.add(key)) continue
+            val row = store.record(key) ?: continue
+            revisions[key] = revision(row)
+            pending.addAll(row.references)
+        }
+        return SignalEvidenceSelection(ids, query, effective.enabled, ids.size, revisions) to records
+    }
+
+    override fun queryHistory(query: SignalHistoryQuery) {
+        scopedSearch?.cancel(); val ticket = ++scopedGeneration
+        scopedSelection = null; scopedSettings = null
+        mutable.update { it.copy(scopedHistory = SignalScopedHistory(query = query, loading = true)) }
+        scopedSearch = scope.launch {
+            try {
+                initialized.await(); indexReady.await()
+                val settings = mutable.value.settings
+                val result = withContext(Dispatchers.IO) { persistence.withLock { resolveScope(query, settings) } }
+                if (ticket != scopedGeneration || settings != mutable.value.settings) return@launch
+                scopedSelection = result.first; scopedSettings = settings
+                mutable.update { it.copy(scopedHistory = SignalScopedHistory(query, result.second.take(100), result.first.recordIds,
+                    result.first.matchedCount, updatedAt = now())) }
+            } catch (error: CancellationException) { throw error }
+            catch (_: Exception) { if (ticket == scopedGeneration) mutable.update { it.copy(scopedHistory = SignalScopedHistory(query = query, error = "Results unavailable. Check dates and refresh.")) } }
+            finally { if (ticket == scopedGeneration) mutable.update { it.copy(scopedHistory = it.scopedHistory.copy(loading = false)) } }
+        }
+    }
+
+    private suspend fun validateSelection(selection: SignalEvidenceSelection, settings: SignalSettings): List<SignalRecord> {
+        if (!settings.enabled.containsAll(selection.sourceKeys)) throw SignalProviderException("Selected sources changed. Refresh and review these results.")
+        val effective = settings.copy(enabled = selection.sourceKeys)
+        val memory = store.memory()
+        for ((key, digest) in selection.revisions) {
+            val row = store.record(key) ?: throw SignalProviderException("Selected evidence was deleted. Refresh and review again.")
+            if (revision(row) != digest) throw SignalProviderException("Selected evidence changed. Refresh and review again.")
+        }
+        return selection.recordIds.mapNotNull { key ->
+            val row = store.record(key) ?: throw SignalProviderException("Selected evidence was deleted. Refresh results.")
+            if (!scopeEligible(row, effective, memory)) return@mapNotNull null
+            SignalHistoryScope.project(row, selection.projectionQuery, effective.enabled)
+        }
+    }
+
+    override fun loadMoreScopedHistory() {
+        val selection = scopedSelection ?: return
+        if (mutable.value.scopedHistory.loading || !mutable.value.scopedHistory.hasMore) return
+        val ticket = scopedGeneration
+        mutable.update { it.copy(scopedHistory = it.scopedHistory.copy(loading = true)) }
+        scopedSearch = scope.launch {
+            try {
+                val rows = withContext(Dispatchers.IO) { persistence.withLock {
+                    pruneSelection(selection, selection.recordIds)
+                    selection.recordIds.mapNotNull { store.record(it) }.mapNotNull { SignalHistoryScope.project(it, selection.projectionQuery, it.sourceKeys + it.observations.map { o -> o.key }) }
+                } }
+                if (ticket == scopedGeneration) mutable.update { it.copy(scopedHistory = it.scopedHistory.copy(records = rows.take(it.scopedHistory.records.size + 100))) }
+            } catch (error: CancellationException) { throw error }
+            catch (_: Exception) { if (ticket == scopedGeneration) mutable.update { it.copy(scopedHistory = it.scopedHistory.copy(error = "History changed. Refresh results.")) } }
+            finally { if (ticket == scopedGeneration) mutable.update { it.copy(scopedHistory = it.scopedHistory.copy(loading = false)) } }
+        }
+    }
+
+    private suspend fun selectedScope(ids: Set<String>?): SignalEvidenceSelection {
+        val selection = scopedSelection ?: throw SignalProviderException("Refresh history before choosing these results.")
+        if (scopedSettings != mutable.value.settings) throw SignalProviderException("Settings changed. Refresh these results.")
+        val chosen = ids ?: selection.recordIds
+        if (chosen.isEmpty() || !selection.recordIds.containsAll(chosen)) throw SignalProviderException("Choose results from the current history selection.")
+        return pruneSelection(selection.copy(query = if (ids == null) selection.query else null), chosen)
+    }
+
+    private suspend fun pruneSelection(selection: SignalEvidenceSelection, chosen: Set<String>): SignalEvidenceSelection {
+        val revisions = linkedMapOf<String, String>()
+        val pending = ArrayDeque(chosen)
+        while (pending.isNotEmpty()) {
+            currentCoroutineContext().ensureActive()
+            val key = pending.removeFirst()
+            if (key in revisions) continue
+            val row = store.record(key) ?: if (key in chosen || key in selection.revisions) throw SignalProviderException("Selected evidence was deleted. Refresh results.") else continue
+            val digest = revision(row)
+            if (selection.revisions[key] != digest) throw SignalProviderException("Selected evidence changed. Refresh results.")
+            revisions[key] = digest
+            pending.addAll(row.references)
+        }
+        return selection.copy(recordIds = chosen, matchedCount = chosen.size, revisions = revisions)
+    }
+
+    override fun openHistoryQuestion(ids: Set<String>?, compare: Boolean) {
+        if (mutable.value.busy) return
+        startOperation { settings, token ->
+            val selection = selectedScope(ids)
+            val rows = withContext(Dispatchers.IO) { persistence.withLock { validateSelection(selection, settings) } }
+            if (compare && !SignalHistoryScope.comparable(rows)) throw SignalProviderException("Choose exactly two saved captures with at least one common source to compare.")
+            ensureActiveToken(token)
+            attachRows(rows.take(30))
+            draft(if (compare) "Compare these two selected captures. Cite their IDs, distinguish actual changes from gaps, and do not double-count repeated health days."
+                else "Explain these selected history results. Cite their IDs, collection dates, coverage and missing readings.")
+            mutable.update { it.copy(evidenceSelection = selection, savedQuestionDraft = null, useMemory = false, threadId = id(), records = emptyList(),
+                status = "${selection.matchedCount} results selected. Model limits may omit some; review before sending.") }
+        }
+    }
+    override fun clearEvidenceSelection() {
+        dismissQuestionReview()
+        if (mutable.value.evidenceSelection != null) attachments = emptySet()
+        mutable.update { it.copy(evidenceSelection = null) }
+    }
+
+    private suspend fun preparedEvidenceValid(prepared: PreparedQuestion, memory: List<SignalMemory>): Boolean {
+        if (prepared.selection != null) return try {
+            val stillEligible = validateSelection(prepared.selection, prepared.settings).map { it.id }.toSet()
+            stillEligible.containsAll(prepared.originals.map { it.id })
+        } catch (_: SignalProviderException) { false }
+        return prepared.originals.all { original -> store.record(original.id)?.let { it == original && learning.eligible(it, prepared.settings, memory) } == true }
+    }
+
+    private suspend fun prepareScopedQuestion(text: String, settings: SignalSettings, token: Long, selection: SignalEvidenceSelection) {
+        val thread = mutable.value.threadId
+        val prepared = withContext(Dispatchers.IO) { persistence.withLock {
+            val rows = validateSelection(selection, settings)
+            val excerpts = SignalEvidenceBudget.excerpts(rows.filter { it.state == "ready" }.take(30))
+            if (excerpts.isEmpty()) throw SignalProviderException("These results contain no completed evidence. Select a saved capture or completed answer.")
+            val evidence = buildString {
+                append(text.take(8000))
+                append("\nSelected scope: ${selection.matchedCount} saved records; ${excerpts.size} included under source eligibility and the request budget; ${selection.matchedCount - excerpts.size} omitted. No unrelated conversation or memory is included.")
+                for (row in excerpts) append("\n[${row.id}] saved ${row.createdAt}: ${row.question}\n${row.answer}\nReadings: ${json.encodeToString(row.observations)}\nCoverage: ${json.encodeToString(row.coverage)}\n")
+            }
+            val messages = listOf("system" to ANSWER_INSTRUCTIONS, "user" to evidence)
+            providers.validateRequest(settings, messages)
+            PreparedQuestion(settings.copy(enabled = selection.sourceKeys), settings, thread,
+                excerpts.mapNotNull { store.record(it.id) }, emptyList(),
+                SignalQuestionReview(text.take(8000), messages, excerpts.size, 0, selection.matchedCount - excerpts.size,
+                    captureCount = excerpts.count { it.observations.isNotEmpty() }, observationCount = excerpts.sumOf { it.observations.size },
+                    omittedObservations = rows.sumOf { it.observations.size } - excerpts.sumOf { it.observations.size } + rows.sumOf { r -> r.coverage.sumOf { it.omitted } }), selection)
+        } }
+        ensureActiveToken(token)
+        preparedQuestion = prepared
+        mutable.update { it.copy(questionReview = prepared.review, status = "Review ${prepared.review.recordCount} included results and ${prepared.review.omittedRecords} omitted results. Nothing was sent.") }
+    }
+
+    override fun previewDeleteHistorySelection(ids: Set<String>?) {
+        if (mutable.value.busy) return
+        scope.launch {
+            try {
+                val selection = selectedScope(ids)
+                withContext(Dispatchers.IO) { persistence.withLock { pruneSelection(selection, selection.recordIds) } }
+                previewDeleteRecords(selection.recordIds)
+            } catch (_: SignalProviderException) { status("Selection changed. Refresh history before deleting.") }
+        }
+    }
+
+    override fun shareHistorySelection(format: String, ids: Set<String>?) {
+        if (!available || mutable.value.busy) return
+        val settings = mutable.value.settings
+        val exportGeneration = generation
+        scope.launch {
+            var exported: File? = null
+            var exportedCount = 0
+            try {
+                val selected = selectedScope(ids)
+                val csv = format.lowercase() == "csv"
+                val markdown = format.lowercase() in setOf("md", "markdown")
+                persistence.withLock {
+                    exported = withContext(Dispatchers.IO) {
+                        val rows = validateSelection(selected, settings)
+                        exportedCount = rows.size
+                        if (rows.isEmpty()) throw SignalProviderException("No selected evidence can be exported with current sources.")
+                        val directory = File(context.cacheDir, "signal-export").apply { mkdirs() }
+                        File(directory, "signal-selection-${id()}." + if (csv) "csv" else if (markdown) "md" else "json").apply {
+                            bufferedWriter().use { writer ->
+                                if (csv) writer.write(SignalCsv.header)
+                                else if (markdown) writer.write("# Selected history\n\n${rows.size} of ${selected.matchedCount} selected records; ${selected.matchedCount - rows.size} excluded under current sources or evidence eligibility. Saved-date range: ${selected.query?.fromDate.orEmpty()} through ${selected.query?.throughDate.orEmpty()}.\n\n")
+                                else writer.write("{\"schemaVersion\":3,\"selectedCount\":${selected.matchedCount},\"excludedCount\":${selected.matchedCount - rows.size},\"records\":[")
+                                rows.forEachIndexed { index, row ->
+                                    currentCoroutineContext().ensureActive()
+                                    if (csv) writer.write(SignalCsv.rows(row, selected.sourceKeys))
+                                    else if (markdown) writer.write("## ${row.question}\n\n${row.answer}\n\nRecord: ${row.id}; saved ${java.time.Instant.ofEpochMilli(row.createdAt)}\n\n```json\n${json.encodeToString(row.observations)}\n```\n\n")
+                                    else { if (index > 0) writer.write(","); writer.write(json.encodeToString(row)) }
+                                }
+                                if (!csv && !markdown) writer.write("]}")
+                            }
+                        }
+                    }
+                    if (settings != mutable.value.settings || generation != exportGeneration) throw CancellationException("Selection changed")
+                    withContext(Dispatchers.IO) { validateSelection(selected, settings) }
+                }
+                val file = exported ?: return@launch
+                if (settings != mutable.value.settings || generation != exportGeneration) throw CancellationException("Selection changed")
+                status("Export prepared: $exportedCount of ${selected.matchedCount} selected results; ${selected.matchedCount - exportedCount} excluded under current sources or evidence eligibility.")
+                val uri = FileProvider.getUriForFile(context, "${context.packageName}.signal-export", file)
+                context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType(if (csv) "text/csv" else if (markdown) "text/markdown" else "application/json")
+                    .putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Export selected Signal Station results").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                scope.launch { delay(10 * 60_000L); withContext(Dispatchers.IO) { file.delete() } }
+            } catch (error: CancellationException) { withContext(NonCancellable + Dispatchers.IO) { exported?.delete() }; throw error }
+            catch (_: Exception) { withContext(Dispatchers.IO) { exported?.delete() }; status("Selection changed or could not be exported. Refresh history and try again.") }
+        }
+    }
+
     private fun historyPage(before: Long, query: String = "") {
         historySearch?.cancel(); val ticket = ++historyGeneration
         mutable.update { it.copy(historyLoading = true) }
@@ -1197,6 +1452,8 @@ open class AndroidSignalStation(private val context: Context, protected val watc
         }
     }
     override fun applyDeletion(keepAsNotes: Set<String>) {
+        scopedSearch?.cancel(); scopedSelection = null; scopedSettings = null; ++scopedGeneration
+        mutable.update { it.copy(scopedHistory = SignalScopedHistory(query = it.scopedHistory.query, error = "History changed. Refresh results."), evidenceSelection = null) }
         val preview = mutable.value.deletionPreview ?: return
         stopObservation(); learningJob?.cancel(); historySearch?.cancel(); ++historyGeneration; cancel()
         scope.launch {
@@ -1252,15 +1509,17 @@ open class AndroidSignalStation(private val context: Context, protected val watc
             val settings = mutable.value.settings
             val records = withContext(Dispatchers.IO) { val memories = store.memory(); store.thread(id).filter { it.provider == settings.provider && it.model == settings.model && it.endpoint == settings.endpoint && learning.eligible(it, settings, memories) }.reversed() }
             if (records.isEmpty()) { status("This conversation has no eligible records under the current settings."); return@launch }
+            val savedScope = records.maxByOrNull { it.createdAt }?.evidenceScope
             val evidence = withContext(Dispatchers.IO) {
-                val latest = records.maxByOrNull { it.createdAt }
-                resolveEvidence(latest?.references.orEmpty().toSet(), settings, store.memory())
+                if (savedScope != null) validateSelection(savedScope, settings)
+                else resolveEvidence(records.maxByOrNull { it.createdAt }?.references.orEmpty().toSet(), settings, store.memory())
             }
             attachRows(evidence)
-            mutable.update { it.copy(threadId = id, records = records, status = "Conversation opened with ${evidence.size} linked records. Review the attachments before sending.") }
+            mutable.update { it.copy(threadId = id, records = records, evidenceSelection = savedScope, useMemory = if (savedScope != null) false else it.useMemory, status = "Conversation opened with ${evidence.size} linked records. Review the attachments before sending.") }
         }
     }
     override fun attachRecord(id: String) {
+        clearEvidenceSelection()
         dismissQuestionReview()
         val record = mutable.value.records.find { it.id == id } ?: mutable.value.selectedRecord?.takeIf { it.id == id } ?: return
         if (record.state != "ready" || !SignalHistory.allowed(record, mutable.value.settings.enabled)) { status("This record is available for local viewing; its sources must be enabled before sending."); return }
@@ -1269,6 +1528,16 @@ open class AndroidSignalStation(private val context: Context, protected val watc
     override fun removeAttachment(id: String) {
         if (mutable.value.busy) return
         dismissQuestionReview()
+        mutable.value.evidenceSelection?.let { selection ->
+            val removed = selection.copy(query = null, recordIds = selection.recordIds - id, matchedCount = (selection.recordIds - id).size)
+            mutable.update { it.copy(evidenceSelection = removed) }
+            scope.launch {
+                try {
+                    val pruned = withContext(Dispatchers.IO) { pruneSelection(removed, removed.recordIds) }
+                    mutable.update { if (it.evidenceSelection == removed) it.copy(evidenceSelection = pruned) else it }
+                } catch (_: SignalProviderException) { status("Evidence changed. Refresh history and select it again.") }
+            }
+        }
         attachments = attachments - id
         mutable.update { it.copy(savedQuestionDraft = it.savedQuestionDraft?.let { recipe -> recipe.copy(attachmentIds = recipe.attachmentIds - id) }, status = "Attachment removed. The conversation and saved capture are unchanged.") }
     }

@@ -3,6 +3,7 @@ package coredevices.pebble.signal
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -23,70 +24,72 @@ import kotlin.time.Clock
 
 /** Signal strength bands deliberately communicate neither bearings nor estimated distance. */
 @Composable
-internal fun SignalLivePage(state: SignalState, station: SignalStation, onSources: () -> Unit) {
+internal fun SignalLivePage(state: SignalState, station: SignalStation, onSources: () -> Unit, onSavedContext: (() -> Unit)? = null) {
     val live = state.live
     var tick by remember { mutableStateOf(Clock.System.now().toEpochMilliseconds()) }
     LaunchedEffect(Unit) { while (true) { tick = Clock.System.now().toEpochMilliseconds(); delay(1_000) } }
     // New scan arrivals can post between ticks. Sample time again when they recompose the view.
     val now = maxOf(tick, Clock.System.now().toEpochMilliseconds())
     val visible = live.entries.filter { now - it.lastSeenAt in 0..60_000 }
-    var detailId by remember { mutableStateOf<String?>(null) }
+    var detail by signalUiState<SignalLiveEntry?>("live.detail.${live.startedAt}.${state.settings.enabled.sorted().joinToString()}") { null }
     DisposableEffect(station) { onDispose { station.stopLiveSignals() } }
     val fresh = visible.filter { it.fresh(now) }
-    LazyColumn(Modifier.fillMaxSize().testTag("live-signals-list"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Around me", Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineMedium)
-                Text("Live radio signals, grouped by strength.")
-                Text("Strength is not distance or direction. These are radio observations, not a count of phones or people.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { if (live.running) station.stopLiveSignals() else station.startLiveSignals() }, enabled = live.running || !state.busy) { Text(if (live.running) "Stop scanning" else "Start scanning") }
-                    TextButton(onClick = onSources) { Text("Choose radios") }
-                    TextButton(onClick = station::requestLivePermissions) { Text("Review radio permissions") }
-                }
-                Text(live.status, style = MaterialTheme.typography.bodyMedium)
-                Text("Scans only while this view is open, for up to 5 minutes. Android may limit scan updates.", style = MaterialTheme.typography.bodySmall)
-                if (live.scanning) LinearProgressIndicator(Modifier.fillMaxWidth())
-                if (live.updatedAt > 0) Text("${if (live.running) "Latest update" else "Stopped view"}: ${signalDateTime(live.updatedAt)}", style = MaterialTheme.typography.bodySmall)
-            }
+    detail?.let { entry ->
+        SignalLiveDetail(entry, now, onClose = { detail = null }, onLabel = { station.labelLiveSignal(entry.id, it); detail = entry.copy(label = it) })
+        return
+    }
+    Column(Modifier.fillMaxSize()) {
+        FlowRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { if (live.running) station.stopLiveSignals() else station.startLiveSignals() }, enabled = live.running || !state.busy) { Text(if (live.running) "Stop scanning" else "Start scanning") }
+            TextButton(onClick = onSources) { Text("Choose radios") }
         }
+    LazyColumn(Modifier.weight(1f).testTag("live-signals-list"), state = signalListState("live.${live.startedAt}"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
-            Card { Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Recently seen", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleMedium)
-                Text("${fresh.count { it.radio == "bluetooth" }} Bluetooth advertisers · ${fresh.count { it.radio == "wifi" }} Wi-Fi access points")
-                Text("${live.newCount} new in latest scan · ${visible.size - fresh.size} older observations", style = MaterialTheme.typography.bodySmall)
-                Text("Recently seen means within the last 15 seconds. Older observations fade and leave after 60 seconds.", style = MaterialTheme.typography.bodySmall)
-                if (live.omittedAtLeast > 0) Text("At least ${live.omittedAtLeast} additional observations were omitted from this bounded view.", style = MaterialTheme.typography.bodySmall)
-            } }
+            Text("Live signals", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge)
+            Text("Strength is not distance, direction or a count of people.", style = MaterialTheme.typography.bodySmall)
+            Text(live.status, style = MaterialTheme.typography.bodyMedium)
+            if (live.scanning) LinearProgressIndicator(Modifier.fillMaxWidth())
+            Text("Recently seen", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleMedium)
+            Text("${fresh.count { it.radio == "bluetooth" }} Bluetooth · ${fresh.count { it.radio == "wifi" }} Wi-Fi · ${visible.size - fresh.size} older", style = MaterialTheme.typography.bodyMedium)
+            Text("${live.newCount} new in latest scan", style = MaterialTheme.typography.bodySmall)
         }
         item {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { station.saveLiveScene(false) }, enabled = fresh.isNotEmpty() && !state.busy) { Text("Save snapshot") }
                 Button(onClick = { station.saveLiveScene(true) }, enabled = fresh.isNotEmpty() && !state.busy) { Text("Ask about this scene") }
             }
-            Text("Saving stays on this phone. Ask opens a draft with this snapshot attached for review.", style = MaterialTheme.typography.bodySmall)
         }
         listOf("strong" to "Strong · −60 dBm or higher", "medium" to "Medium · −75 to −61 dBm", "faint" to "Faint · below −75 dBm").forEach { (band, title) ->
             item(key = band) {
-                val entries = visible.filter { it.band == band }
-                Card { Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(title, Modifier.semantics { heading() }, style = MaterialTheme.typography.titleMedium)
-                    if (entries.isEmpty()) Text("No observations in this band", style = MaterialTheme.typography.bodySmall)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        entries.forEach { entry ->
-                            val age = ((now - entry.lastSeenAt).coerceAtLeast(0) / 1000)
-                            OutlinedButton(onClick = { detailId = entry.id }, modifier = Modifier.alpha(if (entry.fresh(now)) 1f else .55f)) {
-                                Icon(if (entry.radio == "wifi") Icons.Outlined.Wifi else Icons.Outlined.Bluetooth, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Column {
-                                    Text(entry.label.ifBlank { if (entry.radio == "wifi") "Wi-Fi access point" else "Bluetooth advertiser" })
-                                    Text("${entry.rssi} dBm · ${age}s ago · ${if (entry.status == "cached") "cached" else entry.trend}", style = MaterialTheme.typography.labelSmall)
-                                }
-                            }
-                        }
-                    }
-                } }
+                Text(title, Modifier.semantics { heading() }, style = MaterialTheme.typography.titleMedium)
+                if (visible.none { it.band == band }) Text("No observations in this band", style = MaterialTheme.typography.bodySmall)
             }
+            items(visible.filter { it.band == band }.sortedWith(compareBy({ it.firstSeenAt }, { it.id })), key = { it.id }) { entry ->
+                val age = ((now - entry.lastSeenAt).coerceAtLeast(0) / 1000)
+                OutlinedButton(onClick = { detail = entry }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                    Icon(if (entry.radio == "wifi") Icons.Outlined.Wifi else Icons.Outlined.Bluetooth, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(entry.label.ifBlank { if (entry.radio == "wifi") "Wi-Fi access point" else "Bluetooth advertiser" })
+                        Text("${entry.rssi} dBm · ${age}s ago · ${if (!entry.fresh(now)) "older observation" else entry.trend}", style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            }
+        }
+
+        item {
+            var about by signalUiState("live.about") { false }
+            TextButton(onClick = { about = !about }) { Text(if (about) "Hide signal information" else "About these signals") }
+            if (about) {
+                Text("Wi-Fi counts are access points and Bluetooth counts are advertisers. They are not counts of phones or people.", style = MaterialTheme.typography.bodySmall)
+                Text("Scans only while this view is open, for up to 5 minutes. Android may limit scan updates.", style = MaterialTheme.typography.bodySmall)
+                Text("Recently seen means within 15 seconds. Older observations are labeled and leave after 60 seconds.", style = MaterialTheme.typography.bodySmall)
+                Text("Save snapshot stores the visible fresh readings on this phone. Ask saves a snapshot and opens a draft for review.", style = MaterialTheme.typography.bodySmall)
+                if (live.updatedAt > 0) Text("Latest update: ${signalDateTime(live.updatedAt)}", style = MaterialTheme.typography.bodySmall)
+                if (live.omittedAtLeast > 0) Text("At least ${live.omittedAtLeast} additional observations omitted from this bounded view.", style = MaterialTheme.typography.bodySmall)
+            }
+            TextButton(onClick = station::requestLivePermissions) { Text("Review radio permissions") }
+            onSavedContext?.let { TextButton(onClick = it) { Text("Saved wireless and cellular context") } }
         }
         if (live.outcomes.isNotEmpty()) item {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -95,16 +98,20 @@ internal fun SignalLivePage(state: SignalState, station: SignalStation, onSource
             }
         }
     }
-    visible.firstOrNull { it.id == detailId }?.let { entry ->
-        SignalLiveDetail(entry, now, onClose = { detailId = null }, onLabel = { station.labelLiveSignal(entry.id, it) })
     }
+
 }
 
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 private fun SignalLiveDetail(entry: SignalLiveEntry, now: Long, onClose: () -> Unit, onLabel: (String) -> Unit) {
-    var label by remember(entry.id) { mutableStateOf("") }
-    AlertDialog(onDismissRequest = onClose, title = { Text(entry.label.ifBlank { "Radio observation" }) }, confirmButton = { TextButton(onClick = onClose) { Text("Done") } }, text = {
-        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    var label by signalUiState("live.label.${entry.id}.${entry.firstSeenAt}") { "" }
+    androidx.compose.ui.backhandler.BackHandler { onClose() }
+    Column(Modifier.fillMaxSize()) {
+        TextButton(onClick = onClose, modifier = Modifier.padding(horizontal = 16.dp)) { Text("Done") }
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(entry.label.ifBlank { "Radio observation" }, Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge)
+            Text("Frozen view for inspection. These readings are not saved unless you use Save snapshot.", style = MaterialTheme.typography.bodySmall)
             Text(if (entry.radio == "wifi") "Wi-Fi access point" else "Bluetooth advertiser")
             Text("${entry.rssi} dBm · ${entry.band} signal · ${entry.trend}")
             Text("Last seen ${((now - entry.lastSeenAt).coerceAtLeast(0) / 1000)} seconds ago. ${entry.sampleCount} samples this session.")
@@ -115,11 +122,11 @@ private fun SignalLiveDetail(entry: SignalLiveEntry, now: Long, onClose: () -> U
             Text("Signals can change because of walls, pockets, orientation or transmitter power. A changing signal does not establish movement.", style = MaterialTheme.typography.bodySmall)
             if (entry.fresh(now)) {
                 OutlinedTextField(value = label, onValueChange = { label = it.take(80) }, label = { Text("Label for this session") }, modifier = Modifier.fillMaxWidth())
-                Text("This label resets with the scan session. Saved snapshots include it only when radio names are enabled. Manage devices you own in Nearby for recognition across sessions.", style = MaterialTheme.typography.bodySmall)
+                Text("This label resets with the scan session. Saved snapshots include it only when radio names are enabled. Manage devices you own in My devices for recognition across sessions.", style = MaterialTheme.typography.bodySmall)
                 OutlinedButton(onClick = { onLabel(label.trim()) }, enabled = label.isNotBlank()) { Text("Set session label") }
             } else Text("Scan again to label this older observation.", style = MaterialTheme.typography.bodySmall)
         }
-    })
+    }
 }
 
 @Composable

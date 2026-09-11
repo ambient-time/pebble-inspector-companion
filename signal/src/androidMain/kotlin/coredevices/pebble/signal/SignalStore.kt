@@ -15,6 +15,7 @@ import javax.crypto.Mac
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 import kotlinx.serialization.json.Json
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -119,6 +120,14 @@ class SignalStore(context: Context, private val namespace: String = "signal", pr
             for (record in page.records) { if (predicate(record)) result += record; if (result.size >= limit) return result }
         } while (page.hasMore)
         return result
+    }
+    suspend fun queryLocal(query: SignalHistoryQuery, visit: suspend (SignalRecord, SignalRecord) -> Unit) {
+        SignalHistoryScope.validate(query)
+        walk { _, original ->
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            val projected = SignalHistoryScope.project(original, query, original.sourceKeys + original.observations.map { it.key })
+            if (projected != null) visit(original, projected)
+        }
     }
     suspend fun walk(after: Long = 0, visit: suspend (Long, SignalRecord) -> Unit) {
         var cursor = after

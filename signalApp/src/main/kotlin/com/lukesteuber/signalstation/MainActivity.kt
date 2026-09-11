@@ -3,6 +3,7 @@ package com.lukesteuber.signalstation
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -12,6 +13,10 @@ import coredevices.pebble.signal.SignalScreen
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
 
+class SignalUiViewModel : androidx.lifecycle.ViewModel() {
+    val session = coredevices.pebble.signal.SignalUiSession()
+}
+
 class MainActivity : ComponentActivity() {
     override fun onStop() {
         (application as SignalApplication).station.stopLiveSignals()
@@ -19,7 +24,9 @@ class MainActivity : ComponentActivity() {
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         val app = application as SignalApplication
+        val ui = androidx.lifecycle.ViewModelProvider(this)[SignalUiViewModel::class.java].session
         setContent {
             var showWatch by remember { mutableStateOf(false) }
             val scope = rememberCoroutineScope()
@@ -45,7 +52,7 @@ class MainActivity : ComponentActivity() {
                     } finally { selecting = false }
                 }
             }
-            SignalScreen(app.station, standalone = true, onManageWatch = { connectionError = ""; showWatch = true })
+            SignalScreen(app.station, standalone = true, uiSession = ui, onManageWatch = { connectionError = ""; showWatch = true })
             if (showWatch) AlertDialog(
                 onDismissRequest = { if (!selecting) showWatch = false },
                 title = { Text("Use your Pebble app") },

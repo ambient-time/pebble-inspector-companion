@@ -73,6 +73,7 @@ data class SignalRecord(
     val sessionId: String = "",
     val memoryReferences: Map<String, Long> = emptyMap(),
     val coverage: List<SignalSourceCoverage> = emptyList(),
+    val evidenceScope: SignalEvidenceSelection? = null,
 )
 
 @Serializable
@@ -84,6 +85,8 @@ data class SignalSourceCoverage(
 data class SignalSource(val key: String, val name: String, val group: String, val available: Boolean = true)
 data class SignalWatch(val id: String, val name: String, val connected: Boolean, val connectionId: String = id, val appOpen: Boolean = false, val connectionStatus: String = "")
 data class SignalState(
+    val scopedHistory: SignalScopedHistory = SignalScopedHistory(),
+    val evidenceSelection: SignalEvidenceSelection? = null,
     val live: SignalLiveState = SignalLiveState(),
     val attachedRecords: List<SignalRecord> = emptyList(),
     val questionDraft: String = "",
@@ -202,6 +205,12 @@ interface SignalStation {
     fun stopObservation() {}
     fun loadMoreHistory() {}
     fun searchSavedHistory(query: String) {}
+    fun queryHistory(query: SignalHistoryQuery) {}
+    fun loadMoreScopedHistory() {}
+    fun openHistoryQuestion(ids: Set<String>? = null, compare: Boolean = false) {}
+    fun shareHistorySelection(format: String, ids: Set<String>? = null) {}
+    fun previewDeleteHistorySelection(ids: Set<String>? = null) {}
+    fun clearEvidenceSelection() {}
     fun previewDeleteRecords(ids: Set<String>?) {}
     fun previewForgetMemory(id: String) {}
     fun applyDeletion(keepAsNotes: Set<String>) {}
@@ -237,6 +246,8 @@ data class SavedQuestion(
     val id: String, val title: String, val question: String,
     val sourceKeys: Set<String> = emptySet(), val attachmentIds: Set<String> = emptySet(),
     val searchHistory: Boolean = false, val useMemory: Boolean = true,
+    val historyQuery: SignalHistoryQuery? = null, val scopedEvidence: Boolean = false,
+    val projectionQuery: SignalHistoryQuery? = null,
 )
 
 @Serializable

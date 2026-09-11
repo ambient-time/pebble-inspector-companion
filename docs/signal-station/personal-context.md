@@ -3,13 +3,12 @@
 By Luke Steuber.
 
 Signal Station saves observations about your surroundings and helps you make
-sense of them over time. Your phone is enough. A Pebble watch can collect a
-reading or give quick feedback through the Pebble app you already use.
+sense of them over time. Your phone is enough. The optional Pebble preview uses
+the Pebble app you already have; its connection still needs physical-watch testing.
 
-Start on **Now**. **Capture once** saves a moment and attaches it in Ask.
+Start on **Now**. **Capture now** saves a moment and attaches it in Ask.
 Choose **Ask about this** on the saved observation to open an editable question.
-Use **Observe for a
-while** for a 15-minute, one-hour or four-hour session. Select the sources you
+Use **Record over time** for a 15-minute, one-hour or four-hour session. Select the sources you
 want for that session. Android asks for the permissions those sources need.
 You can decline a permission and continue using the other sources.
 
@@ -22,17 +21,27 @@ unplugged, with low storage, or when the phone is too warm. They finish at their
 chosen end time and do not restart after Android stops the app. Wake listening
 is a separate choice; observation sessions do not record ambient audio or video.
 
-**History** contains saved captures, nearby checks, sessions and reports. Older
-activity loads in pages. Search checks saved history on the phone. You can
-inspect the original readings and their measurement dates before asking a
-provider to analyze them. JSON exports contain records, memories, sessions and saved questions;
-Markdown exports are for reading. CSV exports contain numeric values, units,
-measurement times, quality and provenance. Exports include only evidence whose
-sources remain enabled; page filters do not limit the export. Exports are temporary share files, removed
-from the app cache after ten minutes or when affected history is deleted.
+**History** contains saved captures, nearby checks, recording sessions and reports.
+Filter the timeline by type, capture date, source or text. Dates describe when a
+record was captured or saved; individual readings retain their own measurement
+dates. Results come from the full saved history, including older pages.
 
-Open **Nearby** from Now to see the saved wireless environment, cellular context, phone location
-and optional map lookups. Wi-Fi channel counts describe received advertisements,
+**Ask about these results**, **Compare selected** and **Export these results**
+use the same selection shown on the page. Review shows which evidence fits in a
+model request and what was omitted. A narrower source selection excludes broader
+prose that could disclose other readings. Explicitly selected captures and saved
+questions retain their evidence choices; changing sources or deleting evidence
+requires a fresh review.
+
+Scoped JSON and Markdown exports contain the selected evidence. CSV contains
+numeric values, units, measurement times, quality and provenance. **Export all
+data** in Storage is a separate action that includes eligible records, memories,
+sessions and saved questions. Exports remain temporary share files, removed from
+the app cache after ten minutes or when affected history is deleted.
+
+Open **Around me** from Now. **Signals** shows live radios and separately labeled
+saved wireless and cellular context. **Places** holds phone location, map lookups
+and familiar places. **My devices** holds enrolled devices and their saved sightings. Wi-Fi channel counts describe received advertisements,
 not channel utilization. An advertised open network does not establish internet
 access. Cellular observations include technology, signal and registered or
 neighbor cells; tower identifiers have their own switch. No phone number or
@@ -85,7 +94,7 @@ was during unobserved time. Health patterns are descriptive observations, not
 health assessments. Corrected wording stays accepted until the underlying
 pattern changes.
 
-In **Ask**, type or dictate a question and choose **Review context**. This step
+In **Ask**, type or dictate a question and choose **Review question**. This step
 runs locally, even without a provider key. It shows the record and memory
 counts, retained readings, omitted readings, earlier conversation turns and the
 exact text prepared for your provider. Large captures keep their identity and
@@ -94,25 +103,27 @@ silently dropped because it is too large; if no safe excerpt fits, preparation
 stops and explains how to narrow the selection. The original records remain
 available in History.
 
-The attachment card shows the observation’s time and coverage. **Inspect** opens
-its original readings; **Remove** detaches it without deleting the capture or
+Open the **Evidence** summary to see each observation’s time and coverage.
+**Inspect** opens its original readings; **Remove observation** detaches it without deleting the capture or
 starting a new conversation. Attachments remain available for follow-up questions
 and retries. Reopening a conversation restores its linked evidence. Source and
 deletion checks apply again before sending.
 
 **Ask about this**, comparing captures, and **Capture and prepare question** all
 open a draft. They do not contact a model until you review and choose Send.
-Asking about saved history uses a ranked selection of at most 30 records. Date
-and source restrictions remove broader prose from the selected excerpts.
+General history questions use a ranked selection of at most 30 records.
+Questions opened from filtered History use that selection, with visible omissions
+when a request limit is reached. Source restrictions omit broader prose from
+the selected excerpts; unselected conversation turns and memories stay out.
 
 Choose **Send question** only after reviewing. Sending uses your chosen provider
 and key, and may use credits. If evidence is deleted or changes before Send,
 Signal Station asks you to review again. It keeps your draft after errors and
-does not retry automatically. At most five confirmed memories are selected
-locally; **Use memory** excludes them when switched off.
+does not retry automatically. For ordinary questions, at most five confirmed
+memories are selected locally; **Use memory** excludes them when switched off.
 
-**Save question** gives a question a name. Find it under **Saved questions** on
-Now. Opening one prepares an editable draft: it does not collect, enable a
+**Save question** gives a question a name. Find it under **Saved questions** in
+Ask. Opening one prepares an editable draft: it does not collect, enable a
 source, ask for a permission, or contact a provider. Saved source choices and
 attachments are resolved against current data. Disabled or deleted selections
 need your attention. **Use current context / remove saved attachments** lets
@@ -153,7 +164,7 @@ unresolved. Use the separate Signal Station package and the existing Pebble app.
 
 ## Live signals around you
 
-Open **Live view** on Now, choose Bluetooth signal strength or Wi-Fi signal and
+Open **Around me → Signals** on Now, choose Bluetooth signal strength or Wi-Fi signal and
 frequency in Sources, review radio permissions, then tap **Start scanning**.
 The view groups observations into strong (at least −60 dBm), medium (−75 to
 −61 dBm), and faint (below −75 dBm) bands. Tap an observation for its recent
@@ -170,13 +181,15 @@ addresses can appear as new observations. Cellular context describes network
 cells, not nearby handsets. No phone count, people count, bearing or distance
 is established by this view.
 
-Collection stops on leaving the view, backgrounding the app, changing sources,
+Collection stops on leaving Signals, switching Around me tabs, backgrounding the app, changing sources,
 or after five minutes. Bluetooth uses bounded scan windows. Wi-Fi requests a
 new scan at most once every 35 seconds and shows available cached results in
 between; Android can throttle or deny updates. Fresh readings are at most 15
 seconds old. Older readings fade and disappear after 60 seconds. Repeated
 cached readings do not create new samples. The view retains up to 128 entries
 and twelve recent strengths per entry; it is not a complete radio census.
+An open detail keeps the inspected values until you close it. Its age stays
+visible, and fresh-only actions become unavailable when it expires.
 
 Nothing is saved or sent automatically. **Save snapshot** freezes fresh readings
 into local history. **Ask about this scene** saves and attaches those readings
@@ -184,3 +197,21 @@ to a draft, then opens Ask. Review and Send remain separate actions. Snapshots
 include measurement times and coverage; stale readings are excluded. Paired
 watch behavior is unchanged. Cooperative ranging and optional ESP32 positioning
 are future work and are not simulated by the strength bands.
+
+
+## Moving between tasks
+
+Now, Ask and History stay available at the bottom of the screen. Back returns to
+the task you came from. Changing sources or setting up answers preserves your
+question and attachments. In Ask, the typing area stays separate from the
+scrolling conversation; open the attachment summary to inspect evidence before
+Review and Send. Saved questions live in Ask. Recordings and Patterns are in
+History. Presets sit with collection choices, and the field trial is under
+Record over time → Advanced.
+
+First use offers Capture now, Around me or Ask a question. You can also skip
+setup and explore. Phone basics selects battery and time; Radio signals selects
+Bluetooth and Wi-Fi strength. Review a preset before applying it. It neither
+collects nor grants access. Permissions appear for the chosen task, and declining
+one leaves other available sources usable. Live collection does not restart when
+you return from settings or permissions: choose Start when ready.

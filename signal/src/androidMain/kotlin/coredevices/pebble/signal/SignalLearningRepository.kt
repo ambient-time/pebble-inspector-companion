@@ -86,7 +86,10 @@ internal class SignalLearningRepository(private val store: SignalStore) {
         return known.sortedByDescending { it.createdAt }
     }
 
-    suspend fun eligible(record: SignalRecord, settings: SignalSettings, memories: List<SignalMemory>): Boolean {
+    suspend fun eligible(record: SignalRecord, settings: SignalSettings, memories: List<SignalMemory>): Boolean =
+        eligible(record, settings, memories, mutableSetOf())
+
+    private suspend fun eligible(record: SignalRecord, settings: SignalSettings, memories: List<SignalMemory>, scopedVisits: MutableSet<String>): Boolean {
         val visiting = mutableSetOf<String>(); val verified = mutableSetOf<String>()
         val stack = ArrayDeque<Pair<SignalRecord, Boolean>>(); stack.addLast(record to false)
         while (stack.isNotEmpty()) {
@@ -95,6 +98,27 @@ internal class SignalLearningRepository(private val store: SignalStore) {
             if (row.id in verified) continue
             if (!visiting.add(row.id) || visiting.size + verified.size > 2048 || !SignalHistory.allowed(row, settings.enabled)) return false
             if (row.memoryReferences.any { (id, revision) -> memories.none { it.id == id && it.revision == revision && SignalLearning.eligible(it, settings) } }) return false
+            val selection = row.evidenceScope
+            if (selection != null) {
+                if (scopedVisits.size >= 64 || !scopedVisits.add(row.id)) return false
+                if (!settings.enabled.containsAll(selection.sourceKeys) || selection.recordIds != row.references.toSet()) return false
+                val selectedSettings = settings.copy(enabled = selection.sourceKeys)
+                for ((key, expected) in selection.revisions) {
+                    val evidence = store.record(key) ?: return false
+                    val actual = java.security.MessageDigest.getInstance("SHA-256").digest(json.encodeToString(evidence).toByteArray()).joinToString("") { "%02x".format(it) }
+                    if (actual != expected) return false
+                }
+                for (key in selection.recordIds) {
+                    val evidence = store.record(key) ?: return false
+                    if (key !in selection.revisions || SignalHistoryScope.project(evidence, selection.projectionQuery, selectedSettings.enabled) == null) return false
+                    val raw = evidence.references.isEmpty() && evidence.memoryReferences.isEmpty() && evidence.observations.isNotEmpty() &&
+                        (evidence.kind in setOf("capture", "observation", "health_import") || evidence.provider == "local")
+                    if (!raw && !eligible(evidence, selectedSettings, memories, scopedVisits)) return false
+                }
+                scopedVisits.remove(row.id)
+                visiting.remove(row.id); verified += row.id
+                continue
+            }
             stack.addLast(row to true)
             for (reference in row.references.distinct()) {
                 if (reference in visiting) return false

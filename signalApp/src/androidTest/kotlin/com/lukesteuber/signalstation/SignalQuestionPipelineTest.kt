@@ -45,7 +45,12 @@ class SignalQuestionPipelineTest {
             assertEquals(original.id, station.state.value.attachedRecords.single().id)
             assertTrue(station.state.value.questionDraft.isNotBlank())
             suspend fun review(question: String) {
-                withContext(Dispatchers.Main) { station.ask(question, false) }
+                withContext(Dispatchers.Main) {
+                    // History loading is separate from request busy state. Check the
+                    // same readiness guard as Ask, then dispatch without a thread hop.
+                    until { !station.state.value.busy && !station.state.value.historyLoading }
+                    station.ask(question, false)
+                }
                 until { !station.state.value.busy }
                 assertNotNull(station.state.value.questionReview, station.state.value.status)
             }

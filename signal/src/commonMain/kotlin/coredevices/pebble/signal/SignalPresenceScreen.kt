@@ -15,7 +15,7 @@ import androidx.compose.ui.unit.dp
 import kotlin.time.Clock
 
 @Composable
-internal fun SignalPresencePage(station: SignalStation, state: SignalState, onDetail: (String) -> Unit) {
+internal fun SignalPresencePage(station: SignalStation, state: SignalState, onDetail: (String) -> Unit, pane: String = "all") {
     val settings = state.settings
     var currentTime by remember { mutableStateOf(Clock.System.now().toEpochMilliseconds()) }
     LaunchedEffect(state.records, settings) {
@@ -61,11 +61,15 @@ internal fun SignalPresencePage(station: SignalStation, state: SignalState, onDe
     var showPlaceEditor by remember { mutableStateOf(false) }
     var removeTarget by remember { mutableStateOf<SignalPresenceTarget?>(null) }
     var removePlace by remember { mutableStateOf<SignalPlaceFence?>(null) }
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), state = signalListState("presence.$pane"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        if (pane == "all") {
         item {
             Text("Nearby", Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineMedium)
             Text("Keep a local record of your devices and familiar places. Radio activity can suggest changes around this phone; it cannot count people or reliably identify movement on its own.")
         }
+
+        }
+        if ((pane == "all" || pane in setOf("places", "devices"))) {
         item {
             listOf("presence.bluetooth" to "Bluetooth presence", "presence.wifi" to "Wi-Fi presence", "presence.places" to "Saved places").forEach { (key, label) ->
                 SignalToggle(label, key in settings.enabled, !state.busy) { enabled ->
@@ -74,11 +78,14 @@ internal fun SignalPresencePage(station: SignalStation, state: SignalState, onDe
             }
             Text("Choose sources, then scan when ready. Saved sightings stay on this phone; model analysis happens only when requested. Device and place switches stop future observations; delete old records separately in History.")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = station::scanPresence, enabled = !state.busy && settings.enabled.any { it.startsWith("presence.") }) { Text("Check now") }
+                Button(onClick = station::scanPresence, enabled = !state.busy && settings.enabled.any { it.startsWith("presence.") }) { Text("Save presence check") }
                 TextButton(onClick = station::requestPermissions, enabled = !state.busy) { Text("Review permissions") }
             }
             Text(state.presenceStatus)
         }
+
+        }
+        if ((pane == "all" || pane == "places")) {
         item {
             HorizontalDivider()
             Text("Nearby places", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge)
@@ -116,6 +123,9 @@ internal fun SignalPresencePage(station: SignalStation, state: SignalState, onDe
             }
             Text("A nearby business or matching Wi-Fi name does not confirm your location.", style = MaterialTheme.typography.bodySmall)
         }
+
+        }
+        if ((pane == "all" || pane == "signals")) {
         item {
             HorizontalDivider()
             Text("Wireless environment", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge)
@@ -147,6 +157,9 @@ internal fun SignalPresencePage(station: SignalStation, state: SignalState, onDe
                 SignalContextEvidence(cellularRecord, onDetail)
             }
         }
+
+        }
+        if ((pane == "all" || pane == "places")) {
         item {
             HorizontalDivider()
             Text("Location", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge)
@@ -183,9 +196,12 @@ internal fun SignalPresencePage(station: SignalStation, state: SignalState, onDe
         item {
             SignalLookupServiceControls(state, station)
         }
+
+        }
+        if ((pane == "all" || pane == "devices")) {
         item {
             HorizontalDivider()
-            Text("Your devices", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge)
+            Text("My devices", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge)
             Text("Save devices you own or have permission to monitor. A missed signal does not mean a device has left.")
             if (settings.presenceTargets.isEmpty()) Text("Run a scan, then name a device below to start recording its sightings.")
         }
@@ -222,6 +238,9 @@ internal fun SignalPresencePage(station: SignalStation, state: SignalState, onDe
                 }
             }
         }
+
+        }
+        if ((pane == "all" || pane == "places")) {
         item {
             HorizontalDivider()
             Text("Familiar places", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge)
@@ -258,6 +277,9 @@ internal fun SignalPresencePage(station: SignalStation, state: SignalState, onDe
                 }
             }
         }
+
+        }
+        if ((pane == "all" || pane == "devices")) {
         item {
             HorizontalDivider()
             Text("Recent presence records", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge)
@@ -269,6 +291,8 @@ internal fun SignalPresencePage(station: SignalStation, state: SignalState, onDe
             TextButton(onClick = { onDetail(record.id) }) { Text("${signalDateTime(record.createdAt)} · ${record.question}") }
             Text(record.summary, style = MaterialTheme.typography.bodySmall)
         }
+        }
+
     }
     SignalLookupReviewDialog(state, station, onDetail)
     candidate?.let { found ->

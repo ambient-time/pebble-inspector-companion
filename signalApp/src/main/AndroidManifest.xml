@@ -34,7 +34,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <queries><package android:name="com.google.android.apps.healthdata" /></queries>
     <application android:name=".SignalApplication" android:label="Signal Station" android:icon="@mipmap/ic_launcher" android:allowBackup="false" android:fullBackupContent="@xml/inspector_backup_rules" android:dataExtractionRules="@xml/inspector_data_extraction_rules" android:supportsRtl="true" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:usesCleartextTraffic="false">
-        <activity android:name=".MainActivity" android:exported="true">
+        <activity android:name=".MainActivity" android:exported="true" android:windowSoftInputMode="adjustResize">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity>
         <service android:name=".SignalListener" android:exported="true">

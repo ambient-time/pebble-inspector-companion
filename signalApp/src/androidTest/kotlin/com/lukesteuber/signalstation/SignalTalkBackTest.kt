@@ -98,12 +98,21 @@ class SignalTalkBackTest {
                     assertTrue(node.performAction(AccessibilityNodeInfo.ACTION_CLICK), "$label can be activated through accessibility")
                     val expected = when (label) {
                         "Ask" -> "Ask about your observations"
-                        "History" -> "Filter, compare & export"
+                        "History" -> "Recordings"
                         else -> "Right now"
                     }
                     waitFor { visibleText(expected) }
                 }
-                println("TALKBACK_NAVIGATION serviceBound=true destinations=Now,Ask,History focusAndActivation=passed")
+                for (label in listOf("Around me", "Places", "My devices", "Signals", "Back")) {
+                    waitFor { clickable(label) != null }
+                    val node = clickable(label)!!
+                    assertTrue(node.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS), "$label receives focus")
+                    waitFor { node.refresh() && node.isAccessibilityFocused }
+                    assertTrue(node.performAction(AccessibilityNodeInfo.ACTION_CLICK), "$label activates")
+                }
+                waitFor { visibleText("Right now") }
+                assertFalse(station.state.value.live.running, "Visiting panes does not start collection")
+                println("TALKBACK_NAVIGATION serviceBound=true destinations=Now,Ask,History,AroundMe,Places,MyDevices,Signals focusAndActivation=passed")
             }
         } finally {
             if (previousServices.isNullOrEmpty()) shell("settings delete secure enabled_accessibility_services")
