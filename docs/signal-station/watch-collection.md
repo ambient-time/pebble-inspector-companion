@@ -10,7 +10,7 @@ off by default and is excluded from presets and bulk enable. The existing
 `watch.motion` source gains movement variation, SDK-supplied timing and exclusion counts.
 
 The canonical collection contract and firmware roadmap are in
-[`pebble-field-inspector/docs/watch-collection.md`](https://github.com/lukeslp/pebble-field-inspector/blob/codex/signal-station/docs/watch-collection.md).
+[`pebble-field-inspector/docs/watch-collection.md`](https://github.com/ambient-time/pebble-field-inspector/blob/codex/signal-station/docs/watch-collection.md).
 The watch baseline is `8872957`; this companion baseline is `003bd5a4`.
 
 ## Sequence and acceptance
@@ -43,21 +43,27 @@ by this change.
   See the final build receipt
   below for counts and candidate identity. Parser tests consume JSON produced by
   the actual C collector, including null versus zero and partial coverage.
-- **Planned:** named-device acceptance and the firmware improvements in the roadmap.
-- **Unavailable:** physical watch/phone acceptance and measured battery effects.
+- **Trial:** the September 13 [collection trial](collection-trial-2026-09-13.md)
+  saved all 15 requested history minutes from both Diorite QEMU and a physical
+  Time 2 through the stock Pebble host on Pixel 9a. The SE could not complete its
+  Bluetooth bond. The physical motion sample was unavailable with explicit
+  vibration/timestamp exclusions.
+- **Planned:** remaining physical acceptance and the firmware improvements in the roadmap.
+- **Unavailable:** clean physical motion differentiation and measured battery effects.
 
 The existing public artifacts and release descriptors remain separate from local
 development evidence. See [Pebble integration](pebble-integration.md) for the
 historical emulator results and outstanding device checks. Firmware quality/light
 APIs, gyro support, Duo pressure and offline voice evaluation remain separate
-roadmap items; no firmware or physical-device change is made by this increment.
+roadmap items. The subsequent named-device trial installed Android development
+code and addon 1.6.2 on the Time 2. No firmware was flashed.
 
-## Local build receipt
+## Initial 1.6.0 build receipt
 
 September 13, 2026. Watch code: `62daf0a2699e26110f2af002b11916f6a48a7b07`.
-The separate [`watch-collection-preview.json`](../../signalApp/watch-collection-preview.json)
-pins addon 1.6.0 to that clean source; it is a local development candidate, still
-in testing. The existing 1.5.0 release descriptor is unchanged.
+At this checkpoint the separate collection-preview descriptor pinned addon 1.6.0
+to that clean source. It now pins corrected 1.6.2; see the dated trial receipt for
+current bytes. The existing 1.5.0 release descriptor is unchanged.
 
 ```sh
 ANDROID_HOME=/Users/luke/Library/Android/sdk ./gradlew \
@@ -88,8 +94,8 @@ batch timing; empty motion results do not display measured zero variance; and
 minute histories are classified as recorded-period, partial or unavailable.
 Provider guidance retains historical windows and explains the categorical fields.
 
-Next: validate the addon on an approved named test watch/phone after resolving the
-existing device gate, then use the firmware roadmap to prototype bounded heart-
-interval quality and fresh-light interfaces. Current model/firmware identity,
-physical sampling, reconnect/cancel behavior, TalkBack/large-text layout, battery
-impact and runtime stack watermark remain unverified by these host/build checks.
+Next: investigate the Time 2 motion vibration flags and SDK timestamps, then run
+stationary/moving, cancel/reconnect and battery checks. Time 2 is the primary
+collection/firmware target; SE remains a compatibility target. Heart-interval
+quality and fresh-light interfaces remain proposed firmware work. Physical
+TalkBack/large-text layout and runtime stack watermark also remain open.

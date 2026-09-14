@@ -11,6 +11,14 @@ for heart-interval quality, fresh light, gyro, Duo pressure and offline delivery
 Its evidence is separate from the September 10 baseline and the wider release
 checklist below; physical watch acceptance and firmware changes remain open.
 
+September 13 trial: both code repositories are verified private and their
+`codex/signal-station` branches are pushed. The [trial receipt](collection-trial-2026-09-13.md)
+records successful 15-minute history capture on Diorite QEMU and the physical
+Time 2 / Pixel 9a, source-picker and transport corrections, and the unresolved
+2 SE Bluetooth bond. Time 2 is the primary target; SE tests compatibility.
+The physical motion capture excluded every sample, so its vibration/timestamp
+behavior is the next collection probe. The full release gate below remains open.
+
 ## Outcome and scope
 
 Make Signal Station useful as an Android field notebook: capture reliable observations, understand the surrounding place and radio environment, compare changes locally, and ask a chosen language model about reviewed evidence. Keep the phone useful on its own. The watch remains a collection trigger and quick-feedback surface through the user's existing Pebble app.
