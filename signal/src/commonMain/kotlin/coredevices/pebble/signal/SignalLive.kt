@@ -7,6 +7,7 @@ data class SignalLiveEntry(
     val metadata: String = "", val security: String = "", val frequencyMHz: Int? = null,
     val address: String = "", val band: String = "faint", val trend: String = "unknown",
     val status: String = "fresh", val advertisedName: String = "",
+    val scanCount: Int = 1,
 ) {
     fun fresh(now: Long) = status == "fresh" && now - lastSeenAt in 0..15_000
 }
@@ -82,6 +83,7 @@ class SignalLiveReducer {
         entries.entries.removeAll { it.value.radio !in allowed }
         current(now)
         var added = 0
+        val counted = mutableSetOf<String>()
         for (sample in acquisition.candidates.take(128)) {
             val measured = sample.measuredAt ?: continue
             if (sample.radio !in allowed || sample.address.isBlank() || sample.rssi !in -127..20 || now - measured !in 0..60_000) continue
@@ -97,7 +99,8 @@ class SignalLiveReducer {
                 metadata = sample.metadata.take(1024).takeIf { "bluetooth.services" in allowed && sample.radio == "bluetooth" }.orEmpty(),
                 security = sample.security.take(200), frequencyMHz = sample.frequencyMHz,
                 address = sample.address.take(64).takeIf { "${sample.radio}.identifiers" in allowed }.orEmpty(),
-                band = SignalLive.band(strength), trend = SignalLive.trend(samples), status = sample.status, advertisedName = name)
+                band = SignalLive.band(strength), trend = SignalLive.trend(samples), status = sample.status, advertisedName = name,
+                scanCount = ((previous?.scanCount ?: 0) + if (sample.status == "fresh" && now - measured <= 15_000 && counted.add(key)) 1 else 0).coerceAtMost(1_000_000))
         }
         if (entries.size > 128) {
             val keep = entries.entries.sortedWith(compareByDescending<Map.Entry<String, SignalLiveEntry>> { it.value.lastSeenAt }.thenByDescending { it.value.rssi }).take(128).map { it.key }.toSet()

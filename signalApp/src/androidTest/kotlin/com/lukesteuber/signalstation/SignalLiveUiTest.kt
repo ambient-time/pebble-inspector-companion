@@ -29,6 +29,43 @@ class SignalLiveUiTest {
     @Test fun liveSignalsAreExplicitInspectableAndStopOnLeaving() = journey(1f)
     @Test fun liveSignalsRemainUsableAtDoubleText() = journey(2f)
 
+    @Test fun radioSectionsAndWifiFiltersDoNotChangeCollection() {
+        val station = LiveUiStation()
+        compose.activityRule.scenario.onActivity { activity ->
+            ComposeView(activity).also { view -> view.setContent { SignalScreen(station, standalone = true) }; activity.setContentView(view) }
+        }
+        compose.onNodeWithText("Around me").performScrollTo().performClick()
+        compose.onNodeWithText("Start scanning").performClick()
+        liveNode("No password").performClick()
+        liveNode("Test access point").assertIsDisplayed()
+        compose.onNodeWithText("Protected access point").assertDoesNotExist()
+        liveNode("Wi-Fi").performClick()
+        compose.onNodeWithText("Test access point").assertDoesNotExist()
+        liveNode("Wi-Fi").performClick()
+        liveNode("Test access point").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(1, station.starts); assertEquals(0, station.stops); assertEquals(4, station.state.value.live.entries.size) }
+    }
+
+    @Test fun namedDevicesStartCompactAndKeepControlsInsideDetails() {
+        val station = LiveUiStation()
+        station.state.value = station.state.value.copy(settings = station.state.value.settings.copy(
+            enabled = setOf("presence.bluetooth"), presenceTargets = listOf(SignalPresenceTarget("desk", "bluetooth", "fixture-address", "Desk beacon"))))
+        compose.activityRule.scenario.onActivity { activity ->
+            ComposeView(activity).also { view -> view.setContent { SignalScreen(station, standalone = true) }; activity.setContentView(view) }
+        }
+        compose.onNodeWithText("Around me").performScrollTo().performClick()
+        compose.onNodeWithText("My devices").performClick()
+        compose.onNodeWithText("Desk beacon").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Forget device").assertDoesNotExist()
+        screenshot("devices-compact.png")
+        compose.onNodeWithText("Desk beacon").performClick()
+        compose.onNodeWithText("Forget device").performScrollTo().assertIsDisplayed()
+        screenshot("devices-expanded.png")
+        compose.onNodeWithText("Desk beacon").performScrollTo().performClick()
+        compose.onNodeWithText("Forget device").assertDoesNotExist()
+        compose.runOnIdle { assertEquals(0, station.starts); assertEquals(1, station.state.value.settings.presenceTargets.size) }
+    }
+
     @Test fun inspectionSurvivesExpiryAndChangingPanesDoesNotRestart() {
         val station = LiveUiStation()
         compose.activityRule.scenario.onActivity { activity ->
@@ -79,8 +116,8 @@ class SignalLiveUiTest {
         compose.onNodeWithText("Set session label").performScrollTo().performClick()
         compose.runOnIdle { assertEquals("My fixture", station.label) }
         compose.onNodeWithText("Done").performClick()
-        liveNode("Faint · below −75 dBm").assertIsDisplayed()
-        screenshot("live-bands-$scale.png")
+        liveNode("Bluetooth").assertIsDisplayed()
+        screenshot("live-sections-$scale.png")
         compose.runOnIdle { station.refresh() }
         liveNode("Save snapshot").performClick()
         compose.runOnIdle { assertEquals(listOf(false), station.saves) }
@@ -122,7 +159,8 @@ private class LiveUiStation : SignalStation {
         val now = System.currentTimeMillis()
         state.value = state.value.copy(live = SignalLiveState(running = true, now = now, startedAt = now, updatedAt = now, entries = listOf(
             SignalLiveEntry(id = "a", radio = "bluetooth", label = "Test beacon", rssi = -45, firstSeenAt = now, lastSeenAt = now, samples = listOf(-65, -52, -45), sampleCount = 3, band = "strong", trend = "strengthening"),
-            SignalLiveEntry(id = "b", radio = "wifi", label = "Test access point", rssi = -68, firstSeenAt = now, lastSeenAt = now, samples = listOf(-68), band = "medium", trend = "unknown"),
+            SignalLiveEntry(id = "b", radio = "wifi", label = "Test access point", rssi = -68, firstSeenAt = now, lastSeenAt = now, samples = listOf(-68), band = "medium", trend = "unknown", security = "open advertised; internet and captive portal unknown"),
+            SignalLiveEntry(id = "d", radio = "wifi", label = "Protected access point", rssi = -58, firstSeenAt = now, lastSeenAt = now, samples = listOf(-58), band = "strong", security = "security advertised"),
             SignalLiveEntry(id = "c", radio = "bluetooth", label = "Older beacon", rssi = -82, firstSeenAt = now - 25_000, lastSeenAt = now - 20_000, samples = listOf(-82), band = "faint", trend = "unknown")
         ), newCount = 3))
     }

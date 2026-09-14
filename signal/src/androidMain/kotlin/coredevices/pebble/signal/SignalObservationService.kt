@@ -11,7 +11,7 @@ import kotlinx.coroutines.*
 
 interface SignalObservationHost { val station: AndroidSignalStation }
 
-/** User-started finite session. No restart, boot receiver, microphone, camera, or provider request. */
+/** User-started session, optionally ongoing. Model requests require a separate session opt-in. */
 class SignalObservationService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var job: Job? = null
@@ -38,10 +38,11 @@ class SignalObservationService : Service() {
             } else startForeground(6110, notification)
         } catch (_: Exception) { owner.finishObservation(id, "interrupted", "Android did not allow the session to start. Review collection permissions and try again."); stopSelf(); return START_NOT_STICKY }
         job = serviceScope.launch {
-            val deadline = SystemClock.elapsedRealtime() + SignalSchedule.remaining(pending.startedAt, pending.endsAt, System.currentTimeMillis())
+            val deadline = pending.endsAt?.let { SystemClock.elapsedRealtime() + SignalSchedule.remaining(pending.startedAt, it, System.currentTimeMillis()) }
+            fun remainingMillis() = deadline?.let { (it - SystemClock.elapsedRealtime()).coerceAtLeast(0) }
             try {
                 owner.activateObservation(id)
-                while (isActive && SystemClock.elapsedRealtime() < deadline) {
+                while (isActive && (remainingMillis()?.let { it > 0 } != false)) {
                     val battery = getSystemService(BatteryManager::class.java)
                     val power = getSystemService(PowerManager::class.java)
                     val level = battery.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
@@ -55,11 +56,17 @@ class SignalObservationService : Service() {
                     if (!notificationsEnabled()) { owner.finishObservation(id, "stopped", pause!!); break }
                     if (pause != null) owner.observationStatus(id, "paused", pause) else {
                         owner.observationStatus(id, "running", "Collecting selected sources. Android may delay individual readings.")
-                        withTimeoutOrNull(minOf(90_000L, (deadline - SystemClock.elapsedRealtime()).coerceAtLeast(1))) { owner.collectObservation(id) }
+                        withTimeoutOrNull(minOf(90_000L, remainingMillis() ?: 90_000L).coerceAtLeast(1)) { owner.collectObservation(id) }
+                        if (remainingMillis()?.let { it > 0 } != false) {
+                            withTimeoutOrNull(minOf(65_000L, remainingMillis() ?: 65_000L).coerceAtLeast(1)) { owner.analyzeObservation(id) }
+                        }
                     }
-                    notifications.notify(6110, notification(pause ?: "Observing until ${java.time.Instant.ofEpochMilli(pending.endsAt).atZone(java.time.ZoneId.systemDefault()).toLocalTime().withSecond(0).withNano(0)}. Tap Stop to end."))
-                    val wait = minOf(owner.observationDelayMillis(id), (deadline - SystemClock.elapsedRealtime()).coerceAtLeast(1))
-                    if (awaitSignalTransition(this@SignalObservationService, pending.sourceKeys, wait,
+                    val until = pending.endsAt?.let { "until ${java.time.Instant.ofEpochMilli(it).atZone(java.time.ZoneId.systemDefault()).toLocalTime().withSecond(0).withNano(0)}" } ?: "until you stop it"
+                    val schedule = if (pending.mode == "fixed") " · ${pending.intervalMinutes} min between scans" else ""
+                    notifications.notify(6110, notification(pause ?: "Observing $until$schedule. Tap Stop to end."))
+                    val wait = minOf(owner.observationDelayMillis(id), remainingMillis() ?: Long.MAX_VALUE).coerceAtLeast(1)
+                    if (pending.mode == "fixed") delay(wait)
+                    else if (awaitSignalTransition(this@SignalObservationService, pending.sourceKeys, wait,
                             if (pending.mode == "battery_saver") 5 * 60_000L else 60_000L)) owner.observationTransition(id)
                 }
                 owner.finishObservation(id, "completed", "Observation session ended.")

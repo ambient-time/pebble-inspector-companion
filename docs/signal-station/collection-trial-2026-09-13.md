@@ -115,3 +115,19 @@ The stock host handled the package at 22:31:43 and the sole connected Time 2
 reported the app running at 22:31:47. Subsequent app messages establish transport,
 but physical backlight illumination and automatic timeout after exit still need
 visual observation. The Android APK did not change for this follow-up.
+
+## Side-button layout follow-up
+
+Addon 1.6.4 retains the foreground backlight and replaces the home icons with
+explicit UP / SELECT / DOWN badges beside Capture / Ask / History. The watch
+source is `e65d4c2c29ce8bbfcd31e3dadd2f95a9e6086446`.
+
+The 142,594-byte package has SHA-256
+`ab7cc3cf2265a42782d8513e75e7a39fa674e37ff5da3fc9c61a8278ffc37204`;
+the source ZIP has SHA-256
+`14a55d3bf8acda9c705e4a883d8e6f440b3b4a5c6ac95b0ddaef06d953bd4ab4`.
+All six builds and existing watch tests passed. Home, help, scroll and Back were
+checked in Emery, Diorite and Chalk emulators. The stock host handled this
+package at 22:53:14 and the sole connected Time 2 reported it running at 22:53:16.
+The separate [radio and scheduled collection update](radio-and-scheduled-ux.md)
+records the companion changes and their validation.

@@ -42,7 +42,7 @@
         </service>
         <service android:name="coredevices.pebble.signal.SignalWakeService" android:exported="false" android:foregroundServiceType="microphone" />
         <service android:name="coredevices.pebble.signal.SignalObservationService" android:exported="false" android:foregroundServiceType="specialUse|location|connectedDevice|health">
-            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="User-started finite environment observation with individually selected sensors and visible Stop control" />
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="User-started scheduled environment observation with individually selected sensors and visible Stop control" />
         </service>
         <activity android:name="coredevices.pebble.signal.SignalHealthPermissionActivity" android:exported="false" />
         <activity android:name="coredevices.pebble.signal.SignalHealthRationaleActivity" android:exported="true">

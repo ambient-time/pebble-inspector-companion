@@ -196,6 +196,7 @@ class SignalLearningUiTest {
 
         compose.onNodeWithText("Record over time").performScrollTo().performClick()
         compose.onNodeWithText("Session length: 1 hour").performScrollTo().assertExists()
+        compose.onNodeWithText("Choose session sources · 1 selected").performScrollTo().performClick()
         compose.onNodeWithContentDescription("Phone battery").performScrollTo().assertIsOn()
         compose.onNodeWithText("Start recording").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(listOf(60 to setOf(BATTERY)), station.observationStarts) }
@@ -206,6 +207,31 @@ class SignalLearningUiTest {
             assertEquals("stopped", station.state.value.observationSession?.state)
             assertEquals(0, station.providerRequests)
             assertFalse(station.state.value.settings.learningEnabled)
+        }
+    }
+
+    @Test fun recordingAllowsCustomIntervalOngoingAndSeparateLocalAnalysis() {
+        val station = LearningUiStation(baseState())
+        show(station)
+        compose.onNodeWithText("Record over time").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Phone battery").assertDoesNotExist()
+        compose.onNodeWithText("Collection schedule: Adaptive").performScrollTo().performClick()
+        compose.onNodeWithText("Fixed interval").performClick()
+        compose.onNodeWithText("Minutes between scans").performScrollTo().performTextReplacement("7")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        compose.onNodeWithText("Session length: 1 hour").performScrollTo().performClick()
+        compose.onNodeWithText("Ongoing · until stopped").performClick()
+        compose.onNodeWithContentDescription("Local change analysis").performScrollTo().assertIsOn()
+        compose.onNodeWithContentDescription("Scheduled model analysis").performScrollTo().assertIsOff()
+        compose.onNodeWithText("Save schedule and analysis").performScrollTo().performClick()
+        compose.onNodeWithText("Start recording").performScrollTo().performClick()
+        compose.runOnIdle {
+            assertEquals(listOf(0 to setOf(BATTERY)), station.observationStarts)
+            assertEquals(null, station.state.value.observationSession?.endsAt)
+            assertEquals(7, station.state.value.settings.observationIntervalMinutes)
+            assertTrue(station.state.value.settings.observationLocalAnalysis)
+            assertFalse(station.state.value.settings.observationModelAnalysis)
+            assertEquals(0, station.providerRequests)
         }
     }
 
@@ -295,6 +321,7 @@ class SignalLearningUiTest {
         compose.onNode(hasText("Around me") and hasClickAction()).assertIsDisplayed().performClick()
         captureFixtureScreenshot("nearby-navigation-${fontScale.toInt()}.png")
         compose.onNodeWithText("Places").performClick()
+        compose.onNodeWithText("Nearby places").performScrollTo().performClick()
         compose.onNode(hasScrollAction()).performScrollToNode(hasText("Look up nearby places…"))
         compose.onNodeWithText("Look up nearby places…").performScrollTo().assertIsEnabled().performClick()
         compose.onNodeWithText("Review external lookup").assertIsDisplayed()
@@ -475,7 +502,9 @@ private class LearningUiStation(initial: SignalState) : SignalStation {
         observationStarts += minutes to sources.toSet()
         state.value = state.value.copy(observationSession = SignalObservationSession(
             id = "test-session", startedAt = 1_789_000_000_000L,
-            endsAt = 1_789_000_000_000L + minutes * 60_000L, sourceKeys = sources,
+            endsAt = if (minutes == 0) null else 1_789_000_000_000L + minutes * 60_000L, sourceKeys = sources,
+            mode = state.value.settings.observationMode, intervalMinutes = state.value.settings.observationIntervalMinutes,
+            localAnalysis = state.value.settings.observationLocalAnalysis, modelAnalysis = state.value.settings.observationModelAnalysis,
         ))
     }
     override fun stopObservation() {

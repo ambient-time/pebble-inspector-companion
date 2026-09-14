@@ -29,6 +29,21 @@ class SignalLiveTest {
         assertFailsWith<SignalProviderException> { SignalLive.snapshot(SignalLiveState(entries = listOf(entry)), all, 16001) }
         assertTrue(SignalLive.sources(setOf("bluetooth.names", "location", "presence.wifi")).isEmpty())
     }
+    @Test fun repeatTintCountsFreshScansRatherThanPacketsOrCachedReads() {
+        val reducer = SignalLiveReducer()
+        val sample = frame(1000).candidates.single().copy(sampleCount = 30)
+        val burst = SignalAcquisition(emptyList(), listOf(sample, sample.copy(measuredAt = 1001)))
+        assertEquals(1, reducer.accept(burst, setOf("bluetooth"), 1001).first.single().scanCount)
+        assertEquals(30 + 30, reducer.current(1001).single().sampleCount)
+        val cached = SignalAcquisition(emptyList(), listOf(sample.copy(measuredAt = 2000, status = "cached")))
+        assertEquals(1, reducer.accept(cached, setOf("bluetooth"), 2000).first.single().scanCount)
+        assertEquals(2, reducer.accept(frame(3000), setOf("bluetooth"), 3000).first.single().scanCount)
+        assertEquals(2, reducer.accept(frame(3000), setOf("bluetooth"), 3001).first.single().scanCount)
+        reducer.reset()
+        assertEquals(0, reducer.accept(frame(1000), setOf("bluetooth"), 21_000).first.single().scanCount)
+        reducer.reset()
+        assertEquals(1, reducer.accept(frame(4000), setOf("bluetooth"), 4000).first.single().scanCount)
+    }
     @Test fun historyAndEntriesAreBounded() {
         val r = SignalLiveReducer()
         repeat(150) { r.accept(frame(it.toLong(), address = "a$it"), setOf("bluetooth"), it.toLong()) }

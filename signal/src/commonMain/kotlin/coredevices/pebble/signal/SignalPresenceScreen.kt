@@ -61,6 +61,9 @@ internal fun SignalPresencePage(station: SignalStation, state: SignalState, onDe
     var showPlaceEditor by remember { mutableStateOf(false) }
     var removeTarget by remember { mutableStateOf<SignalPresenceTarget?>(null) }
     var removePlace by remember { mutableStateOf<SignalPlaceFence?>(null) }
+    var sections by signalUiState("presence.sections.$pane") { setOf("devices") }
+    var wifiFilter by signalUiState("presence.wifiFilter") { "all" }
+    val recent = state.records.filter { it.sourceKeys.any { key -> key.startsWith("presence.") } }.sortedByDescending { it.createdAt }.take(10)
     LazyColumn(Modifier.fillMaxSize(), state = signalListState("presence.$pane"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         if (pane == "all") {
         item {
@@ -71,12 +74,14 @@ internal fun SignalPresencePage(station: SignalStation, state: SignalState, onDe
         }
         if ((pane == "all" || pane in setOf("places", "devices"))) {
         item {
+            SignalDisclosure("presence.options", "Scan options", "${signalCount(settings.enabled.count { it.startsWith("presence.") }, "presence source")} enabled") {
             listOf("presence.bluetooth" to "Bluetooth presence", "presence.wifi" to "Wi-Fi presence", "presence.places" to "Saved places").forEach { (key, label) ->
                 SignalToggle(label, key in settings.enabled, !state.busy) { enabled ->
                     station.updateSettings(settings.copy(enabled = if (enabled) settings.enabled + key else settings.enabled - key))
                 }
             }
             Text("Choose sources, then scan when ready. Saved sightings stay on this phone; model analysis happens only when requested. Device and place switches stop future observations; delete old records separately in History.")
+            }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = station::scanPresence, enabled = !state.busy && settings.enabled.any { it.startsWith("presence.") }) { Text("Save presence check") }
                 TextButton(onClick = station::requestPermissions, enabled = !state.busy) { Text("Review permissions") }
@@ -87,8 +92,7 @@ internal fun SignalPresencePage(station: SignalStation, state: SignalState, onDe
         }
         if ((pane == "all" || pane == "places")) {
         item {
-            HorizontalDivider()
-            Text("Nearby places", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge)
+            SignalDisclosure("presence.nearby", "Nearby places", "Map candidates and lookup controls") {
             Text("Map candidates around a saved position. Review a result before naming a familiar place.", style = MaterialTheme.typography.bodySmall)
             SignalToggle("Allow nearby place lookups", settings.lookups.nearbyPlaces, !state.busy,
                 "Review the saved location and destination before sending a map or address request.") { enabled ->
@@ -122,13 +126,13 @@ internal fun SignalPresencePage(station: SignalStation, state: SignalState, onDe
                 SignalContextEvidence(placesAttempt, onDetail)
             }
             Text("A nearby business or matching Wi-Fi name does not confirm your location.", style = MaterialTheme.typography.bodySmall)
+            }
         }
 
         }
         if ((pane == "all" || pane == "signals")) {
         item {
-            HorizontalDivider()
-            Text("Wireless environment", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge)
+            SignalDisclosure("presence.wireless", "Wireless environment", "Saved Wi-Fi and Bluetooth context") {
             if (wirelessRecord == null) Text("No saved wireless readings. Choose Wi-Fi or Bluetooth sources in Settings, then capture.", style = MaterialTheme.typography.bodySmall)
             else {
                 SignalWireless.summary(wirelessRecord.observations).forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
@@ -141,14 +145,14 @@ internal fun SignalPresencePage(station: SignalStation, state: SignalState, onDe
                 SignalContextEvidence(wirelessRecord, onDetail)
             }
             networkRecord?.let { record ->
-                record.observations.lastOrNull { it.key == "device.network" }?.let { SignalContextObservation(it, "Connected network at capture") }
+                record.observations.lastOrNull { it.key == "device.network" }?.let { Text(SignalRadioPresentation.connectedNetwork(it.value), style = MaterialTheme.typography.bodySmall); SignalContextObservation(it, "Connected network at capture") }
                 if (record.id != wirelessRecord?.id) SignalContextEvidence(record, onDetail)
             }
             Text("An open advertisement does not establish working internet access. Saved readings describe their capture time.", style = MaterialTheme.typography.bodySmall)
+            }
         }
         item {
-            HorizontalDivider()
-            Text("Cellular", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge)
+            SignalDisclosure("presence.cellular", "Cellular", "Saved network and signal readings") {
             if (cellularRecord == null) Text("No saved cellular readings. Enable Cellular network and signal in Settings, then capture.", style = MaterialTheme.typography.bodySmall)
             else {
                 val rows = cellularRecord.observations.filter { it.key == "cellular" }
@@ -156,13 +160,13 @@ internal fun SignalPresencePage(station: SignalStation, state: SignalState, onDe
                 if (rows.size > 2) Text("${rows.size - 2} more cellular readings in saved evidence.", style = MaterialTheme.typography.bodySmall)
                 SignalContextEvidence(cellularRecord, onDetail)
             }
+            }
         }
 
         }
         if ((pane == "all" || pane == "places")) {
         item {
-            HorizontalDivider()
-            Text("Location", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge)
+            SignalDisclosure("presence.location", "Location", "Saved position and lookup controls") {
             locationRecord?.let { record ->
                 record.observations.lastOrNull { it.key == "location" }?.let { SignalContextObservation(it, "Phone position") }
                 SignalContextEvidence(record, onDetail)
@@ -191,7 +195,7 @@ internal fun SignalPresencePage(station: SignalStation, state: SignalState, onDe
             else Text("Identifier evidence saved ${signalDateTime(radioRecord.createdAt)}", style = MaterialTheme.typography.bodySmall)
             Text("An external estimate remains separate from the phone position. Its accuracy may be insufficient to identify a venue.", style = MaterialTheme.typography.bodySmall)
             if (fixRecord == null || radioRecord == null) OutlinedButton(onClick = station::capture,
-                enabled = !state.busy && settings.enabled.isNotEmpty()) { Text("Capture enabled sources") }
+                enabled = !state.busy && settings.enabled.isNotEmpty()) { Text("Capture enabled sources") }            }
         }
         item {
             SignalLookupServiceControls(state, station)
@@ -200,41 +204,74 @@ internal fun SignalPresencePage(station: SignalStation, state: SignalState, onDe
         }
         if ((pane == "all" || pane == "devices")) {
         item {
-            HorizontalDivider()
-            Text("My devices", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge)
-            Text("Save devices you own or have permission to monitor. A missed signal does not mean a device has left.")
-            if (settings.presenceTargets.isEmpty()) Text("Run a scan, then name a device below to start recording its sightings.")
+            SignalDisclosureHeader("My devices", "${settings.presenceTargets.size} saved · tap a device for controls", "devices" in sections,
+                { sections = if ("devices" in sections) sections - "devices" else sections + "devices" })
+            if ("devices" in sections && settings.presenceTargets.isEmpty()) Text("Run a scan, then name a device below.")
         }
-        items(settings.presenceTargets, key = { "target:${it.id}" }) { target ->
-            Column {
-                SignalToggle(target.label, target.enabled, !state.busy, "${target.radio} · ${if (target.beaconId.isBlank()) "saved address" else "saved beacon identity"}") { enabled ->
-                    station.updateSettings(settings.copy(presenceTargets = settings.presenceTargets.map { if (it.id == target.id) it.copy(enabled = enabled) else it }))
+        if ("devices" in sections) items(settings.presenceTargets, key = { "target:${it.id}" }) { target ->
+            var expanded by signalUiState("presence.target.${target.id}") { false }
+            val entry = evidence.firstOrNull { it.targetId == target.id }
+            val found = state.presenceCandidates.firstOrNull { SignalPresence.matches(target, it) }
+            val type = SignalRadioPresentation.deviceType(target.radio, found?.metadata.orEmpty(), target.beaconId)
+            val status = when {
+                !target.enabled -> "Monitoring paused"
+                "presence.${target.radio}" !in settings.enabled -> "Source off"
+                entry?.state == "observed_repeatedly" -> "Seen in latest check"
+                entry?.state == "observed_once" -> "Seen in latest check"
+                entry?.state == "not_observed" -> "Not seen in latest check"
+                entry?.state == "ambiguous" -> "Multiple matches · uncertain"
+                else -> "Current presence unknown"
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SignalDisclosureHeader(target.label, "${type.label} · $status" + if ((entry?.savedSightings ?: 0) > 1) " · ${entry?.savedSightings} saved sightings" else "", expanded, { expanded = !expanded },
+                    section = false, repeated = (entry?.savedSightings ?: 0) >= 3)
+                if (expanded) {
+                    SignalToggle("Monitor ${target.label}", target.enabled, !state.busy,
+                        "${target.radio} · ${if (target.beaconId.isBlank()) "saved address" else "saved beacon identity"}") { enabled ->
+                        station.updateSettings(settings.copy(presenceTargets = settings.presenceTargets.map { if (it.id == target.id) it.copy(enabled = enabled) else it }))
+                    }
+                    Text(type.evidence, style = MaterialTheme.typography.bodySmall)
+                    if (entry != null) Text("${entry.freshCaptures} checks with a fresh sighting in the last five minutes.", style = MaterialTheme.typography.bodySmall)
+                    entry?.lastSeenAt?.let { Text("Last seen ${signalDateTime(it)}", style = MaterialTheme.typography.bodySmall) }
+                    Text("Tinted devices have at least three distinct saved sightings in loaded history. Recent checks cover five minutes; these are not lifetime totals. A missed signal does not establish departure.", style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = { removeTarget = target }, enabled = !state.busy) { Text("Forget device") }
                 }
-                evidence.firstOrNull { it.targetId == target.id }?.let { entry ->
-                    Text(when (entry.state) {
-                        "observed_repeatedly" -> "Seen in ${entry.freshCaptures} recent checks"
-                        "observed_once" -> "Seen in the latest check"
-                        "not_observed" -> "Not seen in the latest check · departure unknown"
-                        "ambiguous" -> "More than one matching signal · identity uncertain"
-                        else -> "Current presence unknown · check again"
-                    })
-                    entry.lastSeenAt?.let { Text("Last seen ${signalDateTime(it)}", style = MaterialTheme.typography.bodySmall) }
-                }
-                TextButton(onClick = { removeTarget = target }, enabled = !state.busy) { Text("Forget device") }
             }
         }
-        item { Text("Latest scan", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge) }
-        if (state.presenceCandidates.isEmpty()) item { Text("No devices listed. Devices may be asleep, out of range, or using changing addresses.") }
-        items(state.presenceCandidates, key = { "candidate:${it.radio}:${it.address}" }) { found ->
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(found.name.ifBlank { "Unnamed ${found.radio} device" }, style = MaterialTheme.typography.titleMedium)
-                Text("${found.radio} · ${found.address} · ${found.rssi} dBm")
-                Text("${found.measuredAt?.let { signalDateTime(it) } ?: "Time unavailable"} · ${found.status}", style = MaterialTheme.typography.bodySmall)
-                if (found.metadata.isNotBlank()) Text(found.metadata, style = MaterialTheme.typography.bodySmall)
-                if (found.sampleCount > 1) Text("${found.sampleCount} fresh samples · median ${found.medianRssi} dBm", style = MaterialTheme.typography.bodySmall)
-                if (found.security.isNotBlank()) Text("Network security: ${found.security}", style = MaterialTheme.typography.bodySmall)
-                if (settings.presenceTargets.none { SignalPresence.matches(it, found) }) {
-                    TextButton(onClick = { candidate = found; deviceLabel = found.name }, enabled = !state.busy) { Text("Name and save device") }
+        item {
+            SignalDisclosureHeader("Latest scan", "${state.presenceCandidates.size} retained signals", "scan" in sections,
+                { sections = if ("scan" in sections) sections - "scan" else sections + "scan" })
+            if ("scan" in sections) Text("Name devices you own or have permission to monitor.", style = MaterialTheme.typography.bodySmall)
+        }
+        if ("scan" in sections) {
+            listOf("wifi" to "Wi-Fi", "bluetooth" to "Bluetooth").forEach { (radio, title) ->
+                val candidates = state.presenceCandidates.filter { it.radio == radio }
+                val filtered = candidates.filter { radio != "wifi" || signalWifiMatches(it.security, wifiFilter) }
+                item(key = "scan-section:$radio") {
+                    SignalDisclosureHeader(title, "${filtered.size} of ${candidates.size} shown", radio in sections,
+                        { sections = if (radio in sections) sections - radio else sections + radio })
+                    if (radio in sections && radio == "wifi") SignalWifiFilters(wifiFilter) { wifiFilter = it }
+                    if (radio in sections && filtered.isEmpty()) Text("No matching observations in the latest scan.")
+                }
+                if (radio in sections) items(filtered, key = { "candidate:${it.radio}:${it.address}" }) { found ->
+                    var expanded by signalUiState("presence.candidate:${found.radio}:${found.address}") { false }
+                    val type = SignalRadioPresentation.deviceType(found.radio, found.metadata, found.beaconId)
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        SignalDisclosureHeader(found.name.ifBlank { "Unnamed ${found.radio} device" },
+                            "${type.label} · ${found.rssi} dBm" + if (radio == "wifi") " · ${SignalRadioPresentation.wifiAccess(found.security).label}" else "",
+                            expanded, { expanded = !expanded }, section = false)
+                        if (expanded) {
+                            Text("${found.radio} · ${found.address} · ${found.rssi} dBm")
+                            Text("${found.measuredAt?.let { signalDateTime(it) } ?: "Time unavailable"} · ${found.status}", style = MaterialTheme.typography.bodySmall)
+                            Text(type.evidence, style = MaterialTheme.typography.bodySmall)
+                            if (found.metadata.isNotBlank()) Text(found.metadata, style = MaterialTheme.typography.bodySmall)
+                            if (found.sampleCount > 1) Text("${found.sampleCount} samples in this scan · median ${found.medianRssi ?: "unknown"} dBm", style = MaterialTheme.typography.bodySmall)
+                            if (radio == "wifi") Text("Browser sign-in and public access unknown. ${found.security}", style = MaterialTheme.typography.bodySmall)
+                            if (settings.presenceTargets.none { SignalPresence.matches(it, found) }) {
+                                TextButton(onClick = { candidate = found; deviceLabel = found.name }, enabled = !state.busy) { Text("Name and save device") }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -243,7 +280,9 @@ internal fun SignalPresencePage(station: SignalStation, state: SignalState, onDe
         if ((pane == "all" || pane == "places")) {
         item {
             HorizontalDivider()
-            Text("Familiar places", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge)
+            SignalDisclosureHeader("Familiar places", "${settings.placeFences.size} saved areas", "places" in sections,
+                { sections = if ("places" in sections) sections - "places" else sections + "places" })
+            if ("places" in sections) {
             Text("Name a coordinate area and optionally associate a Wi-Fi name you recognize. Boundaries are checked on demand; continuous geofencing and arrival alerts are not active. Coordinates are approximate; nearby businesses and open networks do not establish where you are or permission to connect.")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { editingPlace = null; placeLabel = ""; latitude = ""; longitude = ""; radius = "150"; wifiSsid = ""; showPlaceEditor = true }, enabled = !state.busy) { Text("Add place manually") }
@@ -265,9 +304,13 @@ internal fun SignalPresencePage(station: SignalStation, state: SignalState, onDe
                     radius = "150"; wifiSsid = ""; showPlaceEditor = true
                 }, enabled = !state.busy) { Text("Save as a familiar place") }
             }
+            }
         }
-        items(settings.placeFences, key = { "place:${it.id}" }) { place ->
+        if ("places" in sections) items(settings.placeFences, key = { "place:${it.id}" }) { place ->
+            var expanded by signalUiState("presence.place.${place.id}") { false }
             Column {
+                SignalDisclosureHeader(place.label, "${place.radiusMeters} m area · ${if (place.enabled) "Enabled" else "Paused"}", expanded, { expanded = !expanded }, section = false)
+                if (expanded) {
                 SignalToggle(place.label, place.enabled, !state.busy, "${place.radiusMeters} m radius${if (place.wifiSsid.isBlank()) "" else " · Wi-Fi: ${place.wifiSsid}"}") { enabled ->
                     station.updateSettings(settings.copy(placeFences = settings.placeFences.map { if (it.id == place.id) it.copy(enabled = enabled) else it }))
                 }
@@ -275,22 +318,22 @@ internal fun SignalPresencePage(station: SignalStation, state: SignalState, onDe
                     TextButton(onClick = { editingPlace = place; placeLabel = place.label; latitude = place.latitude.toString(); longitude = place.longitude.toString(); radius = place.radiusMeters.toString(); wifiSsid = place.wifiSsid; showPlaceEditor = true }, enabled = !state.busy) { Text("Edit place") }
                     TextButton(onClick = { removePlace = place }, enabled = !state.busy) { Text("Forget place") }
                 }
+                }
             }
         }
 
         }
         if ((pane == "all" || pane == "devices")) {
         item {
-            HorizontalDivider()
-            Text("Recent presence records", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge)
-            Text("Open History to inspect, compare, or delete saved readings. Changes in signal strength are observations, not precise distances.")
+            SignalDisclosureHeader("Recent presence records", "${recent.size} loaded records", "records" in sections,
+                { sections = if ("records" in sections) sections - "records" else sections + "records" })
+            if ("records" in sections && recent.isEmpty()) Text("No saved presence readings yet.")
         }
-        val recent = state.records.filter { it.sourceKeys.any { key -> key.startsWith("presence.") } }.sortedByDescending { it.createdAt }.take(10)
-        if (recent.isEmpty()) item { Text("No saved presence readings yet.") }
-        items(recent, key = { "record:${it.id}" }) { record ->
+        if ("records" in sections) items(recent, key = { "record:${it.id}" }) { record ->
             TextButton(onClick = { onDetail(record.id) }) { Text("${signalDateTime(record.createdAt)} · ${record.question}") }
             Text(record.summary, style = MaterialTheme.typography.bodySmall)
         }
+
         }
 
     }

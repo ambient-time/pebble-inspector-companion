@@ -3,6 +3,24 @@ package coredevices.pebble.signal
 import kotlin.test.*
 
 class SignalScheduleTest {
+    @Test fun fixedIntervalIgnoresMotionAndRequestsWifiAgainOnlyWhenDue() {
+        val schedule = SignalSchedule()
+        assertTrue(schedule.decide(keys, "fixed", 1000, 5).activeWifi)
+        schedule.noteTransition(2000)
+        assertEquals(300_000L, schedule.delayMillis("fixed", 2001, 5))
+        assertFalse(schedule.decide(keys, "fixed", 300_999, 5).activeWifi)
+        val due = schedule.decide(keys, "fixed", 301_000, 5)
+        assertTrue(due.activeWifi)
+        assertTrue("weather.current" in due.deferred, "Weather keeps its 30-minute refresh limit")
+        assertEquals(900_000L, schedule.delayMillis("fixed", 2001, 15))
+    }
+    @Test fun customIntervalsStayBoundedWithoutChangingAdaptiveModes() {
+        val schedule = SignalSchedule()
+        assertEquals(7 * 60_000L, schedule.delayMillis("fixed", 1, 7))
+        assertEquals(60_000L, schedule.delayMillis("fixed", 1, 0))
+        assertEquals(1440 * 60_000L, schedule.delayMillis("fixed", 1, Int.MAX_VALUE))
+        assertEquals(300_000L, schedule.delayMillis("standard", 1, 7))
+    }
     @Test fun permissionDelayCannotExtendChosenDurationEvenIfWallClockMovesBackward() {
         assertEquals(600L, SignalSchedule.remaining(100, 1000, 400))
         assertEquals(0L, SignalSchedule.remaining(100, 1000, 1100))

@@ -23,6 +23,10 @@ data class SignalSettings(
     val placeFences: List<SignalPlaceFence> = emptyList(),
     val lookups: SignalLookupSettings = SignalLookupSettings(),
     val observationMode: String = "standard",
+    val observationIntervalMinutes: Int = 5,
+    val observationLocalAnalysis: Boolean = true,
+    val observationModelAnalysis: Boolean = false,
+    val observationAnalysisEveryCaptures: Int = 3,
 )
 
 @Serializable

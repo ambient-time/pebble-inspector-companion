@@ -2,6 +2,12 @@ package coredevices.pebble.signal
 
 /** Local comparisons describe measurements, never inferred events between captures. */
 object SignalChanges {
+    /** Automatic local analysis compares only consecutive retained samples from this explicit session. */
+    fun createScheduled(current: SignalRecord, previous: SignalRecord?, enabled: Set<String>, id: String, createdAt: Long): SignalRecord? {
+        if (previous == null || current.sessionId.isBlank() || previous.sessionId != current.sessionId ||
+            current.kind != "observation" || previous.kind != "observation") return null
+        return create(current, listOf(previous), enabled, id, createdAt)?.copy(sessionId = current.sessionId)
+    }
     private fun scope(record: SignalRecord) = record.sourceKeys + record.observations.map { it.key }
     private fun eligible(record: SignalRecord, enabled: Set<String>) = record.state == "ready" &&
         record.kind in setOf("capture", "presence", "observation", "health_import") && record.references.isEmpty() && SignalHistory.allowed(record, enabled)

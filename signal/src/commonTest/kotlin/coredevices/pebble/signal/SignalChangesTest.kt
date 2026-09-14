@@ -4,6 +4,18 @@ import kotlin.test.*
 import kotlinx.serialization.json.Json
 
 class SignalChangesTest {
+    @Test fun scheduledLocalChangesUseOnlySameSessionAndCarryDeletionReferences() {
+        val a = capture("a", 100_000, reading("80")).copy(kind = "observation", sessionId = "run")
+        val b = capture("b", 200_000, reading("75", 200_000)).copy(kind = "observation", sessionId = "run")
+        val report = assertNotNull(SignalChanges.createScheduled(b, a, b.sourceKeys, "changes", 300_000))
+        assertEquals("run", report.sessionId)
+        assertEquals(listOf("a", "b"), report.references)
+        assertEquals("local", report.provider)
+        assertTrue("changes" in SignalHistory.deletionClosure(listOf(a, b, report), setOf("a")))
+        assertNull(SignalChanges.createScheduled(b, null, b.sourceKeys, "changes", 300_000))
+        assertNull(SignalChanges.createScheduled(b, a.copy(sessionId = "another"), b.sourceKeys, "changes", 300_000))
+        assertNull(SignalChanges.createScheduled(b, a, emptySet(), "changes", 300_000))
+    }
     private fun reading(value: String, time: Long = 100_000, key: String = "device.battery") =
         SignalObservation(key, "phone", value, "%", time, time, "fresh")
     private fun capture(id: String, time: Long, vararg rows: SignalObservation) = SignalRecord(

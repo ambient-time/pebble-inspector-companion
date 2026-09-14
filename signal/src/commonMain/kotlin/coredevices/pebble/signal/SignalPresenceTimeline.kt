@@ -6,6 +6,7 @@ data class SignalPresenceEvidence(
     val state: String,
     val lastSeenAt: Long?,
     val freshCaptures: Int,
+    val savedSightings: Int = 0,
 )
 
 object SignalPresenceTimeline {
@@ -28,6 +29,7 @@ object SignalPresenceTimeline {
                 latest.status == "ambiguous" -> "ambiguous"
                 else -> "unknown"
             }
-            SignalPresenceEvidence(target.id, target.label, state, sightings.mapNotNull { it.measuredAt }.maxOrNull(), recent.size)
+            SignalPresenceEvidence(target.id, target.label, state, sightings.mapNotNull { it.measuredAt }.maxOrNull(), recent.size,
+                sightings.mapNotNull { it.measuredAt }.distinct().size)
         }
 }

@@ -36,7 +36,7 @@ data class SignalMemoryCorrection(val id: String, val memoryId: String, val crea
 data class SignalObservationSession(
     val id: String,
     val startedAt: Long,
-    val endsAt: Long,
+    val endsAt: Long?,
     val sourceKeys: Set<String>,
     val state: String = "running",
     val status: String = "Sampling when Android allows.",
@@ -45,6 +45,13 @@ data class SignalObservationSession(
     val captures: Int = 0,
     val attempts: Int = 0,
     val mode: String = "standard",
+    val intervalMinutes: Int = 5,
+    val localAnalysis: Boolean = false,
+    val modelAnalysis: Boolean = false,
+    val analysisEveryCaptures: Int = 3,
+    val analysisProvider: String = "",
+    val analysisModel: String = "",
+    val analysisEndpoint: String = "",
 )
 
 data class SignalSourceStatus(

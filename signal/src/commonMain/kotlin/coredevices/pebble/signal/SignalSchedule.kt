@@ -6,6 +6,7 @@ data class SignalScheduleDecision(val enabled: Set<String>, val deferred: Set<St
 class SignalSchedule {
     companion object {
         fun remaining(startedAt: Long, endsAt: Long, now: Long) = (endsAt - now).coerceIn(0, (endsAt - startedAt).coerceAtLeast(0))
+        fun intervalMinutes(value: Int) = value.coerceIn(1, 1440)
     }
     private val attempts = mutableMapOf<String, Long>()
     private var motionUntil = Long.MIN_VALUE
@@ -15,14 +16,15 @@ class SignalSchedule {
         if (rows.any { it.key in setOf("sensor.1", "sensor.10") && it.metric == "magnitude.stddev" && it.status == "fresh" && (it.number ?: 0.0) > 0.6 ||
                     it.key == "sensor.18" && it.status == "fresh" && it.metric == "observed_events" && (it.number ?: 0.0) > 0 }) noteTransition(elapsed)
     }
-    fun delayMillis(mode: String, elapsed: Long) = when {
+    fun delayMillis(mode: String, elapsed: Long, intervalMinutes: Int = 5) = when {
+        mode == "fixed" -> Companion.intervalMinutes(intervalMinutes) * 60_000L
         mode == "battery_saver" -> if (elapsed < motionUntil) 5 * 60_000L else 15 * 60_000L
         elapsed < motionUntil -> 60_000L
         else -> 5 * 60_000L
     }
-    fun decide(selected: Set<String>, mode: String, elapsed: Long): SignalScheduleDecision {
+    fun decide(selected: Set<String>, mode: String, elapsed: Long, intervalMinutes: Int = 5): SignalScheduleDecision {
         fun due(family: String, interval: Long): Boolean = attempts[family]?.let { elapsed < it || elapsed - it >= interval } ?: true
-        val interval = delayMillis(mode, elapsed)
+        val interval = delayMillis(mode, elapsed, intervalMinutes)
         val deferred = selected.filter { key ->
             when {
                 key in SignalWeather.keys -> !due("weather", 30 * 60_000L)
@@ -37,7 +39,7 @@ class SignalSchedule {
         if (enabled.any { it == "location" || it == "presence.places" }) attempts["location"] = elapsed
         if (enabled.any { it.startsWith("bluetooth") || it == "presence.bluetooth" }) attempts["bluetooth"] = elapsed
         if (enabled.any { it.startsWith("cellular") }) attempts["cellular"] = elapsed
-        val activeWifi = due("wifi", 30 * 60_000L)
+        val activeWifi = due("wifi", if (mode == "fixed") interval else 30 * 60_000L)
         if (activeWifi && enabled.any { it.startsWith("wifi") || it == "presence.wifi" }) attempts["wifi"] = elapsed
         return SignalScheduleDecision(enabled, deferred, activeWifi)
     }

@@ -2,6 +2,7 @@ package coredevices.pebble.signal
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -34,6 +35,8 @@ internal fun SignalLivePage(state: SignalState, station: SignalStation, onSource
     var detail by signalUiState<SignalLiveEntry?>("live.detail.${live.startedAt}.${state.settings.enabled.sorted().joinToString()}") { null }
     DisposableEffect(station) { onDispose { station.stopLiveSignals() } }
     val fresh = visible.filter { it.fresh(now) }
+    var expandedRadios by signalUiState("live.expandedRadios") { setOf("wifi", "bluetooth") }
+    var wifiFilter by signalUiState("live.wifiFilter") { "all" }
     detail?.let { entry ->
         SignalLiveDetail(entry, now, onClose = { detail = null }, onLabel = { station.labelLiveSignal(entry.id, it); detail = entry.copy(label = it) })
         return
@@ -59,19 +62,41 @@ internal fun SignalLivePage(state: SignalState, station: SignalStation, onSource
                 Button(onClick = { station.saveLiveScene(true) }, enabled = fresh.isNotEmpty() && !state.busy) { Text("Ask about this scene") }
             }
         }
-        listOf("strong" to "Strong · −60 dBm or higher", "medium" to "Medium · −75 to −61 dBm", "faint" to "Faint · below −75 dBm").forEach { (band, title) ->
-            item(key = band) {
-                Text(title, Modifier.semantics { heading() }, style = MaterialTheme.typography.titleMedium)
-                if (visible.none { it.band == band }) Text("No observations in this band", style = MaterialTheme.typography.bodySmall)
+        listOf("wifi" to "Wi-Fi", "bluetooth" to "Bluetooth").forEach { (radio, title) ->
+            val radioEntries = visible.filter { it.radio == radio }
+            val rows = radioEntries.filter { radio != "wifi" || signalWifiMatches(it.security, wifiFilter) }
+                .sortedWith(compareBy({ it.firstSeenAt }, { it.id }))
+            val expanded = radio in expandedRadios
+            item(key = "radio:$radio") {
+                SignalDisclosureHeader(title,
+                    "${radioEntries.count { it.fresh(now) }} recent · ${radioEntries.count { !it.fresh(now) }} older" +
+                        if (radio == "wifi") " · ${radioEntries.count { SignalRadioPresentation.wifiAccess(it.security).noPassword }} no password" else "",
+                    expanded, { expandedRadios = if (expanded) expandedRadios - radio else expandedRadios + radio })
+                if (expanded && radio == "wifi") {
+                    SignalWifiFilters(wifiFilter) { wifiFilter = it }
+                    if ("device.network" in state.settings.enabled) state.records.filter { it.state == "ready" }
+                        .flatMap { it.observations }.filter { it.key == "device.network" }.maxByOrNull { it.collectedAt }?.let {
+                            Text("${SignalRadioPresentation.connectedNetwork(it.value)} · ${signalDateTime(it.collectedAt)}", style = MaterialTheme.typography.bodySmall)
+                        }
+                }
+                if (expanded && rows.isEmpty()) Text(if (radioEntries.isEmpty()) "No recent observations" else "No networks match this filter", style = MaterialTheme.typography.bodySmall)
+                if (expanded && radio == "wifi") Text("${rows.size} of ${radioEntries.size} shown. Filters change this view; snapshots include all fresh selected radios.", style = MaterialTheme.typography.bodySmall)
             }
-            items(visible.filter { it.band == band }.sortedWith(compareBy({ it.firstSeenAt }, { it.id })), key = { it.id }) { entry ->
+            if (expanded) items(rows, key = { it.id }) { entry ->
                 val age = ((now - entry.lastSeenAt).coerceAtLeast(0) / 1000)
-                OutlinedButton(onClick = { detail = entry }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                val repeated = entry.scanCount >= 3
+                OutlinedButton(onClick = { detail = entry }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = if (repeated) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                        contentColor = if (repeated) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)) {
                     Icon(if (entry.radio == "wifi") Icons.Outlined.Wifi else Icons.Outlined.Bluetooth, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(entry.label.ifBlank { if (entry.radio == "wifi") "Wi-Fi access point" else "Bluetooth advertiser" })
-                        Text("${entry.rssi} dBm · ${age}s ago · ${if (!entry.fresh(now)) "older observation" else entry.trend}", style = MaterialTheme.typography.labelSmall)
+                        Text(entry.label)
+                        Text(SignalRadioPresentation.deviceType(entry.radio, entry.metadata).label, style = MaterialTheme.typography.bodySmall)
+                        Text(if (entry.scanCount > 1) "Seen in ${entry.scanCount} retained scans" else if (entry.scanCount == 1) "First retained scan" else "Cached observation", style = MaterialTheme.typography.labelSmall)
+                        Text("${entry.rssi} dBm · ${entry.band} · ${age}s ago · ${if (!entry.fresh(now)) "older observation" else entry.trend}", style = MaterialTheme.typography.labelSmall)
+                        if (radio == "wifi") Text(SignalRadioPresentation.wifiAccess(entry.security).label + " · Sign-in unknown", style = MaterialTheme.typography.labelSmall)
                     }
                 }
             }
@@ -83,6 +108,7 @@ internal fun SignalLivePage(state: SignalState, station: SignalStation, onSource
             if (about) {
                 Text("Wi-Fi counts are access points and Bluetooth counts are advertisers. They are not counts of phones or people.", style = MaterialTheme.typography.bodySmall)
                 Text("Scans only while this view is open, for up to 5 minutes. Android may limit scan updates.", style = MaterialTheme.typography.bodySmall)
+                Text("Tinted rows were seen in at least three fresh scans. Counts reset with a new session or after an observation leaves the view. Repetition does not establish trust or safety.", style = MaterialTheme.typography.bodySmall)
                 Text("Recently seen means within 15 seconds. Older observations are labeled and leave after 60 seconds.", style = MaterialTheme.typography.bodySmall)
                 Text("Save snapshot stores the visible fresh readings on this phone. Ask saves a snapshot and opens a draft for review.", style = MaterialTheme.typography.bodySmall)
                 if (live.updatedAt > 0) Text("Latest update: ${signalDateTime(live.updatedAt)}", style = MaterialTheme.typography.bodySmall)
@@ -112,7 +138,10 @@ private fun SignalLiveDetail(entry: SignalLiveEntry, now: Long, onClose: () -> U
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(entry.label.ifBlank { "Radio observation" }, Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge)
             Text("Frozen view for inspection. These readings are not saved unless you use Save snapshot.", style = MaterialTheme.typography.bodySmall)
-            Text(if (entry.radio == "wifi") "Wi-Fi access point" else "Bluetooth advertiser")
+            val type = SignalRadioPresentation.deviceType(entry.radio, entry.metadata)
+            Text(type.label)
+            Text(type.evidence, style = MaterialTheme.typography.bodySmall)
+            if (entry.radio == "wifi") Text("${SignalRadioPresentation.wifiAccess(entry.security).label}. Browser sign-in and public access unknown.")
             Text("${entry.rssi} dBm · ${entry.band} signal · ${entry.trend}")
             Text("Last seen ${((now - entry.lastSeenAt).coerceAtLeast(0) / 1000)} seconds ago. ${entry.sampleCount} samples this session.")
             SignalLiveGraph(entry.samples)

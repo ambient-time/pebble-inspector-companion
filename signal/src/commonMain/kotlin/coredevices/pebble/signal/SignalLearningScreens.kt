@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -16,6 +17,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.input.KeyboardType
 
 internal enum class SignalStartDestination { Capture, Observe, Ask }
 
@@ -116,7 +118,7 @@ internal fun SignalTodayPage(state: SignalState, station: SignalStation, onAsk: 
         state.observationSession?.takeIf { it.state in setOf("running", "paused") }?.let { session -> item {
             Card { Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 LearningHeading("Recording in progress")
-                Text("${signalCount(session.captures, "capture")} saved · ends ${signalDateTime(session.endsAt)}")
+                Text("${signalCount(session.captures, "capture")} saved · ${signalObservationEnd(session)}")
                 Text(session.status, Modifier.semantics { liveRegion = LiveRegionMode.Polite }, style = MaterialTheme.typography.bodySmall)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = station::stopObservation) { Text("Stop recording") }
@@ -202,7 +204,9 @@ private fun SignalSessionSummary(session: SignalObservationSession, state: Signa
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         LearningHeading("Observation session")
         Text(session.status, Modifier.semantics { liveRegion = LiveRegionMode.Polite })
-        Text("${session.state.replace('_', ' ')} · ${signalObservationModeName(session.mode)} · ${session.captures} saved captures · scheduled end ${signalDateTime(session.endsAt)}", style = MaterialTheme.typography.bodySmall)
+        Text("${session.state.replace('_', ' ')} · ${signalObservationModeName(session.mode, session.intervalMinutes)} · ${session.captures} saved captures · ${signalObservationEnd(session)}", style = MaterialTheme.typography.bodySmall)
+        Text(if (session.localAnalysis) "Local change analysis after each capture with a previous sample." else "Automatic local analysis is off.", style = MaterialTheme.typography.bodySmall)
+        if (session.modelAnalysis) Text("Model analysis every ${session.analysisEveryCaptures} saved captures · ${session.analysisProvider} · ${session.analysisModel}. Each request includes the latest two captures only.", style = MaterialTheme.typography.bodySmall)
         Text(if (session.attempts == 0 && session.captures > 0) "Attempt count was not recorded for this session." else "${session.attempts} collection attempts",
             style = MaterialTheme.typography.bodySmall)
         if (session.sourceKeys.any { it.startsWith("healthconnect.") }) Text("Health imports are recorded separately below; new reads require background health access.", style = MaterialTheme.typography.bodySmall)
@@ -210,9 +214,15 @@ private fun SignalSessionSummary(session: SignalObservationSession, state: Signa
         if (session.sourceKeys.any { it.startsWith("healthconnect.") } && session.state in setOf("running", "paused")) Text(state.healthStatus, style = MaterialTheme.typography.bodySmall)
         if (session.state in setOf("running", "paused")) OutlinedButton(onClick = station::stopObservation) { Text("Stop recording") }
         val outcomes = if (session.state in setOf("running", "paused")) state.sourceStatus.filter { it.key in session.sourceKeys } else emptyList()
-        if (outcomes.isNotEmpty()) Text("Latest source outcomes · these are not session totals", style = MaterialTheme.typography.labelLarge)
-        outcomes.forEach { source ->
-            SignalSourceStatusRow(source, state, station, onSources)
+        if (outcomes.isNotEmpty()) {
+            var expanded by signalUiState("record.outcomes.${session.id}") { false }
+            TextButton(onClick = { expanded = !expanded }, modifier = Modifier.heightIn(min = 48.dp).semantics {
+                stateDescription = if (expanded) "Expanded" else "Collapsed"
+            }) { Text(if (expanded) "Hide source outcomes" else "Source outcomes · ${outcomes.size}") }
+            if (expanded) {
+                Text("Latest source outcomes · these are not session totals", style = MaterialTheme.typography.labelLarge)
+                outcomes.forEach { source -> SignalSourceStatusRow(source, state, station, onSources) }
+            }
         }
     }
 }
@@ -221,46 +231,92 @@ private fun SignalSessionSummary(session: SignalObservationSession, state: Signa
 internal fun SignalSessionsPage(state: SignalState, station: SignalStation, onSources: () -> Unit, onDetail: (String) -> Unit = {}, onFieldTest: () -> Unit = {}) {
     var minutes by signalUiState("record.minutes") { "60" }
     var mode by signalUiState("record.mode") { state.settings.observationMode }
+    var interval by signalUiState("record.interval") { state.settings.observationIntervalMinutes.toString() }
+    var localAnalysis by signalUiState("record.localAnalysis") { state.settings.observationLocalAnalysis }
+    var modelAnalysis by signalUiState("record.modelAnalysis") { state.settings.observationModelAnalysis }
+    var analysisCadence by signalUiState("record.analysisCadence") { state.settings.observationAnalysisEveryCaptures.toString() }
+    var sourcesExpanded by signalUiState("record.sourcesExpanded") { false }
     val sessionKeys = state.settings.enabled - setOf("places.nearby", "location.radio")
     var selected by signalUiState("record.sources") { sessionKeys }
     LaunchedEffect(sessionKeys) { selected = selected.intersect(sessionKeys) }
     val activeSession = state.observationSession?.takeIf { it.state in setOf("running", "paused") }
     val active = activeSession != null
-    val pendingMode = mode != state.settings.observationMode
+    val intervalValue = interval.toIntOrNull()?.takeIf { it in 1..1440 }
+    val analysisCadenceValue = analysisCadence.toIntOrNull()?.takeIf { it in 1..60 }
+    val providerReady = state.settings.provider in state.configuredProviders && state.settings.model.isNotBlank()
+    val pendingSchedule = mode != state.settings.observationMode ||
+        (mode == "fixed" && intervalValue != state.settings.observationIntervalMinutes) || localAnalysis != state.settings.observationLocalAnalysis ||
+        modelAnalysis != state.settings.observationModelAnalysis || (modelAnalysis && analysisCadenceValue != state.settings.observationAnalysisEveryCaptures)
     val pastSessions = (listOfNotNull(state.observationSession) + state.sessions).distinctBy { it.id }
         .filter { it.id != activeSession?.id }.sortedByDescending { it.startedAt }
     LazyColumn(Modifier.fillMaxSize(), state = signalListState("recordings"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
             LearningHeading("Record over time")
-            Text("Collect selected readings during a timed session. A notification shows that observation is active and lets you stop it. Android can delay or interrupt individual readings.")
-            Text("Starting a session does not enable learning or send observations to a model.", style = MaterialTheme.typography.bodySmall)
+            Text("Collect selected readings on a schedule, for a set time or until you stop. The notification always includes Stop. Android can delay or interrupt individual readings.")
+            Text("Learning remains a separate choice. Model requests happen only if you enable scheduled model analysis below.", style = MaterialTheme.typography.bodySmall)
         }
         activeSession?.let { session -> item { SignalSessionSummary(session, state, station, onSources) } }
         if (!active) {
             item {
-                SignalChoice("Collection mode", mode, listOf("standard" to "Standard", "battery_saver" to "Battery saver"), !state.busy) { mode = it }
-                Text(if (mode == "battery_saver") "Uses fewer scheduled collection attempts. Brief changes may be missed." else "Uses the standard collection schedule.",
-                    style = MaterialTheme.typography.bodySmall)
-                if (pendingMode) {
-                    OutlinedButton(onClick = { station.updateSettings(state.settings.copy(observationMode = mode)) }, enabled = !state.busy) { Text("Save collection mode") }
-                    Text("Save the mode before starting a session. Your source choices stay the same.", style = MaterialTheme.typography.bodySmall)
+                SignalChoice("Collection schedule", mode, listOf("fixed" to "Fixed interval", "standard" to "Adaptive", "battery_saver" to "Adaptive battery saver"), !state.busy) { mode = it }
+                when (mode) {
+                    "fixed" -> {
+                        SignalChoice("Quick interval", interval, listOf("1" to "1 minute", "5" to "5 minutes", "15" to "15 minutes", "30" to "30 minutes", "60" to "1 hour"), !state.busy) { interval = it }
+                        OutlinedTextField(value = interval, onValueChange = { if (it.length <= 4 && it.all(Char::isDigit)) interval = it },
+                            label = { Text("Minutes between scans") }, singleLine = true, enabled = !state.busy,
+                            isError = intervalValue == null, supportingText = { Text("1–1440 minutes. The interval starts after each scan and any scheduled analysis finish.") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
+                        Text("Motion does not trigger extra scans. Wi-Fi scans are requested at this interval; Android may throttle them. Weather refreshes at most every 30 minutes.", style = MaterialTheme.typography.bodySmall)
+                    }
+                    "battery_saver" -> Text("Usually 15 minutes between scans; recent motion or network changes can shorten this to 5 minutes.", style = MaterialTheme.typography.bodySmall)
+                    else -> Text("Usually 5 minutes between scans; recent motion or network changes can shorten this to 1 minute.", style = MaterialTheme.typography.bodySmall)
                 }
-                SignalChoice("Session length", minutes, listOf("15" to "15 minutes", "60" to "1 hour", "240" to "4 hours"), !state.busy) { minutes = it }
-                LearningHeading("Sources for this session")
-                Text("Select from your enabled sources. Sources you leave off remain available for manual capture.", style = MaterialTheme.typography.bodySmall)
-                if (sessionKeys != state.settings.enabled) Text("External lookups are reviewed separately in Around me; sessions do not send them.", style = MaterialTheme.typography.bodySmall)
+                SignalChoice("Session length", minutes, listOf("0" to "Ongoing · until stopped", "15" to "15 minutes", "60" to "1 hour", "240" to "4 hours"), !state.busy) { minutes = it }
             }
-            items(state.sources.filter { it.key in sessionKeys }, key = { it.key }) { source ->
+            item {
+                SignalToggle("Local change analysis", localAnalysis, !state.busy,
+                    "After each capture, compare with the previous sample in this session. Saved reports cite both captures. No model request.") { localAnalysis = it }
+                SignalToggle("Scheduled model analysis", modelAnalysis, !state.busy,
+                    "Automatically send the latest two session captures to your selected provider. This may incur provider charges.") { modelAnalysis = it }
+                if (modelAnalysis) {
+                    Text("Send to ${state.settings.provider} · ${state.settings.model}", style = MaterialTheme.typography.labelLarge)
+                    if (state.settings.endpoint.isNotBlank()) Text(state.settings.endpoint, style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(value = analysisCadence, onValueChange = { if (it.length <= 2 && it.all(Char::isDigit)) analysisCadence = it },
+                        label = { Text("Analyze every N saved captures") }, singleLine = true, enabled = !state.busy,
+                        isError = analysisCadenceValue == null, supportingText = { Text("1–60 captures; always waits for at least two. Failed requests wait another full cadence before retrying.") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
+                    Text("Starting authorizes repeated requests using only the sources selected for this session. No other history or memories are sent. Requests include dated, size-limited evidence and cite both captures.", style = MaterialTheme.typography.bodySmall)
+                    if (!providerReady) Text("Add a key and choose a model in Settings, or turn off scheduled model analysis.", color = MaterialTheme.colorScheme.error)
+                } else Text("For a one-time model analysis, review selected captures in Ask before sending.", style = MaterialTheme.typography.bodySmall)
+            }
+            item {
+                if (pendingSchedule) {
+                    OutlinedButton(onClick = { station.updateSettings(state.settings.copy(observationMode = mode,
+                        observationIntervalMinutes = intervalValue ?: state.settings.observationIntervalMinutes, observationLocalAnalysis = localAnalysis,
+                        observationModelAnalysis = modelAnalysis, observationAnalysisEveryCaptures = analysisCadenceValue ?: state.settings.observationAnalysisEveryCaptures)) },
+                        enabled = !state.busy && (mode != "fixed" || intervalValue != null) && (!modelAnalysis || analysisCadenceValue != null)) { Text("Save schedule and analysis") }
+                    Text("Save these options before starting. Your source choices stay the same.", style = MaterialTheme.typography.bodySmall)
+                }
+                Text("${selected.intersect(sessionKeys).size} selected sources", style = MaterialTheme.typography.labelLarge)
+                if (sessionKeys.isEmpty()) Text("Enable at least one collection source to begin.")
+                Button(onClick = { station.startObservation(minutes.toInt(), selected.intersect(sessionKeys)) }, enabled = !state.busy && !pendingSchedule && selected.intersect(sessionKeys).isNotEmpty() && (!modelAnalysis || providerReady),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Start recording") }
+                Text("Pauses for low battery, low storage or a hot phone. No automatic restart after reboot or force-stop. Watch readings require its existing Signal Station connection to stay open.", style = MaterialTheme.typography.bodySmall)
+            }
+            item {
+                TextButton(onClick = { sourcesExpanded = !sourcesExpanded }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics {
+                    stateDescription = if (sourcesExpanded) "Expanded" else "Collapsed"
+                }) { Text(if (sourcesExpanded) "Hide session sources" else "Choose session sources · ${selected.intersect(sessionKeys).size} selected") }
+                if (sourcesExpanded) {
+                    Text("Select from your enabled sources. Sources you leave off remain available for manual capture.", style = MaterialTheme.typography.bodySmall)
+                    if (sessionKeys != state.settings.enabled) Text("External lookups are reviewed separately in Around me; sessions do not send them.", style = MaterialTheme.typography.bodySmall)
+                }
+                TextButton(onClick = onSources) { Text("Change enabled sources") }
+            }
+            if (sourcesExpanded) items(state.sources.filter { it.key in sessionKeys }, key = { it.key }) { source ->
                 SignalToggle(source.name, source.key in selected, !state.busy, if (source.available) null else "Access or a connected device may be needed") {
                     selected = if (it) selected + source.key else selected - source.key
                 }
-            }
-            item {
-                if (sessionKeys.isEmpty()) Text("Enable at least one collection source to begin.")
-                TextButton(onClick = onSources) { Text("Change enabled sources") }
-                Button(onClick = { station.startObservation(minutes.toInt(), selected.intersect(sessionKeys)) }, enabled = !state.busy && !pendingMode && selected.intersect(sessionKeys).isNotEmpty(),
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Start recording") }
-                Text("No automatic restart after reboot or force-stop. Watch readings are available only while its existing Signal Station connection is open.", style = MaterialTheme.typography.bodySmall)
             }
         }
         item {
@@ -277,7 +333,7 @@ internal fun SignalSessionsPage(state: SignalState, station: SignalStation, onSo
             var expanded by remember(session.id) { mutableStateOf(false) }
             var visibleRecords by remember(session.id) { mutableStateOf(10) }
             Text(signalDateTime(session.startedAt), style = MaterialTheme.typography.labelLarge)
-            Text("${session.state.replace('_', ' ')} · ${signalObservationModeName(session.mode)} · ${session.captures} saved captures")
+            Text("${session.state.replace('_', ' ')} · ${signalObservationModeName(session.mode, session.intervalMinutes)} · ${session.captures} saved captures")
             Text(if (session.attempts == 0 && session.captures > 0) "Attempt count was not recorded for this session." else "${session.attempts} collection attempts",
                 style = MaterialTheme.typography.bodySmall)
             Text(session.status, style = MaterialTheme.typography.bodySmall)
@@ -306,11 +362,15 @@ internal fun SignalSessionsPage(state: SignalState, station: SignalStation, onSo
     }
 }
 
-private fun signalObservationModeName(mode: String): String = when (mode) {
-    "standard" -> "Standard"
-    "battery_saver" -> "Battery saver"
+private fun signalObservationModeName(mode: String, intervalMinutes: Int): String = when (mode) {
+    "fixed" -> "$intervalMinutes min between scans"
+    "standard" -> "Adaptive"
+    "battery_saver" -> "Adaptive battery saver"
     else -> "Unknown mode"
 }
+
+private fun signalObservationEnd(session: SignalObservationSession): String =
+    session.endsAt?.let { "scheduled end ${signalDateTime(it)}" } ?: "ongoing · no scheduled end"
 
 @Composable
 internal fun SignalLearningControls(state: SignalState, station: SignalStation) {

@@ -24,6 +24,7 @@ class SignalPresenceTimelineTest {
         assertEquals("not_observed", result.state)
         assertEquals(now - 10_000, result.lastSeenAt)
         assertEquals(1, result.freshCaptures)
+        assertEquals(1, result.savedSightings)
     }
     @Test fun oldAndUnavailableCapturesAreUnknown() {
         assertEquals("unknown", evidence(record("a", now - 16_000)).state)
@@ -50,6 +51,8 @@ class SignalPresenceTimelineTest {
     @Test fun fiveMinuteEvidenceWindowExpiresWithoutDroppingHistoricalLastSeen() {
         val old = record("old", now - 300_001)
         assertEquals(0, evidence(old).freshCaptures)
+        assertEquals(1, evidence(old).savedSightings)
+        assertEquals(2, evidence(old, record("current", now)).savedSightings)
         assertEquals(old.createdAt, evidence(old).lastSeenAt)
         assertEquals("observed_once", evidence(old, record("current", now)).state)
     }

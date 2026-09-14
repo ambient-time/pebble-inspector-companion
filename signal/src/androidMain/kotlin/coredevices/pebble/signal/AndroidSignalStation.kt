@@ -187,7 +187,9 @@ open class AndroidSignalStation(private val context: Context, protected val watc
     private fun persistSettings(settings: SignalSettings, credential: Pair<String, String>? = null) {
         if (!available) return
         val sanitized = settings.copy(healthHistoryDays = settings.healthHistoryDays.takeIf { it in setOf(7, 30, 90) } ?: 7, enabled = settings.enabled.intersect(mutable.value.sources.map { it.key }.toSet()),
-            observationMode = if (settings.observationMode == "battery_saver") "battery_saver" else "standard",
+            observationMode = settings.observationMode.takeIf { it in setOf("fixed", "standard", "battery_saver") } ?: "standard",
+            observationIntervalMinutes = SignalSchedule.intervalMinutes(settings.observationIntervalMinutes),
+            observationAnalysisEveryCaptures = SignalScheduledAnalysis.cadence(settings.observationAnalysisEveryCaptures),
             lookups = settings.lookups.copy(radiusMeters = settings.lookups.radiusMeters.coerceIn(100, 1000)),
             presenceTargets = settings.presenceTargets.filter { it.radio in setOf("bluetooth", "wifi") && it.address.matches(Regex("[A-Fa-f0-9]{2}(:[A-Fa-f0-9]{2}){5}")) && (it.beaconId.isBlank() || SignalBeacon.validIdentity(it.beaconId)) && it.label.isNotBlank() }.distinctBy { it.id }.take(32).map { it.copy(label = it.label.trim().take(100), id = it.id.take(64)) },
             placeFences = settings.placeFences.filter { it.label.isNotBlank() && it.latitude.isFinite() && it.longitude.isFinite() && it.latitude in -90.0..90.0 && it.longitude in -180.0..180.0 }.distinctBy { it.id }.take(16).map { it.copy(label = it.label.trim().take(100), id = it.id.take(64), radiusMeters = it.radiusMeters.coerceIn(25, 10000), wifiSsid = it.wifiSsid.take(100)) })
@@ -221,6 +223,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
     }
     override fun saveKey(provider: String, key: String) {
         if (!available || provider !in providerNames || key.length > 8192) return
+        if (pendingSession?.let { it.modelAnalysis && it.analysisProvider == provider } == true) stopObservation()
         scope.launch {
             try {
                 initialized.await()
@@ -937,25 +940,41 @@ open class AndroidSignalStation(private val context: Context, protected val watc
     private var observationJob: Job? = null
     private var observationWatchGeneration: Long? = null
     private var observationLastHealth = 0L
+    private var observationPreviousRecordId: String? = null
+    private var observationAnalysisPair: Pair<SignalRecord, SignalRecord>? = null
+    private var observationSettings: SignalSettings? = null
+    private var observationAnalysisAttemptCaptures = 0
+    private var observationModelJob: Job? = null
+    private var observationModelGeneration: Long? = null
     private val observationSchedule = SignalSchedule()
-    fun observationDelayMillis(id: String): Long = mutable.value.observationSession?.takeIf { it.id == id }?.let { observationSchedule.delayMillis(it.mode, android.os.SystemClock.elapsedRealtime()) } ?: 5 * 60_000L
+    fun observationDelayMillis(id: String): Long = mutable.value.observationSession?.takeIf { it.id == id }?.let { observationSchedule.delayMillis(it.mode, android.os.SystemClock.elapsedRealtime(), it.intervalMinutes) } ?: 5 * 60_000L
     fun observationTransition(id: String) { if (mutable.value.observationSession?.id == id) observationSchedule.noteTransition(android.os.SystemClock.elapsedRealtime()) }
     override fun startObservation(minutes: Int, sources: Set<String>) {
-        if (minutes !in setOf(15, 60, 240) || !foreground() || context.applicationContext !is SignalObservationHost) { status("Open the separate Signal Station app to start an observation session."); return }
+        if (minutes !in setOf(0, 15, 60, 240) || !foreground() || context.applicationContext !is SignalObservationHost) { status("Open the separate Signal Station app to start an observation session."); return }
         val selected = sources.intersect(mutable.value.settings.enabled) - setOf("places.nearby", "location.radio")
         if (selected.isEmpty()) { status("Choose at least one enabled source for this session."); return }
+        val settings = mutable.value.settings
+        if (settings.observationModelAnalysis && (settings.provider !in mutable.value.configuredProviders || settings.model.isBlank())) {
+            status("Add a key and choose a model in Settings, or turn off scheduled model analysis."); return
+        }
         stopObservation()
         val startedAt = now()
-        val session = SignalObservationSession(id(), startedAt, startedAt + minutes * 60_000L, selected, mode = mutable.value.settings.observationMode)
+        val session = SignalObservationSession(id(), startedAt, if (minutes == 0) null else startedAt + minutes * 60_000L, selected,
+            mode = settings.observationMode, intervalMinutes = SignalSchedule.intervalMinutes(settings.observationIntervalMinutes), localAnalysis = settings.observationLocalAnalysis,
+            modelAnalysis = settings.observationModelAnalysis, analysisEveryCaptures = SignalScheduledAnalysis.cadence(settings.observationAnalysisEveryCaptures),
+            analysisProvider = settings.provider.takeIf { settings.observationModelAnalysis }.orEmpty(),
+            analysisModel = settings.model.takeIf { settings.observationModelAnalysis }.orEmpty(),
+            analysisEndpoint = settings.endpoint.takeIf { settings.observationModelAnalysis }.orEmpty())
+        observationSettings = settings
         pendingSession = session
         context.startActivity(Intent(context, SignalPermissionActivity::class.java).putExtra("observation", session.id).putExtra("sources", selected.toTypedArray()).putExtra("weatherDeviceLocation", mutable.value.settings.weatherLocation == "device").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
-    fun pendingObservation(id: String): SignalObservationSession? = pendingSession?.takeIf { it.id == id && it.endsAt > now() && it.sourceKeys.all { key -> key in mutable.value.settings.enabled } }
+    fun pendingObservation(id: String): SignalObservationSession? = pendingSession?.takeIf { it.id == id && (it.endsAt == null || it.endsAt > now()) && it.sourceKeys.all { key -> key in mutable.value.settings.enabled } }
     suspend fun activateObservation(id: String) {
         initialized.await(); indexReady.await()
         val session = pendingObservation(id) ?: throw CancellationException()
         persistence.withLock { withContext(Dispatchers.IO) { store.session(session) }; mutable.update { it.copy(observationSession = session) } }
-        observationLastHealth = 0; observationSchedule.reset()
+        observationLastHealth = 0; observationPreviousRecordId = null; observationAnalysisPair = null; observationAnalysisAttemptCaptures = 0; observationSchedule.reset()
         refreshPersonalState()
     }
     suspend fun observationStatus(id: String, state: String, text: String) {
@@ -972,7 +991,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
         observationJob = currentCoroutineContext()[Job]
         val selected = session.sourceKeys.intersect(mutable.value.settings.enabled)
         val acquisitionStarted = android.os.SystemClock.elapsedRealtime()
-        val decision = observationSchedule.decide(selected, session.mode, android.os.SystemClock.elapsedRealtime())
+        val decision = observationSchedule.decide(selected, session.mode, android.os.SystemClock.elapsedRealtime(), session.intervalMinutes)
         val eligible = decision.enabled
         val settings = mutable.value.settings.copy(enabled = eligible)
         val readings = collectors.collect(settings, activeWifi = decision.activeWifi).toMutableList()
@@ -1006,12 +1025,20 @@ open class AndroidSignalStation(private val context: Context, protected val watc
             coverage = budget.coverage, sourceKeys = readings.map { it.key }.toSet(), kind = "observation", sessionId = id))
         persistence.withLock {
             if (ticket != observationGeneration || pendingSession?.id != id) return@withLock
-            withContext(Dispatchers.IO) { store.save(record); if (settings.learningEnabled) learning.ingest(record, now()) }
-            val old = mutable.value.observationSession ?: return@withLock
+            val old = mutable.value.observationSession?.takeIf { it.id == id && it.state == "running" } ?: return@withLock
+            val changes = withContext(Dispatchers.IO) {
+                val previous = observationPreviousRecordId?.let { store.record(it) }
+                val changes = if (session.localAnalysis) SignalChanges.createScheduled(record, previous, selected, this@AndroidSignalStation.id(), now()) else null
+                store.atomic { store.save(record); changes?.let { store.save(it) }; if (settings.learningEnabled) learning.ingest(record, now()) }
+                observationAnalysisPair = previous?.let { it to record }
+                changes
+            }
+            observationPreviousRecordId = record.id
             val next = old.copy(lastAttemptAt = now(), lastSuccessAt = if (readings.any(SignalLearning::fresh)) now() else old.lastSuccessAt,
-                attempts = old.attempts + 1, captures = old.captures + 1, status = "Sample saved. Missing readings remain unknown.")
+                attempts = old.attempts + 1, captures = old.captures + 1,
+                status = if (changes != null) "Sample and local change analysis saved. Missing readings remain unknown." else "Sample saved. Missing readings remain unknown.")
             withContext(Dispatchers.IO) { store.session(next) }
-            mutable.update { it.copy(observationSession = next, records = (listOf(record) + it.records).take(200)) }
+            mutable.update { it.copy(observationSession = next, records = (listOfNotNull(changes, record) + it.records).take(200)) }
         }
         collectionDiagnostics(budget.observations, acquisitionStarted, "${session.mode}; wifi=${if (decision.activeWifi) "active_allowed" else "passive"}; deferred=${decision.deferred.size}")
         if (selected.any { it.startsWith("healthconnect.") } && now() - observationLastHealth >= 15 * 60_000L) {
@@ -1020,17 +1047,78 @@ open class AndroidSignalStation(private val context: Context, protected val watc
         }
         refreshLearning(); refreshPersonalState(); observationJob = null
     }
+    /** Separate from collection timeout. Only the explicit session opt-in can enter this phase. */
+    suspend fun analyzeObservation(id: String) {
+        val session = mutable.value.observationSession?.takeIf { it.id == id && it.state == "running" && it.modelAnalysis } ?: return
+        if (mutable.value.busy || !SignalScheduledAnalysis.due(session.captures, observationAnalysisAttemptCaptures, session.analysisEveryCaptures)) return
+        val settings = observationSettings ?: return
+        val pair = observationAnalysisPair ?: return
+        val ticket = observationGeneration
+        if (pendingSession?.id != id || mutable.value.settings != settings || !SignalScheduledAnalysis.valid(session, pair.first, pair.second, settings.enabled)) return
+        // Failure or cancellation consumes this cadence slot; there is no immediate retry loop.
+        observationAnalysisAttemptCaptures = session.captures
+        startOperation { currentSettings, token ->
+            observationModelGeneration = token
+            activeRequest = null; activeRunner = null; activeWatch = ""; watchReadings = mutableListOf()
+            fun validSession() = ticket == observationGeneration && pendingSession?.id == id &&
+                mutable.value.observationSession?.state == "running" && observationSettings == settings &&
+                mutable.value.settings == settings && currentSettings == settings
+            try {
+                if (!validSession()) throw CancellationException()
+                val evidence = SignalScheduledAnalysis.evidence(session, pair.first, pair.second, settings.enabled)
+                val messages = listOf("system" to ANSWER_INSTRUCTIONS, "user" to evidence)
+                providers.validateRequest(settings, messages)
+                val record = SignalRecord(this@AndroidSignalStation.id(), "observation:$id", now(), SignalScheduledAnalysis.question,
+                    provider = session.analysisProvider, model = session.analysisModel, endpoint = session.analysisEndpoint,
+                    references = listOf(pair.first.id, pair.second.id), sourceKeys = pair.first.sourceKeys + pair.second.sourceKeys,
+                    watchId = pair.second.watchId, sessionId = id, kind = "analysis")
+                activeRecord = record.id
+                save(record, token)
+                val reply = persistence.withLock {
+                    ensureActiveToken(token)
+                    if (!validSession()) throw CancellationException()
+                    val unchanged = withContext(Dispatchers.IO) {
+                        store.record(pair.first.id) == pair.first && store.record(pair.second.id) == pair.second &&
+                            !store.get(session.analysisProvider).isNullOrBlank()
+                    }
+                    if (!unchanged) throw SignalProviderException("Session evidence or provider access changed. This analysis was not sent.")
+                    phase = "provider_response"
+                    status("Analyzing two session captures with ${session.analysisProvider}…")
+                    providers.answer(settings, messages)
+                }
+                ensureActiveToken(token)
+                if (!validSession()) throw CancellationException()
+                save(record.copy(answer = reply.text, summary = reply.summary, state = "ready"), token)
+                if (validSession()) observationStatus(id, "running", "Scheduled model analysis saved. Collection continues on its schedule.")
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) {
+                if (validSession()) observationStatus(id, "running", "Model analysis failed. Collection continues; the next analysis waits ${session.analysisEveryCaptures} more saved captures.")
+                throw e
+            } finally { if (observationModelGeneration == token) observationModelGeneration = null }
+        }
+        val running = operation
+        observationModelJob = running
+        try { running?.join() } finally {
+            if (running?.isActive == true) {
+                if (observationModelGeneration == generation) cancel()
+                running.cancel()
+            }
+            observationModelJob = null
+        }
+    }
     override fun stopObservation() {
         ++observationGeneration; observationJob?.cancel(); observationJob = null
-        if (observationWatchGeneration == generation) cancel()
+        if (observationWatchGeneration == generation || observationModelGeneration == generation) cancel()
+        observationModelJob?.cancel(); observationModelJob = null; observationModelGeneration = null
         observationWatchGeneration = null
         val session = mutable.value.observationSession
         pendingSession = null
+        observationSettings = null; observationAnalysisPair = null
         context.stopService(Intent(context, SignalObservationService::class.java))
         if (session != null && session.state in setOf("running", "paused")) finishObservation(session.id, "stopped", "Stopped by you. No automatic restart.")
     }
     fun finishObservation(id: String, state: String, text: String) {
-        if (mutable.value.observationSession?.id == id && observationWatchGeneration == generation) { cancel(); observationWatchGeneration = null }
+        if (mutable.value.observationSession?.id == id && (observationWatchGeneration == generation || observationModelGeneration == generation)) { cancel(); observationWatchGeneration = null; observationModelGeneration = null }
         scope.launch {
             persistence.withLock {
                 val old = mutable.value.observationSession?.takeIf { it.id == id && it.state in setOf("running", "paused") } ?: return@withLock

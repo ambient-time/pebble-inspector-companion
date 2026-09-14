@@ -4,7 +4,8 @@ By Luke Steuber.
 
 Signal Station saves observations about your surroundings and helps you make
 sense of them over time. Your phone is enough. The optional Pebble preview uses
-the Pebble app you already have; its connection still needs physical-watch testing.
+the Pebble app you already have. The watch app is still in testing; a Time 2
+and Pixel 9a have completed a physical capture trial.
 
 Start on **Now**. **Capture now** saves a moment and attaches it in Ask.
 Choose **Ask about this** on the saved observation to open an editable question.
@@ -12,18 +13,31 @@ The capture summary distinguishes readings that were fresh when collected,
 older or cached readings, estimates, partial results and missing sources. Imported
 period records retain their measurement dates. Inspect readings for exact times;
 a saved capture is not a live measurement.
-Use **Record over time** for a 15-minute, one-hour or four-hour session. Select the sources you
-want for that session. Android asks for the permissions those sources need.
-You can decline a permission and continue using the other sources.
+Use **Record over time** for a finite session or **Ongoing · until stopped**.
+Choose a fixed interval from 1 to 1,440 minutes, or use an adaptive schedule.
+Select the sources for that session; expanding its source list does not enable
+new sources. Android asks for the permissions those sources need.
 
-A session shows an ongoing notification with **Stop**. Standard mode samples about every five minutes at rest, with bounded follow-up
-after a selected motion or network change. Battery saver uses a slower schedule.
-Android-completed Wi-Fi scans can be reused; active Wi-Fi and weather requests
-are spaced at least 30 minutes apart. Android can delay or deny a reading. A missing measurement is
-shown as missing, never treated as zero. Sessions pause below 15% battery while
-unplugged, with low storage, or when the phone is too warm. They finish at their
-chosen end time and do not restart after Android stops the app. Wake listening
-is a separate choice; observation sessions do not record ambient audio or video.
+A session shows an ongoing notification with **Stop**. Fixed mode waits for the
+chosen interval after a capture and any scheduled analysis finish. Adaptive mode
+usually waits five minutes, with shorter follow-up after selected motion or
+network changes. Adaptive battery saver usually waits fifteen minutes. Android
+may throttle Wi-Fi requests; cached results keep their actual measurement times.
+Weather refreshes at most every thirty minutes.
+
+**Local change analysis** saves comparisons with the preceding capture in the
+same session. **Scheduled model analysis** is a separate opt-in and has its own
+frequency in saved captures. Review the provider, model and selected sources
+before starting it. It sends only the two latest session captures, with bounded
+readings and explicit omissions; provider charges may apply. Model analysis is
+off by default. Its reports keep links to both source captures.
+
+A missing measurement is shown as missing, never zero. Sessions pause below 15%
+battery while unplugged, with low storage, or when the phone is too warm. Finite
+sessions end at their chosen time; ongoing sessions have no scheduled expiration.
+Neither restarts after Android stops the app. Changing collection settings stops
+the current session so its choices can be reviewed again. Wake listening is a
+separate choice; observation sessions do not record ambient audio or video.
 
 **History** contains saved captures, nearby checks, recording sessions and reports.
 Use **Today**, **Last 7 days** or **Last 30 days**, or filter by type, capture
@@ -52,7 +66,14 @@ Open **Around me** from Now. **Save snapshot** saves live readings to History
 without changing an existing question or its attachments. **Ask** saves a
 snapshot and prepares a question for review. **Signals** shows live radios and separately labeled
 saved wireless and cellular context. **Places** holds phone location, map lookups
-and familiar places. **My devices** holds enrolled devices and their saved sightings. Wi-Fi channel counts describe received advertisements,
+and familiar places. **My devices** holds enrolled devices and their saved sightings.
+Section headers and named-device rows expand to show details and controls.
+Tinted radio rows have repeated scan sightings; the written counts explain their
+scope. A broad device type appears when its advertisement supports one, with
+unknown types kept explicit. Wi-Fi filters distinguish no-password advertisements,
+credentials and unknown access. Browser sign-in is unknown for nearby networks;
+the phone's connected-network evidence is shown separately with its capture time.
+Wi-Fi channel counts describe received advertisements,
 not channel utilization. An advertised open network does not establish internet
 access. Cellular observations include technology, signal and registered or
 neighbor cells; tower identifiers have their own switch. No phone number or
@@ -78,7 +99,8 @@ Lookup services and radius are editable under the collapsed service settings.
 Each lookup requires a reviewed send; timed sessions do not perform these
 lookups automatically. Recent results may be reused from the encrypted local
 cache. Deleting their source evidence also deletes dependent results and caches.
-Sending any saved context to a language model is a separate action in Ask.
+Send saved context through a reviewed question in Ask, or explicitly enable
+scheduled model analysis for a recording session.
 
 In a saved record, **What changed?** compares compatible earlier readings.
 **Numeric history** shows retained measurements as individual dots, with the
