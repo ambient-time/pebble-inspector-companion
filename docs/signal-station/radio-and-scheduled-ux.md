@@ -55,6 +55,13 @@ The watch button layout and backlight are separately built and verified in
 `pebble-field-inspector`. A screenshot proves layout; physical illumination and
 sensor behavior require observation on the watch.
 
+## Follow-up review
+
+The [September 14 implementation sweep](project-sweep-2026-09-14.md) records
+confirmed comparison and retention limitations, the remaining screen-off session
+probe, and independent Codex CLI/Grok CLI opinions. Its recommendations are
+planning inputs; this document still describes the published build 14 behavior.
+
 ## References
 
 - [Android network state](https://developer.android.com/develop/connectivity/network-ops/reading-network-state)

@@ -2,7 +2,7 @@
 
 By Luke Steuber. September 10, 2026.
 
-Status: planning complete after code inspection, prior-art research and independent planning/release reviews. All implementation, device testing and publication below are planned, not completed by this document.
+Status: the September 10 plan and baseline below are historical. Subsequent implementation and release evidence is recorded in the dated updates and linked receipts; unchecked acceptance work remains open.
 
 September 13 update: the bounded [watch collection increment](watch-collection.md)
 implements optional 15-minute Health history and improved motion variation/timing,
@@ -18,6 +18,16 @@ Time 2 / Pixel 9a, source-picker and transport corrections, and the unresolved
 2 SE Bluetooth bond. Time 2 is the primary target; SE tests compatibility.
 The physical motion capture excluded every sample, so its vibration/timestamp
 behavior is the next collection probe. The full release gate below remains open.
+
+September 14 UTC sweep: Android **0.4.0-ux-dev (14)** and Pebble addon **1.6.4**
+are published together on the existing testing download page. The paired release
+receipt verifies the delivered bytes; this does not close every physical watch
+or long-duration gate. The [full implementation sweep and CLI consensus](project-sweep-2026-09-14.md)
+recommends a session-coverage and local-interpretation milestone next. Confirmed
+follow-ups are reused-measurement comparisons, primary-metric retention, minimum
+watch-motion quality, stale recording status and release-descriptor drift.
+Screen-off/Stop/restart reliability remains a measured evidence gap. No new
+feature or firmware implementation was started by that review.
 
 ## Outcome and scope
 
