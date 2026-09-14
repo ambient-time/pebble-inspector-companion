@@ -131,3 +131,26 @@ checked in Emery, Diorite and Chalk emulators. The stock host handled this
 package at 22:53:14 and the sole connected Time 2 reported it running at 22:53:16.
 The separate [radio and scheduled collection update](radio-and-scheduled-ux.md)
 records the companion changes and their validation.
+
+## Android recording and accordion follow-up
+
+Development build 14 was built from clean companion commit
+`411663e718e3ea1f863d7314d53d09ad487f6bea`. The 108,895,230-byte APK has
+SHA-256 `191502239022fa24f247303ca3e28e69f3dee904520a6a6dd7362bca8cd5ec9c`.
+Its embedded identity reports `0.4.0-ux-dev (14) · 411663e7`.
+It passed signature verification with the same development certificate as the
+installed build 13. ADB accepted the replacement on the Pixel 9a at 23:05:34,
+and package metadata confirmed code 14. No app data was cleared.
+
+This build includes compact device disclosures, collapsible radio sections,
+Wi-Fi access filters, conservative device types and written repeat-sighting
+counts. Recording supports 1–1,440 minute fixed intervals, adaptive schedules,
+finite or ongoing duration, local comparisons and separately enabled model
+analysis. The combined checks passed: 214 host tests, six existing skips,
+25 emulator interaction/integration tests and Android lint.
+
+The proposed physical run is ongoing at five-minute intervals using the existing
+source choices, with local analysis on and model analysis off. It has not started:
+the phone requires its owner's unlock before the foreground session can be
+started. The emulator service/cancellation evidence does not establish elapsed
+scheduled captures on the physical phone.
