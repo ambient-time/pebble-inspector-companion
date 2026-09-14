@@ -57,3 +57,26 @@ protocol startup, session lifecycle, success/failure acknowledgement states,
 and Compose Markdown output with link clicks. Tests use an isolated emulator
 and simulated watch transport. No physical Pebble was operated or re-paired.
 The exact user-reported watch-validation symptom remains pending.
+
+
+September 14 release follow-up:
+
+The exact published Android build15 passed both existing response-rendering
+instrumentation tests on an isolated API36 emulator: heading semantics, emphasis,
+lists, tables, code, explicit web link activation and blocked unsafe links. No
+Android source or APK replacement was necessary.
+
+Watch addon1.6.5 from b83a66c5 adds compact Markdown blocks, readable emphasis
+text, literal fenced/indented code, link labels and an explicit shortened-reply
+note. Original responses remain in Android history and exports. Unsupported
+nested markup can remain literal; rich tables and clickable links belong on the
+phone. Native frames from all six targets and32 protocol tests plus C sanitizer
+regressions passed. Four code-preservation bugs found in the CLI review were
+reproduced and fixed. No current physical watch rendering or battery result.
+
+The Store saved1.6.5 unlisted with30 screenshots, six GIFs and six banners.
+Public Store routes still returned404. The direct download page describes the
+separate Android installation and links the Store with its availability caveat.
+The private watch repository holds the publication receipt and media manifest.
+
+All 100 exact public-byte checks passed across dr.eamer.dev and lukesteuber.com, including the new watch package, source, guide and media. Next: verify a physical install-to-chat path and a long reply continued on Android; consider a direct conversation handoff and a reading-specific backlight timeout after that probe.

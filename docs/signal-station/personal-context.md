@@ -9,6 +9,20 @@ is enough. The optional Pebble preview uses
 the Pebble app you already have. The watch app is still in testing; a Time 2
 and Pixel 9a have completed a physical capture trial.
 
+## Install the Android app
+
+Open the [Signal Station download page](https://dr.eamer.dev/downloads/apps/signal-station/)
+on your Android phone and tap **Download for Android**. Open the downloaded APK,
+allow your browser to install apps if Android asks, then tap **Install**. Install
+over an existing Signal Station preview to keep its saved history. Open Signal
+Station and choose **Ask → Set up answers** to add your provider, model and key.
+You can chat before choosing any sensors or connecting a watch.
+
+For wrist access, keep your usual Pebble app installed and your watch paired
+there. Download the Pebble test build from the same page and open its PBW file
+with your Pebble app. Follow **Optional Pebble connection** below to connect
+Signal Station. Both Android apps are required for watch use.
+
 ## Chat on your phone or Pebble
 
 Open **Ask** to start a conversation. Type a general question, brainstorm an idea,
@@ -18,7 +32,7 @@ captures attached, “What changed between these stops?” You do not have to en
 sensors or record a session to use chat.
 
 Choose your provider and model in Settings and add your own key. Supported
-connections include OpenAI, Anthropic, Gemini, xAI, OpenRouter and a compatible
+connections include OpenAI, Anthropic, Gemini, OpenRouter and a compatible
 custom HTTPS chat endpoint. Provider usage charges apply. **Review question**
 shows the outgoing text, recent conversation turns, selected readings and any
 selected memories before **Send**. Removing an attachment changes the next
@@ -250,9 +264,11 @@ reusing old readings. Watch readings can still be saved through the host link.
 
 The stock Pebble app, standalone Android app, and Diorite emulator have completed
 connection, button capture, background capture, history and app-restart checks.
-These are emulator results. Watch installation remains paused pending physical
-validation and the earlier settings-reset investigation; this update does not
-remove that hold or replace the public watch package.
+These are emulator results. The separate watch app is available from the download
+page and is still in testing. A Time 2 and Pixel 9a have also completed a physical
+capture trial. The Store listing is unlisted; its share page returned not found
+on September 14, so use the direct download while Store installation remains
+unconfirmed.
 
 This is a development preview. Android storage, UI, mapping and service checks
 run on an emulator; physical Android battery behavior, Health Connect account
