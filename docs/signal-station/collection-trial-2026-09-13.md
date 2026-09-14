@@ -85,7 +85,8 @@ URLs redirect to the verified private destinations. Work uses `codex/signal-stat
 - APK: `signalApp/build/outputs/apk/debug/signalApp-debug.apk`, 108,779,314 bytes,
   SHA-256 `b64eed88b5ea3b76105261f0fd8eec5c9992af4ad20ca1df559320294709901e`.
 
-The physical phone has this APK and the Time 2 has addon 1.6.2. The existing public
+At completion of the collection trial, the physical phone had this APK and the
+Time 2 had addon 1.6.2. The existing public
 APK/PBW release descriptors and download bytes remain unchanged. This is still a
 development trial, not full release acceptance.
 
@@ -98,3 +99,19 @@ dictation, accessibility and runtime stack margin before a broader release.
 The [firmware roadmap](https://github.com/ambient-time/pebble-field-inspector/blob/codex/signal-station/docs/watch-collection.md)
 keeps heart-interval quality and fresh-light APIs ahead of gyro experiments.
 SE compatibility does not establish Time 2 sensor behavior, or vice versa.
+
+## Foreground backlight follow-up
+
+Addon 1.6.3 holds the light while Signal Station is visible, releases it before
+losing focus or exiting, and restores it on return. Watch source:
+`6ed7f7872001f582f37c8c92112cac9a0d896fa8`. All 32 protocol tests, existing C
+harnesses and six target builds passed. Keeping the light on uses more battery.
+
+The 139,816-byte no-PKJS package has SHA-256
+`e49fdaba5fee73096a7a97790209a6e4b7108f37cab5bcd0baff93e9af9e69eb`;
+the source ZIP has SHA-256
+`ff26f08edb88b426f90597aa6d4c4322ef629cffb4668fdc10e21db402a7dd44`.
+The stock host handled the package at 22:31:43 and the sole connected Time 2
+reported the app running at 22:31:47. Subsequent app messages establish transport,
+but physical backlight illumination and automatic timeout after exit still need
+visual observation. The Android APK did not change for this follow-up.
