@@ -166,6 +166,8 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
                 SignalStartDestination.Capture -> SignalPage.Today
                 SignalStartDestination.Observe -> SignalPage.Live
                 SignalStartDestination.Ask -> SignalPage.Conversation
+                SignalStartDestination.Answers -> { ui.settingsSection = "answers"; SignalPage.Settings }
+                SignalStartDestination.Devices -> { ui.settingsSection = "devices"; SignalPage.Settings }
             }
         }
         return
@@ -189,6 +191,13 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
         if (page !in setOf(SignalPage.Today, SignalPage.Conversation, SignalPage.History) && detailId == null && !fieldTestOpen) {
             TextButton(onClick = { ui.back() }, modifier = Modifier.padding(horizontal = 8.dp)) {
                 Text("Back")
+            }
+        }
+        state.watchHandoffRecordId?.let { recordId ->
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("From your watch", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = { detailId = recordId; station.dismissWatchHandoff() }) { Text("Open full reply") }
+                TextButton(onClick = station::dismissWatchHandoff) { Text("Dismiss") }
             }
         }
         if (state.busy) {

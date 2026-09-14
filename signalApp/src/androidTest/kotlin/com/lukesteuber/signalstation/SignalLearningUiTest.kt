@@ -84,6 +84,87 @@ class SignalLearningUiTest {
         }
     }
 
+    @Test fun setupAnswersPreservesSourcesWithoutStartingCollection() {
+        val settings = readySettings().copy(onboardingComplete = false)
+        val station = LearningUiStation(baseState().copy(settings = settings))
+        show(station)
+        compose.onNodeWithText("Set up answers").performScrollTo().performClick()
+        compose.onNodeWithText("Model ID").performScrollTo().assertIsDisplayed()
+        compose.runOnIdle {
+            assertEquals(settings.copy(onboardingComplete = true), station.state.value.settings)
+            assertEquals(0, station.permissionRequests)
+            assertEquals(0, station.captures)
+            assertEquals(0, station.providerRequests)
+        }
+    }
+
+    @Test fun setupConnectPebbleReachesGuideWithoutTakingOverPairing() {
+        val station = LearningUiStation(baseState().copy(settings = readySettings().copy(onboardingComplete = false)))
+        show(station, 2f)
+        compose.onNode(hasScrollAction()).performScrollToNode(hasText("Connect a Pebble"))
+        compose.onNodeWithText("Connect a Pebble").performScrollTo().assertIsDisplayed()
+        captureFixtureScreenshot("setup-pebble-font-200.png")
+        compose.onNodeWithText("Connect a Pebble").performClick()
+        compose.onNode(hasScrollAction()).performScrollToNode(hasText("About and watch connection"))
+        compose.onNodeWithText("About and watch connection").performScrollTo().assertIsDisplayed()
+        compose.onNode(hasScrollAction()).performScrollToNode(hasText("Download page and guide"))
+        compose.onNodeWithText("Download page and guide").performScrollTo().assertIsDisplayed()
+        captureFixtureScreenshot("setup-devices-font-200.png")
+        compose.runOnIdle {
+            assertTrue(station.state.value.settings.onboardingComplete)
+            assertEquals(setOf(BATTERY), station.state.value.settings.enabled)
+            assertTrue(station.state.value.watches.isEmpty())
+            assertEquals(0, station.permissionRequests)
+            assertEquals(0, station.captures)
+            assertEquals(0, station.providerRequests)
+        }
+    }
+
+    @Test fun configuredSetupAskOpensComposerWithoutSending() {
+        val station = LearningUiStation(baseState().copy(
+            settings = readySettings().copy(onboardingComplete = false, model = "example-model"),
+            configuredProviders = setOf("openai"),
+        ))
+        show(station)
+        compose.onNodeWithText("Ask a question").performScrollTo().performClick()
+        compose.onNodeWithText("Your question").assertExists()
+        compose.runOnIdle {
+            assertTrue(station.state.value.settings.onboardingComplete)
+            assertEquals(0, station.providerRequests)
+            assertEquals(0, station.permissionRequests)
+        }
+    }
+
+    @Test fun watchHandoffOpensExactOlderReplyAndPreservesPhoneDraft() {
+        val earlier = SignalRecord("watch-reply-a", "watch-thread", NOW, "Earlier watch question",
+            answer = "The full older reply belongs to request A.", summary = "Short A", provider = "openai", model = "example-model", state = "ready")
+        val newer = earlier.copy(id = "watch-reply-b", createdAt = NOW + 1_000, question = "Newer watch question",
+            answer = "Newer reply B must not replace requested A.", summary = "Short B")
+        val station = LearningUiStation(baseState().copy(records = listOf(newer, earlier), threadId = "phone-thread"))
+        show(station)
+        compose.onNode(hasText("Ask") and hasClickAction()).performClick()
+        compose.onNodeWithText("Your question").performTextInput("Keep my unsent phone question")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        compose.runOnIdle { station.state.value = station.state.value.copy(watchHandoffRecordId = earlier.id) }
+        compose.onNodeWithText("Open full reply").assertIsDisplayed()
+        compose.onNodeWithText("Keep my unsent phone question").assertExists()
+        compose.runOnIdle { assertEquals(emptyList(), station.selectedRecordIds); assertEquals(0, station.resumes) }
+        compose.onNodeWithText("Open full reply").performClick()
+        compose.onNodeWithText(earlier.answer).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(newer.answer).assertDoesNotExist()
+        captureFixtureScreenshot("watch-handoff-exact-reply.png")
+        compose.runOnIdle {
+            assertEquals(listOf(earlier.id), station.selectedRecordIds)
+            assertEquals(null, station.state.value.watchHandoffRecordId)
+            assertEquals("phone-thread", station.state.value.threadId)
+            assertEquals(0, station.resumes)
+            assertEquals(0, station.providerRequests)
+            assertEquals(0, station.cancellations)
+        }
+        compose.onNodeWithText("Back to records").performScrollTo().performClick()
+        compose.onNodeWithText("Keep my unsent phone question").assertExists()
+    }
+
     @Test fun captureAttachesAndRemovalPreservesDraftAndConversation() {
         val station = LearningUiStation(baseState())
         show(station)
@@ -469,6 +550,9 @@ private class LearningUiStation(initial: SignalState) : SignalStation {
     var providerRequests = 0
     var observationStops = 0
     var lookupSends = 0
+    var resumes = 0
+    var cancellations = 0
+    val selectedRecordIds = mutableListOf<String>()
     var askedScope: SignalHistoryQuery? = null
     override fun openHistoryQuestion(ids: Set<String>?, compare: Boolean) { askedScope = state.value.scopedHistory.query }
     val observationStarts = mutableListOf<Pair<Int, Set<String>>>()
@@ -533,10 +617,14 @@ private class LearningUiStation(initial: SignalState) : SignalStation {
     override fun installWatchApp() = Unit
     override fun openPermissionSettings() = Unit
     override fun recordOnWatch() = Unit
-    override fun cancel() = Unit
+    override fun cancel() { cancellations++ }
     override fun newThread() { newThreads++; state.value = state.value.copy(threadId = "new-$newThreads", attachedRecords = emptyList(), questionReview = null) }
-    override fun selectRecord(id: String) = Unit
-    override fun resumeThread(id: String) = Unit
+    override fun selectRecord(id: String) {
+        selectedRecordIds += id
+        state.value = state.value.copy(selectedRecordId = id, selectedRecord = state.value.records.firstOrNull { it.id == id }, selectedRecordLoading = false)
+    }
+    override fun dismissWatchHandoff() { state.value = state.value.copy(watchHandoffRecordId = null) }
+    override fun resumeThread(id: String) { resumes++ }
     override fun attachRecord(id: String) { state.value = state.value.copy(attachedRecords = listOf(state.value.records.first { it.id == id })) }
     override fun removeAttachment(id: String) { state.value = state.value.copy(attachedRecords = state.value.attachedRecords.filterNot { it.id == id }, questionReview = null) }
     override fun compareRecords(first: String, second: String) = Unit

@@ -85,7 +85,12 @@ class MainActivity : ComponentActivity() {
                             Text("Use " + runCatching { packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString() }.getOrDefault(pkg))
                         }
                     }
-                    Text("Watch installation is still paused while the earlier settings-wipe report is investigated. Existing pairing stays in your Pebble app.", style = MaterialTheme.typography.bodySmall)
+                    Text("The watch app is still in testing. Install Signal Station on the watch, then return here to choose the Pebble app that already manages it. Signal Station for Android keeps full replies and uses your saved answer setup.", style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = {
+                        val guide = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://dr.eamer.dev/downloads/apps/signal-station/"))
+                        if (runCatching { startActivity(guide) }.isFailure)
+                            connectionError = "Could not open the guide. Visit dr.eamer.dev/downloads/apps/signal-station/ in your browser."
+                    }, enabled = !selecting) { Text("Watch download and setup guide") }
                 } },
                 confirmButton = { TextButton(enabled = !selecting, onClick = { showWatch = false }) { Text("Done") } },
                 dismissButton = { TextButton(enabled = !selecting, onClick = { selectWatchApp(null) }) { Text("Disconnect Signal Station") } },

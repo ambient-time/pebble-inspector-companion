@@ -139,6 +139,20 @@ function createClient(options) {
       if (p.RequestType === 'clear') { cancel(); return native('POST', 'clear', {}, function () { sync(); }); }
       if (p.RequestType === 'settings') return native('POST', 'settings', {});
       if (!requestId(p.RequestId)) return;
+      if (p.RequestType === 'continue-phone') {
+        var reply = active;
+        if (!reply || reply.id !== p.RequestId || !reply.text || reply.history || !reply.terminal) {
+          return send({RequestId:p.RequestId, Command:'phone-handoff', StatusText:'Reply unavailable. Find it in phone History.'});
+        }
+        if (reply.handoffPending) return;
+        reply.handoffPending = true;
+        native('POST', 'continue-phone', {request_id:reply.id}, function (err) {
+          if (!valid(reply)) return;
+          reply.handoffPending = false;
+          send({RequestId:reply.id, Command:'phone-handoff', StatusText:err ? 'Could not prepare reply. Retry or open phone History.' : 'Open Signal Station on phone, then tap Open full reply.'});
+        });
+        return;
+      }
       if (p.RequestType === 'cancel') { if (active && active.id === p.RequestId) cancel(); return; }
       if (p.RequestType === 'confirm-wake') {
         var review = active;

@@ -112,6 +112,7 @@ data class SignalState(
     val status: String = "Ask a question, or capture readings to explore later.",
     val threadId: String = "",
     val selectedRecordId: String? = null,
+    val watchHandoffRecordId: String? = null,
     val configuredProviders: Set<String> = emptySet(),
     val weatherPlaces: List<SignalPlace> = emptyList(),
     val weatherSearchStatus: String = "",
@@ -172,6 +173,7 @@ interface SignalStation {
     fun recordOnWatch()
     fun cancel()
     fun newThread()
+    fun dismissWatchHandoff() {}
     fun selectRecord(id: String)
     fun loadConversation() = Unit
     fun resumeThread(id: String)

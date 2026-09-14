@@ -1577,6 +1577,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
     override fun dismissDeletion() { mutable.update { it.copy(deletionPreview = null) }; refreshLearning() }
 
     override fun newThread() { cancel(); dismissSavedQuestion(); attachments = emptySet(); mutable.update { it.copy(threadId = id(), selectedRecordId = null, status = "New conversation.") } }
+    override fun dismissWatchHandoff() { mutable.update { it.copy(watchHandoffRecordId = null) } }
     override fun selectRecord(id: String) {
         mutable.update { it.copy(selectedRecordId = id, selectedRecord = null, selectedRecordLoading = true) }
         scope.launch { val record = withContext(Dispatchers.IO) { store.record(id) }; mutable.update { if (it.selectedRecordId == id) it.copy(selectedRecord = record, selectedRecordLoading = false, status = if (record == null) "This evidence is no longer available." else it.status) else it } }
@@ -1769,6 +1770,18 @@ open class AndroidSignalStation(private val context: Context, protected val watc
                 if (record == null && !(activeRequest == request && activeWatch == watch)) return@withContext SignalWatchResponse("{}", 404)
                 response { put("state", if (record == null || record.state == "working") "working" else if (record.state == "ready") "ready" else "error");
                     put("text", record?.summary.orEmpty()); put("status", if (record == null || record.state == "working") phase else record.state) }
+            }
+            "continue-phone" -> {
+                val record = wireResults[request]?.takeIf { it.first == watch }?.second
+                    ?.takeIf { it.state == "ready" && it.id !in deletedIds }
+                    ?: return@withContext SignalWatchResponse("{}", 404)
+                val saved = withContext(Dispatchers.IO) { store.record(record.id) }
+                // Revalidate after storage suspension; no navigation, inference or draft mutation.
+                if (!trusted(session) || runners[watch] !== session || watch != mutable.value.settings.watchId ||
+                    saved == null || saved.state != "ready" || saved.id in deletedIds)
+                    return@withContext SignalWatchResponse("{}", 404)
+                mutable.update { it.copy(watchHandoffRecordId = saved.id) }
+                response { put("state", "ready") }
             }
             "confirm-wake" -> {
                 if (request == null || !connected.appOpen) return@withContext SignalWatchResponse("{}", 409)

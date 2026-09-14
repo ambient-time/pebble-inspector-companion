@@ -80,3 +80,24 @@ separate Android installation and links the Store with its availability caveat.
 The private watch repository holds the publication receipt and media manifest.
 
 All 100 exact public-byte checks passed across dr.eamer.dev and lukesteuber.com, including the new watch package, source, guide and media. Next: verify a physical install-to-chat path and a long reply continued on Android; consider a direct conversation handoff and a reading-specific backlight timeout after that probe.
+
+
+September 14 continuation follow-up:
+
+Watch 1.6.6 adds Hold Select on a displayed reply. The authenticated bridge binds
+that request to its saved record and offers Open full reply in the Android app.
+It does not launch the phone, change its conversation, cancel work or send a
+provider request. Opening the exact local record preserves unsent drafts; Resume
+conversation remains explicit. The handoff is in memory; after process restart,
+cache eviction or deletion, use History. Backlight remains on throughout app
+focus and returns to automatic behavior on focus loss or exit.
+
+Setup now routes directly to Answers or Connected devices, with no automatic
+permission request, collection or provider test. Stale installation-pause wording
+was replaced with the current download guide and still-in-testing description.
+
+Measured: 223 host tests (six existing skips), 34 watch protocol tests, actual C
+button/backlight/collector checks and Markdown sanitizers; Android lint and five
+focused emulator tests passed. These include older-reply identity, stale-session
+and deletion rejection, draft preservation, and setup at 200% text. Native
+six-target builds passed; physical handoff and battery use remain unmeasured.

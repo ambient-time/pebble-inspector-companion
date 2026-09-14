@@ -19,7 +19,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.input.KeyboardType
 
-internal enum class SignalStartDestination { Capture, Observe, Ask }
+internal enum class SignalStartDestination { Capture, Observe, Ask, Answers, Devices }
 
 @Composable
 private fun LearningHeading(text: String) {
@@ -47,7 +47,7 @@ internal fun SignalLearningSetup(state: SignalState, station: SignalStation, onC
         item {
             SignalAntennaGlyph()
             Text("Signal Station", Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineLarge)
-            Text("Collect readings, inspect what changed, and ask about your evidence.", style = MaterialTheme.typography.titleMedium)
+            Text("Chat on your phone or Pebble, collect readings, and ask about what changed.", style = MaterialTheme.typography.titleMedium)
         }
         if (destination == null) {
             item {
@@ -59,7 +59,19 @@ internal fun SignalLearningSetup(state: SignalState, station: SignalStation, onC
                 Text("Choose readings to save on this phone. No provider key is needed.", style = MaterialTheme.typography.bodySmall)
                 OutlinedButton(onClick = { destination = SignalStartDestination.Observe }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Around me") }
                 Text("View temporary Wi-Fi and Bluetooth readings. Save a snapshot when useful.", style = MaterialTheme.typography.bodySmall)
-                TextButton(onClick = { complete(SignalStartDestination.Ask) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Ask a question") }
+                TextButton(onClick = { complete(if (state.settings.provider in state.configuredProviders && state.settings.model.isNotBlank()) SignalStartDestination.Ask else SignalStartDestination.Answers) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                    Text(if (state.settings.provider in state.configuredProviders && state.settings.model.isNotBlank()) "Ask a question" else "Set up answers")
+                }
+                Text("Choose a provider and model, then save your provider key. Chat works without selecting any sensor readings. Saving your key does not send a question.", style = MaterialTheme.typography.bodySmall)
+            }
+            item {
+                Card { Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LearningHeading("Add a Pebble when ready")
+                    Text("This Android app keeps your full replies and handles requests to your chosen model. The optional watch app lets you ask from your wrist and read a compact reply.")
+                    Text("1. Pair your watch in its usual Pebble app.\n2. Install the Signal Station watch app from the download guide.\n3. Open Connected devices here, choose your Pebble app and watch, then tap Check connection.")
+                    OutlinedButton(onClick = { complete(SignalStartDestination.Devices) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Connect a Pebble") }
+                    Text("Your existing pairing stays in the Pebble app. Phone features work without a watch.", style = MaterialTheme.typography.bodySmall)
+                } }
             }
             item { TextButton(onClick = { complete(SignalStartDestination.Capture) }) { Text("Skip to app") }; Text("History stays here until you delete it. Learning and background observation are separate choices. A model receives your question and selected context only when you send a request.", style = MaterialTheme.typography.bodySmall) }
         } else if (!sourcesSaved) {

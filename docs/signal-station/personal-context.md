@@ -47,6 +47,14 @@ Source, provider or evidence changes can require a fresh review.
 On a supported Pebble, press the **middle right button (Select)** for **Ask**.
 Dictate a question, confirm the transcript when that setting is enabled, and
 read the short reply on your wrist. Up/Down scroll; Back cancels or returns home.
+Hold **Select** while reading a reply, then open Signal Station on your phone
+and tap **Open full reply**. This opens that exact saved reply, even if a newer
+one exists, without replacing an unsent phone draft. Choose **Resume conversation**
+when you want to continue it. The handoff is kept while the phone app is running;
+if the app restarts or the reply is no longer available, find it in **History**.
+The watch backlight stays on while the app is active and returns to automatic
+behavior when it loses focus or closes.
+
 The full answer and conversation are on the phone. Watch dictation depends on
 the watch and your existing Pebble app. Pressing Ask is distinct from Capture:
 use the phone's attachment controls when you want to choose saved readings for a
