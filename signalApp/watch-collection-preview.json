@@ -1,7 +1,7 @@
 {
-  "version": "1.6.0",
+  "version": "1.6.2",
   "uuid": "e2fd86ec-dfb8-460c-afc1-ebe4d071657a",
-  "sourceCommit": "62daf0a2699e26110f2af002b11916f6a48a7b07",
+  "sourceCommit": "df62defa6614e5d90d6a2195fe37569fd0830bf8",
   "targets": [
     "basalt",
     "chalk",

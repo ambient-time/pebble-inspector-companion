@@ -59,13 +59,19 @@ internal fun SignalSourcesPage(state: SignalState, station: SignalStation, onSet
                     Text("$group · ${sources.count { it.key in state.settings.enabled }}/${sources.size} selected")
                 }
                 if (open) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = { station.updateSettings(state.settings.copy(enabled = state.settings.enabled + sources.filter { it.available }.map { it.key })) }, enabled = !state.busy) { Text("Enable $group") }
+                    TextButton(onClick = { station.updateSettings(state.settings.copy(enabled = state.settings.enabled + sources.filter { it.available && it.key != SignalWatchHistory.KEY }.map { it.key })) }, enabled = !state.busy) {
+                        Text(if (sources.any { it.key == SignalWatchHistory.KEY }) "Enable other sources" else "Enable $group")
+                    }
                     TextButton(onClick = { station.updateSettings(state.settings.copy(enabled = state.settings.enabled - sources.map { it.key }.toSet())) }, enabled = !state.busy) { Text("Disable $group") }
                 }
             }
             if (group in expanded) items(sources, key = { "source:${it.key}" }) { source ->
                 SignalToggle(source.name, source.key in state.settings.enabled, !state.busy,
-                    if (source.available) null else "Currently unavailable on this device") { enabled ->
+                    when {
+                        source.key == SignalWatchHistory.KEY -> SignalWatchHistory.description
+                        source.available -> null
+                        else -> "Currently unavailable on this device"
+                    }) { enabled ->
                     station.updateSettings(state.settings.copy(enabled = if (enabled) state.settings.enabled + source.key else state.settings.enabled - source.key))
                 }
                 state.sourceStatus.firstOrNull { it.key == source.key && source.key in state.settings.enabled }?.let {

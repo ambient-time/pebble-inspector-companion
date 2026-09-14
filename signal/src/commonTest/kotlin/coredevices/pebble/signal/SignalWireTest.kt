@@ -115,6 +115,24 @@ class SignalWireTest {
         assertNull(SignalWatchValidation.validate(reading, setOf("watch.motion"), enabled, at))
     }
 
+    @Test fun actualCClippedHistoryRetainsCompletedMinutesAndSdkProvenance() {
+        // Production C serializer, qemu_tail regression case; all readings are synthetic.
+        val payload = Json.parseToJsonElement("""[{"key":"watch.minute_history","source":"watch","value":{"schema":1,"requested_minutes":15,"returned_minutes":10,"valid_minutes":10,"requested_start_ms":1789343100000,"requested_end_ms":1789344000000,"columns":["steps","vmc","orientation","light","heart_rate_bpm"],"minutes":[[255,65535,255,4,255],[255,65535,255,4,255],[255,65535,255,4,255],[255,65535,255,4,255],[255,65535,255,4,255],[255,65535,255,4,255],[255,65535,255,4,255],[255,65535,255,4,255],[255,65535,255,4,255],[255,65535,255,4,255]]},"unit":"minute_records","collectedAt":1789344037000,"status":"available","period":"recent_15_minutes","windowStart":1789343400000,"windowEnd":1789344000000,"measuredAt":1789344000000,"fields":{"reason":"history_window_clipped","sdk_returned_minutes":"11","sdk_window_start_s":"1789343400","sdk_window_end_s":"1789344060","excluded_after_requested_minutes":"1"}}]""")
+        val at = 1_789_344_038_000L
+        val keys = setOf(SignalWatchHistory.KEY)
+        val wire = assertNotNull(SignalWire.observations(payload, at)).single()
+        val result = assertNotNull(SignalWatchValidation.validate(wire, keys, keys, at))
+        val history = assertNotNull(SignalWatchHistory.parse(result))
+        assertEquals(10, history.minutes.size)
+        assertEquals(10, history.validMinutes)
+        assertEquals(1_789_344_000_000L, result.windowEnd)
+        assertEquals(result.windowEnd, result.measuredAt)
+        assertEquals("history_window_clipped", result.fields["reason"])
+        assertEquals("11", result.fields["sdk_returned_minutes"])
+        assertEquals("1", result.fields["excluded_after_requested_minutes"])
+        assertContains(assertNotNull(SignalWatchHistory.describe(result)), "5 missing")
+    }
+
     @Test fun actualCEmptyInvalidAndMotionOutputsRetainTheirTimingMeaning() {
         val fixtures = listOf(
             """[{"key":"watch.motion","source":"watch","value":{"samples":2,"mean_x":0,"mean_y":0,"mean_z":1000,"peak_abs_axis":1000,"variance_mg2":250000,"received_samples":6,"vibration_excluded":1,"timestamp_rejected":3,"capacity_excluded":0,"first_sample_ms":1789344037025,"last_sample_ms":1789344037125,"requested_hz":10,"requested_duration_ms":5000,"timing":"sdk_epoch_ms"},"unit":"mg","collectedAt":1789344037000,"status":"fresh","period":"5_second_sample","windowStart":1789344037025,"windowEnd":1789344037125,"measuredAt":1789344037125}]""",
