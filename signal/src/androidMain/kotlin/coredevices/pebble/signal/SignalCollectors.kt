@@ -57,6 +57,7 @@ class SignalCollectors(private val context: Context) {
         SignalSource("watch.motion", "Watch motion", "Watch"),
         SignalSource("watch.compass", "Watch compass", "Watch"),
         SignalSource("watch.battery", "Watch battery", "Watch"),
+        SignalWatchHistory.source,
     ) + SignalWeather.sources + SignalPresence.sources + SignalContext.sources + listOf("steps", "active_seconds", "distance", "active_calories", "resting_calories", "sleep", "restful_sleep", "heart_rate", "activity")
         .map { SignalSource("health.$it", it.replace('_', ' ').replaceFirstChar(Char::uppercase), "Health") } +
         sensors.getSensorList(Sensor.TYPE_ALL).distinctBy { it.type }.map { SignalSource("sensor.${it.type}", it.name, "Sensors") }

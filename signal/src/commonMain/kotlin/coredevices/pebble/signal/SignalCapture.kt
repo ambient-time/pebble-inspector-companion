@@ -6,7 +6,10 @@ import kotlin.time.Instant
 
 object SignalCapture {
     fun summary(readings: List<SignalObservation>, omitted: Int = 0): String {
-        val available = readings.count { it.status in setOf("available", "fresh") }
+        val available = readings.count { reading ->
+            SignalWatchHistory.coverage(reading)?.let { it == "recorded for a period" }
+                ?: (reading.status in setOf("available", "fresh"))
+        }
         return "Capture saved on phone.\n${readings.size} readings; $available available, ${readings.size - available} unavailable or partial." +
             (if (omitted > 0) "\n$omitted readings omitted by the size limit." else "") +
             (if (readings.isEmpty()) "\nChoose sources in phone Settings to collect readings." else "") +

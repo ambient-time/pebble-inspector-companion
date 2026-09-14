@@ -150,6 +150,7 @@ object SignalHistory {
         "location" to listOf("location", "coordinates"), "device" to listOf("device"),
         "device.battery" to listOf("battery"), "watch.battery" to listOf("battery"), "device.charging" to listOf("charging"),
         "sensor" to listOf("sensors", "motion", "pressure", "light", "temperature"), "watch.motion" to listOf("motion"),
+        SignalWatchHistory.KEY to listOf("minute history", "watch history", "movement", "orientation", "light", "heart rate"),
     )
     private val stopWords = setOf("what", "when", "where", "which", "with", "from", "have", "has", "history", "compare", "about", "show", "this", "that", "these", "those", "the", "and", "for", "how", "was", "were", "been", "doing", "did", "does", "look", "tell", "saved", "records", "survey", "surveys", "today", "yesterday", "last", "past", "days", "day", "week", "since", "before", "after", "until", "through", "between", "all", "recent", "recently", "lately")
 }

@@ -4,6 +4,13 @@ By Luke Steuber. September 10, 2026.
 
 Status: planning complete after code inspection, prior-art research and independent planning/release reviews. All implementation, device testing and publication below are planned, not completed by this document.
 
+September 13 update: the bounded [watch collection increment](watch-collection.md)
+implements optional 15-minute Health history and improved motion variation/timing,
+with companion ingestion and host validation. It also links the firmware roadmap
+for heart-interval quality, fresh light, gyro, Duo pressure and offline delivery.
+Its evidence is separate from the September 10 baseline and the wider release
+checklist below; physical watch acceptance and firmware changes remain open.
+
 ## Outcome and scope
 
 Make Signal Station useful as an Android field notebook: capture reliable observations, understand the surrounding place and radio environment, compare changes locally, and ask a chosen language model about reviewed evidence. Keep the phone useful on its own. The watch remains a collection trigger and quick-feedback surface through the user's existing Pebble app.

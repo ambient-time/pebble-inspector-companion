@@ -664,7 +664,8 @@ private fun SignalDetail(
                 Text(name, style = MaterialTheme.typography.titleMedium)
                 if (reading.metric.isNotBlank()) Text(reading.metric.replace('_', ' ').replace('.', ' '), style = MaterialTheme.typography.labelLarge)
                 val value = reading.number?.takeIf { it.isFinite() }?.toString() ?: reading.boolean?.toString() ?: reading.value
-                SelectionContainer { Text(if (value.isBlank()) reading.status.replace('_', ' ') else "$value ${reading.unit}".trim()) }
+                val watchDescription = SignalWatchHistory.describe(reading) ?: signalWatchMotionDescription(reading)
+                SelectionContainer { Text(watchDescription ?: if (value.isBlank()) reading.status.replace('_', ' ') else "$value ${reading.unit}".trim()) }
                 if (reading.value.isNotBlank() && reading.value != value && (reading.number == null || reading.value.toDoubleOrNull() != reading.number)) {
                     SelectionContainer { Text(reading.value, style = MaterialTheme.typography.bodySmall) }
                 }
@@ -877,12 +878,18 @@ private fun SignalConfiguration(state: SignalState, station: SignalStation, onMa
                     Text("$group · ${sources.count { it.key in settings.enabled }} selected · ${if (expanded) "Hide" else "Choose"}")
                 }
                 if (expanded) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = { station.updateSettings(settings.copy(enabled = settings.enabled + sources.filter { it.available }.map { it.key })) }, enabled = !state.busy) { Text("Enable $group") }
+                    TextButton(onClick = { station.updateSettings(settings.copy(enabled = settings.enabled + sources.filter { it.available && it.key != SignalWatchHistory.KEY }.map { it.key })) }, enabled = !state.busy) {
+                        Text(if (sources.any { it.key == SignalWatchHistory.KEY }) "Enable other sources" else "Enable $group")
+                    }
                     TextButton(onClick = { station.updateSettings(settings.copy(enabled = settings.enabled - sources.map { it.key }.toSet())) }, enabled = !state.busy) { Text("Disable $group") }
                 }
             }
             if (group in expandedGroups) items(sources, key = { it.key }) { source ->
-                SignalToggle(source.name, source.key in settings.enabled, !state.busy, if (source.available) null else "Unavailable on this device or permission not granted") { enabled ->
+                SignalToggle(source.name, source.key in settings.enabled, !state.busy, when {
+                    source.key == SignalWatchHistory.KEY -> SignalWatchHistory.description
+                    !source.available -> "Unavailable on this device or permission not granted"
+                    else -> null
+                }) { enabled ->
                     station.updateSettings(settings.copy(enabled = if (enabled) settings.enabled + source.key else settings.enabled - source.key))
                 }
                 if (source.key in settings.enabled) state.sourceStatus.firstOrNull { it.key == source.key && !signalSourceNeedsAttention(it) }?.let {

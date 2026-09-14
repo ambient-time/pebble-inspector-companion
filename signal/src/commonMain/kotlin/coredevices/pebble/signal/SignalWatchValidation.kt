@@ -11,7 +11,9 @@ object SignalWatchValidation {
         if (value.key !in supported || value.key !in enabled || value.source != "watch" ||
             value.value.encodeToByteArray().size > 1000 || value.unit.length > 32 ||
             value.status !in setOf("fresh", "available", "unavailable", "permission_denied", "timestamp_unknown", "calibrating", "not_supported", "not_available") ||
-            value.period !in setOf("current", "today", "day", "last_completed_sleep", "last_completed_sleep_2h_heuristic", "5_second_sample")) return null
+            (value.period !in setOf("current", "today", "day", "last_completed_sleep", "last_completed_sleep_2h_heuristic", "5_second_sample") &&
+                !(value.key == SignalWatchHistory.KEY && value.period == SignalWatchHistory.PERIOD))) return null
+        if (value.key == SignalWatchHistory.KEY && !SignalWatchHistory.validate(value, received)) return null
         val earliest = received - 10L * 24 * 60 * 60 * 1000
         if (value.measuredAt != null && value.measuredAt !in earliest..(received + 60_000)) return null
         if (value.windowStart != null && value.windowStart !in earliest..(received + 60_000)) return null

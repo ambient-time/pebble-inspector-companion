@@ -4,7 +4,7 @@ package coredevices.pebble.signal
 internal fun signalObservationCoverage(record: SignalRecord): String {
     if (record.observations.isEmpty()) return "No readings saved."
     val groups = record.observations.filter { it.metric != "coverage" }.groupingBy { reading ->
-        when (reading.status) {
+        SignalWatchHistory.coverage(reading) ?: when (reading.status) {
             "estimate", "coarse_estimate", "candidate", "modeled", "forecast" -> "estimated or modeled"
             "cached", "stale" -> "older or cached"
             "partial" -> "partial"
