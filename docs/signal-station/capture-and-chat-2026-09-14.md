@@ -39,3 +39,19 @@ separately in the release toolkit's build 15 receipt.
 Raw test output is outside Git under
 `/Volumes/Galactus/drummer/signal-station/capture-chat-20260914/` and adjacent
 `capture-budget-*-20260914.log` files. No device readings are in this document.
+
+## Connected-phone update
+
+The final APK was installed over the existing preview on the Pixel 9a. Its
+installed SHA-256 matches the published build 15 artifact. All 65 previous
+encrypted history records remained byte-identical; the post-update snapshot
+contained 66 records. The prior ongoing five-minute recording was stopped
+cleanly before installation. Screen control paused when the owner resumed using
+another app, so restarting that recording remains a separate follow-up.
+
+The download page and public guide are live on Drummer. All 28 checked responses
+across dr.eamer.dev and lukesteuber.com matched staged hashes, including the APK,
+source archive, guide, sidecars, discovery metadata and unchanged watch files.
+The browser showed build 15 and the new chat section. Both native repositories
+remain private. This verifies an in-place phone upgrade and publication; it does
+not establish a new physical watch-button capture or a background battery soak.
