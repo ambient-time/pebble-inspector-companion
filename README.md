@@ -1,4 +1,26 @@
-# Pebble Mobile app
+# Signal Station
+
+Chat with your chosen language model on Android or from a Pebble watch. Ask a
+question, continue the conversation, or attach selected sensor readings and
+saved history for context. Chat works without taking a capture. The phone keeps
+full answers and conversations; the watch offers dictation and short replies
+where supported.
+
+Signal Station is a separate Android app that works alongside the existing
+Pebble app. It also acts as a local field notebook: capture selected readings,
+compare changes, and run configurable recording sessions. Provider keys and
+history stay in protected phone storage; reviewed chat requests go to the
+provider you choose. The optional watch app is still in testing.
+
+- [Download Signal Station and the Pebble app](https://dr.eamer.dev/downloads/apps/signal-station/)
+- [User guide: chat, captures, history and recording](docs/signal-station/personal-context.md)
+- Standalone Android app: `signalApp/`; feature implementation: `signal/`.
+
+The following documentation describes the upstream Pebble mobile source from
+which this repository was forked. Signal Station's Android installer is built
+with `:signalApp:assembleDebug` for the current development preview.
+
+## Upstream Pebble Mobile app
 
 Welcome to the official source code for the Pebble mobile app. Download the app from the [iOS Appstore](https://apps.apple.com/us/app/pebble-core/id6743771967) or [Google Play](https://play.google.com/store/apps/details?id=coredevices.coreapp&hl=en_US). The app is entirely open source. 
 

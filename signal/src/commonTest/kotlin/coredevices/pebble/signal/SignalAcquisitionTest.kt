@@ -23,6 +23,15 @@ class SignalAcquisitionTest {
             assertTrue(budget.coverage.all { it.observed == it.retained + it.omitted })
         }
     }
+    @Test fun tightBudgetKeepsMotionVariabilityBeforeAxisDetailWithoutStarvingOtherSources() {
+        val motion = SignalSensorFeatures.observations("sensor.1", "android.sensor.accelerometer", "m/s²",
+            listOf(SignalSensorSample(listOf(1.0, 2.0, 3.0), 10, 3), SignalSensorSample(listOf(2.0, 3.0, 4.0), 20, 3)), 21)
+        val rows = motion + reading("watch.battery") + reading("location")
+        val budget = SignalBudget.retain(rows, 3)
+        assertEquals(setOf("sensor.1", "watch.battery", "location"), budget.observations.map { it.key }.toSet())
+        assertEquals("magnitude.stddev", budget.observations.single { it.key == "sensor.1" }.metric)
+        assertEquals(rows.size - 3, budget.omitted)
+    }
     @Test fun oversizedReadingDoesNotEvictSmallMeasurementsAndProbeOmissionsSurvive() {
         val rows = listOf(reading("bluetooth", "x".repeat(100)), reading("location", "fix"),
             reading("wifi", "summary").copy(fields = mapOf("omitted" to "11")))

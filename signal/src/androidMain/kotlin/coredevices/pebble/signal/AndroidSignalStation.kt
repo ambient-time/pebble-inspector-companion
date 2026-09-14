@@ -841,7 +841,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
         } else emptyList()
         ensureActiveToken(token)
         val eligibleReadings = collectedReadings.filter { it.key in settings.enabled }
-        val budget = SignalBudget.retain(eligibleReadings, 200, 80 * 1024) { json.encodeToString(it).toByteArray().size }
+        val budget = if (captureOnly) SignalCapture.retain(eligibleReadings) else SignalBudget.retain(eligibleReadings, 200, 80 * 1024) { json.encodeToString(it).toByteArray().size }
         val readings = budget.observations
         val omittedReadings = budget.omitted
         val priorCandidates = if (history || captureOnly) emptyList() else withContext(Dispatchers.IO) { store.thread(record.threadId, 100).filter { it.id != record.id && it.state == "ready" && it.provider == settings.provider && it.model == settings.model && it.endpoint == settings.endpoint }.take(10).reversed() }
@@ -853,7 +853,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
         save(record, token)
         ensureActiveToken(token)
         if (captureOnly) {
-            val summary = SignalCapture.summary(readings, omittedReadings)
+            val summary = SignalCapture.summary(budget)
             val saved = record.copy(answer = summary, summary = summary, state = "ready")
             save(saved, token)
             ensureActiveToken(token)
@@ -1019,9 +1019,9 @@ open class AndroidSignalStation(private val context: Context, protected val watc
         }
         currentCoroutineContext().ensureActive()
         if (ticket != observationGeneration || pendingSession?.id != id) return
-        val budget = SignalBudget.retain(readings, 200, 80 * 1024) { json.encodeToString(it).toByteArray().size }
+        val budget = SignalCapture.retain(readings)
         val record = SignalLearning.normalize(SignalRecord(this.id(), "observation:$id", now(), "Observation session sample", provider = "local", model = "", watchId = settings.watchId,
-            answer = SignalCapture.summary(budget.observations, budget.omitted), summary = SignalCapture.summary(budget.observations, budget.omitted), state = "ready", observations = budget.observations,
+            answer = SignalCapture.summary(budget), summary = SignalCapture.summary(budget), state = "ready", observations = budget.observations,
             coverage = budget.coverage, sourceKeys = readings.map { it.key }.toSet(), kind = "observation", sessionId = id))
         persistence.withLock {
             if (ticket != observationGeneration || pendingSession?.id != id) return@withLock
@@ -1038,7 +1038,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
                 attempts = old.attempts + 1, captures = old.captures + 1,
                 status = if (changes != null) "Sample and local change analysis saved. Missing readings remain unknown." else "Sample saved. Missing readings remain unknown.")
             withContext(Dispatchers.IO) { store.session(next) }
-            mutable.update { it.copy(observationSession = next, records = (listOfNotNull(changes, record) + it.records).take(200)) }
+            mutable.update { it.copy(observationSession = next, status = next.status, records = (listOfNotNull(changes, record) + it.records).take(200)) }
         }
         collectionDiagnostics(budget.observations, acquisitionStarted, "${session.mode}; wifi=${if (decision.activeWifi) "active_allowed" else "passive"}; deferred=${decision.deferred.size}")
         if (selected.any { it.startsWith("healthconnect.") } && now() - observationLastHealth >= 15 * 60_000L) {

@@ -2,10 +2,43 @@
 
 By Luke Steuber.
 
-Signal Station saves observations about your surroundings and helps you make
-sense of them over time. Your phone is enough. The optional Pebble preview uses
+Signal Station is a chat app and a field notebook. Talk with your chosen language
+model, ask follow-up questions, and optionally bring selected readings or saved
+history into the conversation. You can chat without taking a capture. Your phone
+is enough. The optional Pebble preview uses
 the Pebble app you already have. The watch app is still in testing; a Time 2
 and Pixel 9a have completed a physical capture trial.
+
+## Chat on your phone or Pebble
+
+Open **Ask** to start a conversation. Type a general question, brainstorm an idea,
+ask for an explanation, or discuss something you have saved. For example: “Help
+me think through a weekend project,” “Explain that more simply,” or, with two
+captures attached, “What changed between these stops?” You do not have to enable
+sensors or record a session to use chat.
+
+Choose your provider and model in Settings and add your own key. Supported
+connections include OpenAI, Anthropic, Gemini, xAI, OpenRouter and a compatible
+custom HTTPS chat endpoint. Provider usage charges apply. **Review question**
+shows the outgoing text, recent conversation turns, selected readings and any
+selected memories before **Send**. Removing an attachment changes the next
+request without deleting its saved capture. Full replies render as Markdown.
+
+Continue in the same conversation to ask follow-up questions. Recent eligible
+turns and attached evidence provide context within the request budget; very long
+conversations are not included in full. Open a saved conversation to continue it,
+or start a new one for a different subject. Save a useful question to reuse it.
+Source, provider or evidence changes can require a fresh review.
+
+On a supported Pebble, press the **middle right button (Select)** for **Ask**.
+Dictate a question, confirm the transcript when that setting is enabled, and
+read the short reply on your wrist. Up/Down scroll; Back cancels or returns home.
+The full answer and conversation are on the phone. Watch dictation depends on
+the watch and your existing Pebble app. Pressing Ask is distinct from Capture:
+use the phone's attachment controls when you want to choose saved readings for a
+question. Phone chat works independently of the watch.
+
+## Capture and record
 
 Start on **Now**. **Capture now** saves a moment and attaches it in Ask.
 Choose **Ask about this** on the saved observation to open an editable question.
@@ -13,6 +46,16 @@ The capture summary distinguishes readings that were fresh when collected,
 older or cached readings, estimates, partial results and missing sources. Imported
 period records retain their measurement dates. Inspect readings for exact times;
 a saved capture is not a live measurement.
+A local capture has a separate allowance from a chat request: up to 2,048
+readings and 1 MiB of serialized reading data. Broad captures can therefore keep
+more detail on the phone while chat uses a smaller reviewed excerpt. Under
+budget pressure, motion variability is retained before optional axis detail.
+The watch receives a short receipt, not the complete capture. A “phone capture
+limit” notice means some readings were not saved; a scan-retention notice means
+additional radio results exceeded the collector's bounded scan. Inspect source
+coverage in phone History. Increasing local retention does not remove radio
+scan limits or establish complete coverage.
+
 Use **Record over time** for a finite session or **Ongoing · until stopped**.
 Choose a fixed interval from 1 to 1,440 minutes, or use an adaptive schedule.
 Select the sources for that session; expanding its source list does not enable

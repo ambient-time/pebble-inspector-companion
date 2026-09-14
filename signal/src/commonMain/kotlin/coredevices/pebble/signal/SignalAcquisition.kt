@@ -18,7 +18,7 @@ object SignalAcquisitionPlan {
     fun visible(readings: List<SignalObservation>, enabled: Set<String>) = readings.filter { it.key in enabled }
 }
 
-data class SignalBudgetResult(val observations: List<SignalObservation>, val coverage: List<SignalSourceCoverage>) {
+data class SignalBudgetResult(val observations: List<SignalObservation>, val coverage: List<SignalSourceCoverage>, val collectorOmitted: Int = 0) {
     val omitted: Int get() = coverage.sumOf { it.omitted }
 }
 
@@ -27,7 +27,15 @@ object SignalBudget {
     fun retain(readings: List<SignalObservation>, limit: Int, maxBytes: Int = Int.MAX_VALUE,
                size: (SignalObservation) -> Int = { 0 }): SignalBudgetResult {
         require(limit >= 0)
-        val groups = readings.sortedBy { it.key }.groupBy { it.key }
+        val groups = readings.sortedBy { it.key }.groupBy { it.key }.mapValues { (_, rows) ->
+            // Keep useful motion features before optional per-axis detail under pressure.
+            // Stable sorting preserves radio slots and the original order of equal priorities.
+            rows.sortedBy { row -> when {
+                row.key.startsWith("sensor.") && row.metric == "magnitude.stddev" -> 0
+                row.key.startsWith("sensor.") && row.metric == "magnitude.mean" -> 1
+                else -> 2
+            } }
+        }
         val retained = mutableListOf<SignalObservation>()
         var offset = 0
         var bytes = 0L
@@ -42,6 +50,7 @@ object SignalBudget {
             offset++
         }
         val counts = retained.groupingBy { it.key }.eachCount()
+        val collectorOmitted = readings.sumOf { it.fields["omitted"]?.toIntOrNull()?.coerceIn(0, 100_000) ?: 0 }
         return SignalBudgetResult(retained, groups.map { (key, rows) ->
             val kept = counts[key] ?: 0
             // Probe-level truncation is additional to the attachment's fair budget.
@@ -49,7 +58,7 @@ object SignalBudget {
             SignalSourceCoverage(key, rows.size + probeOmitted, kept, rows.size - kept + probeOmitted,
                 attempted = rows.any { it.status !in setOf("disabled", "rate_limited", "deferred", "background_unavailable", "lookup_not_requested") },
                 status = if (kept < rows.size || probeOmitted > 0) "partial" else rows.firstOrNull()?.status ?: "unavailable")
-        })
+        }, collectorOmitted)
     }
 }
 

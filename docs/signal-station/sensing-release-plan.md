@@ -29,6 +29,8 @@ watch-motion quality, stale recording status and release-descriptor drift.
 Screen-off/Stop/restart reliability remains a measured evidence gap. No new
 feature or firmware implementation was started by that review.
 
+September 14 capture follow-up: [build 15 implementation and validation](capture-and-chat-2026-09-14.md) separates local retention from chat excerpts, prioritizes motion variability, clarifies omission receipts and documents chat as a primary use. Reused-measurement comparison and the longer lifecycle/physical-motion probes remain open.
+
 ## Outcome and scope
 
 Make Signal Station useful as an Android field notebook: capture reliable observations, understand the surrounding place and radio environment, compare changes locally, and ask a chosen language model about reviewed evidence. Keep the phone useful on its own. The watch remains a collection trigger and quick-feedback surface through the user's existing Pebble app.

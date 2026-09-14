@@ -3,17 +3,28 @@ package coredevices.pebble.signal
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Instant
+import kotlinx.serialization.json.Json
 
 object SignalCapture {
-    fun summary(readings: List<SignalObservation>, omitted: Int = 0): String {
+    // Local originals are independent of the much smaller model/context allowance.
+    const val MAX_READINGS = 2048
+    const val MAX_READING_BYTES = 1024 * 1024
+    private val json = Json { encodeDefaults = true }
+    fun retain(readings: List<SignalObservation>): SignalBudgetResult =
+        SignalBudget.retain(readings, MAX_READINGS, MAX_READING_BYTES) { json.encodeToString(it).encodeToByteArray().size }
+
+    fun summary(budget: SignalBudgetResult) = summary(budget.observations, budget.omitted, budget.collectorOmitted)
+    fun summary(readings: List<SignalObservation>, omitted: Int = 0, collectorOmitted: Int = 0): String {
         val available = readings.count { reading ->
             SignalWatchHistory.coverage(reading)?.let { it == "recorded for a period" }
                 ?: (reading.status in setOf("available", "fresh"))
         }
         return "Capture saved on phone.\n${readings.size} readings; $available available, ${readings.size - available} unavailable or partial." +
-            (if (omitted > 0) "\n$omitted readings omitted by the size limit." else "") +
+            (if (omitted > collectorOmitted) "\n${omitted - collectorOmitted} readings not saved: phone capture limit." else "") +
+            (if (collectorOmitted > 0) "\nAt least $collectorOmitted additional radio results were not retained during scanning." else "") +
+            (if (omitted > 0) "\nOpen this capture in phone History for source coverage." else "") +
             (if (readings.isEmpty()) "\nChoose sources in phone Settings to collect readings." else "") +
-            "\nNo model request was made. Analyze later in phone History."
+            "\nNo model request was made. Open Ask on your phone to chat about saved readings."
     }
 
     fun watchHistory(records: List<SignalRecord>, enabled: Set<String>, watch: String): String {
