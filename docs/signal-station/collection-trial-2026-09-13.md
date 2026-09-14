@@ -149,8 +149,21 @@ finite or ongoing duration, local comparisons and separately enabled model
 analysis. The combined checks passed: 214 host tests, six existing skips,
 25 emulator interaction/integration tests and Android lint.
 
-The proposed physical run is ongoing at five-minute intervals using the existing
-source choices, with local analysis on and model analysis off. It has not started:
-the phone requires its owner's unlock before the foreground session can be
-started. The emulator service/cancellation evidence does not establish elapsed
-scheduled captures on the physical phone.
+After the owner unlocked the phone, the ongoing physical run started with
+five-minute intervals, local analysis on and model analysis off. Its 78 eligible
+sources came from the existing 80 selections; the two separately reviewed online
+lookups were excluded. No source or health-background permission was enabled.
+
+The first capture was saved at 23:16:23. The next arrived automatically at
+23:21:36, followed by a ready local comparison naming those two capture times.
+The 313-second separation includes the configured five-minute wait and the
+second acquisition. No manual second capture or provider request was made.
+Android reported the observation service foreground with notification 6110 and
+its Stop action. The UI showed two saved captures, ongoing duration and no
+scheduled end. The session was left running.
+
+This establishes one elapsed automatic interval on the Pixel 9a. It does not
+establish long-duration battery use, uninterrupted operation after Android stops
+the app, or physical validation for every Pebble model. The paired packages are
+approved for the existing testing download page; public-byte verification is
+recorded in the release toolkit's build 14 receipt.
