@@ -777,7 +777,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
         ) ?: throw SignalProviderException("The watch did not connect to Signal Station. Open the watch app and try again.")
     }
     private fun command(kind: String, request: Int, settings: SignalSettings) = buildJsonObject {
-        put("kind", kind); put("request_id", request); put("enabled", JsonArray(settings.enabled.map(::JsonPrimitive))); put("confirmTranscript", settings.confirmTranscript)
+        put("kind", kind); put("request_id", request); put("enabled", watchSourceSelection(settings.enabled)); put("confirmTranscript", settings.confirmTranscript)
     }.toString()
 
     private suspend fun execute(question: String, settings: SignalSettings, token: Long, history: Boolean, survey: Boolean, wireId: Int? = null, fromWatch: String? = null, captureOnly: Boolean = false) {
@@ -1670,7 +1670,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
         } else if (runners[watch] !== session) return@withContext SignalWatchResponse("{}", 403)
         fun response(block: JsonObjectBuilder.() -> Unit) = SignalWatchResponse(buildJsonObject(block).toString(), 200)
         when (route) {
-            "capabilities" -> response { put("configured", mutable.value.settings.provider in mutable.value.configuredProviders); put("enabled", JsonArray(mutable.value.settings.enabled.map(::JsonPrimitive))); put("confirmTranscript", mutable.value.settings.confirmTranscript); put("reducedMotion", mutable.value.settings.reducedMotion) }
+            "capabilities" -> response { put("configured", mutable.value.settings.provider in mutable.value.configuredProviders); put("enabled", watchSourceSelection(mutable.value.settings.enabled)); put("confirmTranscript", mutable.value.settings.confirmTranscript); put("reducedMotion", mutable.value.settings.reducedMotion) }
             "history" -> {
                 val settings = mutable.value.settings
                 val records = withContext(Dispatchers.IO) { val memories = store.memory(); store.newest(20) { it.watchId == watch && it.state == "ready" && learning.eligible(it, settings, memories) } }
@@ -1775,5 +1775,8 @@ open class AndroidSignalStation(private val context: Context, protected val watc
         const val APP_UUID = "e2fd86ec-dfb8-460c-afc1-ebe4d071657a"
         const val PREFIX = "https://field-inspector.invalid/native/v1/"
         val watchKeys = setOf("watch.motion", "watch.compass", "watch.battery", SignalWatchHistory.KEY, "health.steps", "health.active_seconds", "health.distance", "health.active_calories", "health.resting_calories", "health.sleep", "health.restful_sleep", "health.heart_rate", "health.activity")
+        // The watch has a 900-byte source buffer. Phone-only keys can otherwise
+        // push an explicitly selected watch key beyond its terminating byte.
+        internal fun watchSourceSelection(enabled: Set<String>) = JsonArray(enabled.intersect(watchKeys).map(::JsonPrimitive))
     }
 }
