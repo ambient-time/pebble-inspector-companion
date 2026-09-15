@@ -62,7 +62,8 @@ from the Signal Station Android app.
 
 ## License and credits
 
-The Android fork carries the [GNU GPLv3](LICENSE). Core Devices' original notices
+My original contributions are available under [MIT](LICENSE-MIT). The Android
+fork also includes code under [GNU GPLv3](LICENSE); see [licensing scope](LICENSING.md). Core Devices' original notices
 and [commercial license](LICENSE-COMMERCIAL) remain intact; see
 [upstream licensing](UPSTREAM.md#copyright-and-licensing).
 Public-source preparation is tracked in [the release checklist](docs/signal-station/open-source.md).

@@ -25,8 +25,9 @@ Before changing visibility:
 - Confirm the final public name and organization against the ongoing portfolio
   survey, then change visibility explicitly.
 
-Keep GPLv3 and Core Devices notices. The watch repository needs its own root
-license; Android's license does not resolve that decision.
+Luke Steuber's original contributions now have an MIT grant. Keep GPLv3 and
+Core Devices notices for inherited software. The watch repository now has its
+own MIT license; neither grant relicenses third-party material.
 
 Review date: September 14, 2026. Both repositories were private. The Android
 history scan covered 2,262 commits with 17 matches, all inherited from upstream.
