@@ -8,6 +8,13 @@ import kotlinx.serialization.Serializable
 @Serializable data class HomeCapability(val id: String, val name: String = id, val parameters: List<HomeParameter> = emptyList(), val expectedValues: Map<String, String> = emptyMap())
 @Serializable data class HomeValue(val key: String, val value: String, val unit: String? = null, val measuredAt: Long? = null)
 @Serializable data class HomeEntity(val connectionId: String, val id: String, val name: String, val domain: String = "", val state: String = "unknown", val available: Boolean = false, val capabilities: List<HomeCapability> = emptyList(), val updatedAt: Long? = null, val observedAt: Long = 0, val attributes: Map<String, String> = emptyMap(), val identity: String = id, val values: List<HomeValue> = emptyList())
+internal fun homeReadings(entity: HomeEntity): List<HomeValue> = entity.values.ifEmpty {
+    val unit = listOf("unit", "unit_of_measurement", "unitSymbol").firstNotNullOfOrNull { key -> entity.attributes[key]?.takeIf { it.isNotBlank() } }
+    val withoutUnit = unit?.takeIf { entity.state.endsWith(it) }?.let { entity.state.removeSuffix(it).trim() }
+    val value = withoutUnit?.takeIf { it.toDoubleOrNull()?.isFinite() == true } ?: entity.state
+    // Reported state updates and source arrival are not sensor measurement times.
+    listOf(HomeValue("state", value, unit))
+}
 @Serializable data class HomeAction(val id: String, val connectionId: String, val entityId: String, val capabilityId: String, val parameters: Map<String, String> = emptyMap(), val createdAt: Long, val identity: String = entityId, val connectionBinding: String = "", val expectedValues: Map<String, String> = emptyMap(), val capabilityBinding: String = "")
 @Serializable data class HomeTile(val id: String, val connectionId: String, val entityId: String, val title: String, val capabilityId: String? = null, val parameters: Map<String, String> = emptyMap(), val position: Int = 0, val room: String = "", val watchFavorite: Boolean = false)
 @Serializable data class HomeGrant(val id: String, val connectionId: String, val entityId: String, val capabilityId: String, val constraints: Map<String, String> = emptyMap(), val createdAt: Long, val expiresAt: Long? = null, val enabled: Boolean = true, val identity: String = entityId, val connectionBinding: String = "", val capabilityBinding: String = "")

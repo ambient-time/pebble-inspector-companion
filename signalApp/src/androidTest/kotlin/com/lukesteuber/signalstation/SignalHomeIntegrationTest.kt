@@ -113,10 +113,81 @@ class SignalHomeIntegrationTest {
         }
     }
 
+    @Test fun cancelledPreauthorizedPostRetainsDurableConversationIntentWithoutRetry() = runBlocking {
+        fixture { f ->
+            val connection = f.connect()
+            // Establish an exact grant through the same phone review used in production.
+            val approved = f.request("switch.turn_on")
+            f.main { confirmHomeAction(approved.action.id, true) }
+            until { f.posts.size == 1 && f.entry(approved.action.id).status == HomeActionStatus.OBSERVED && f.station.state.value.home.grants.size == 1 }
+            f.main { setHomeAccess(setOf(connection.id)) }
+            val postEntered = CompletableDeferred<Unit>()
+            val postCancelled = CompletableDeferred<Unit>()
+            f.postHook = {
+                postEntered.complete(Unit)
+                try { awaitCancellation() } finally { postCancelled.complete(Unit) }
+            }
+            f.replies += tool("hanging-action", "home_request_action", connection.id, "switch.turn_on")
+            f.beginAsk("Turn on the lamp using the saved permission")
+            withTimeout(10_000) { postEntered.await() }
+            val sent = f.station.state.value.home.ledger.single { it.action.id != approved.action.id }
+            assertEquals(HomeActionStatus.SENDING, sent.status)
+            assertNotNull(sent.sentAt)
+            val working = f.station.state.value.records.single { row -> row.homeActivity.any { it.intentId == sent.action.id } }
+            assertEquals("working", working.state)
+            assertTrue(assertNotNull(f.store.record(working.id)).homeActivity.any { it.intentId == sent.action.id }, "The history link must be durable before the POST")
+
+            f.main { cancel() }
+            withTimeout(10_000) { postCancelled.await() }
+            until { f.entry(sent.action.id).status == HomeActionStatus.UNKNOWN && f.entry(sent.action.id).cancelRequested }
+            until { f.station.state.value.records.any { it.id == working.id && it.state == "cancelled" } }
+            val retained = assertNotNull(f.store.record(working.id))
+            assertEquals("cancelled", retained.state)
+            assertTrue(retained.homeActivity.any { it.intentId == sent.action.id })
+            val durableHome = Json.decodeFromString<HomeState>(assertNotNull(f.store.document("home:v1")))
+            val durableIntent = durableHome.ledger.single { it.action.id == sent.action.id }
+            assertEquals(HomeActionStatus.UNKNOWN, durableIntent.status)
+            assertNotNull(durableIntent.sentAt)
+            // A stale confirmation callback must not resend the interrupted request.
+            f.main { confirmHomeAction(sent.action.id, false) }
+            delay(250)
+            assertEquals(2, f.posts.size, "One approved setup POST and one interrupted POST; no retries")
+            assertEquals(1, f.providerRequests.size, "Cancellation must not continue the tool conversation")
+            assertTrue(f.replies.isEmpty())
+        }
+    }
+
+    @Test fun disablingHomeAccessOrToolsCancelsUnconfirmedIntentFromCompletedTurn() = runBlocking {
+        for (viaSettings in listOf(false, true)) fixture { f ->
+            val connection = f.connect()
+            f.main { setHomeAccess(setOf(connection.id)) }
+            f.replies += tool("pending-action", "home_request_action", connection.id, "switch.turn_on")
+            f.replies += answer
+            f.ask("Request turning on the lamp")
+            val pending = f.station.state.value.home.ledger.single()
+            assertEquals(HomeActionStatus.AWAITING_CONFIRMATION, pending.status)
+            val conversation = f.station.state.value.records.single { row -> row.homeActivity.any { it.intentId == pending.action.id } }
+            assertEquals("ready", conversation.state)
+            f.main {
+                if (viaSettings) updateSettings(state.value.settings.copy(homeToolsDisabled = true))
+                else setHomeAccess(emptySet())
+            }
+            until { f.entry(pending.action.id).status == HomeActionStatus.CANCELLED }
+            assertTrue(f.station.state.value.homeAccess.isEmpty())
+            f.main { confirmHomeAction(pending.action.id, false) }
+            delay(250)
+            assertTrue(f.posts.isEmpty())
+            val retained = assertNotNull(f.store.record(conversation.id))
+            assertEquals("ready", retained.state)
+            assertTrue(retained.homeActivity.any { it.intentId == pending.action.id })
+        }
+    }
+
     private inner class Fixture {
         val name = "home-integration-${UUID.randomUUID()}"
         val store = SignalStore(context, name)
         var token = "home-private-${UUID.randomUUID()}"
+        var postHook: (suspend () -> Unit)? = null
         val posts = CopyOnWriteArrayList<String>()
         val replies = CopyOnWriteArrayList<String>()
         val providerRequests = CopyOnWriteArrayList<String>()
@@ -135,6 +206,7 @@ class SignalHomeIntegrationTest {
                     assertEquals(HttpMethod.Post, request.method)
                     assertEquals(buildJsonObject { put("entity_id", "switch.lamp") }, Json.parseToJsonElement((request.body as TextContent).text))
                     posts += request.url.encodedPath
+                    postHook?.invoke()
                     "[]"
                 }
                 else -> error("Unexpected Home route ${request.url.encodedPath}")
@@ -160,6 +232,11 @@ class SignalHomeIntegrationTest {
         }
         fun entry(id: String) = station.state.value.home.ledger.single { it.action.id == id }
         suspend fun ask(question: String) {
+            beginAsk(question)
+            until { !station.state.value.busy }
+            assertNull(station.state.value.questionReview, station.state.value.status)
+        }
+        suspend fun beginAsk(question: String) {
             withContext(Dispatchers.Main) {
                 until { !station.state.value.busy && !station.state.value.historyLoading }
                 station.ask(question, false)
@@ -167,8 +244,6 @@ class SignalHomeIntegrationTest {
             until { !station.state.value.busy }
             assertNotNull(station.state.value.questionReview, station.state.value.status)
             main { sendReviewedQuestion() }
-            until { !station.state.value.busy }
-            assertNull(station.state.value.questionReview, station.state.value.status)
         }
     }
     private suspend fun fixture(test: suspend (Fixture) -> Unit) {

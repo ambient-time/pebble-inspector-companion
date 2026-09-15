@@ -29,7 +29,7 @@ class SignalHomeConnectorsTest {
         var posts=0;val http=HttpClient(MockEngine { r ->
             assertEquals("Bearer test-private-token",r.headers[HttpHeaders.Authorization])
             when(r.url.encodedPath) {
-                "/api/services" -> respond("""[{"domain":"lock","services":{"unlock":{"name":"Unlock","fields":{}}}}]""",HttpStatusCode.OK)
+                "/api/services" -> respond("""[{"domain":"lock","services":{"unlock":{"name":"Unlock","fields":{"area_id":{"selector":{"text":{}}},"device_id":{"selector":{"text":{}}},"floor_id":{"selector":{"text":{}}},"label_id":{"selector":{"text":{}}},"target":{"selector":{"text":{}}}}}}}]""",HttpStatusCode.OK)
                 "/api/states" -> respond("""[{"entity_id":"lock.front","state":"locked","last_updated":"2026-09-15T12:00:00Z","attributes":{"friendly_name":"Front door","supported_features":0}}]""",HttpStatusCode.OK)
                 "/api/services/lock/unlock" -> { posts++;assertEquals(HttpMethod.Post,r.method);assertEquals("lock.front",Json.parseToJsonElement((r.body as TextContent).text).jsonObject.text("entity_id"));respond("[]",HttpStatusCode.OK) }
                 else -> error("unexpected route")
@@ -37,6 +37,8 @@ class SignalHomeConnectorsTest {
         })
         val c=SignalHomeConnectorFactory(http,Secrets(),{99}).create(HomeConnection("c","C",HomeConnectorKind.HOME_ASSISTANT,"https://controller.test"))
         try { val entity=c.catalog().single();assertNotNull(entity.updatedAt);assertEquals(99L,entity.observedAt);assertEquals("lock.unlock",entity.capabilities.single().id)
+            assertTrue(entity.capabilities.single().parameters.isEmpty())
+            assertFailsWith<IllegalArgumentException> { c.execute(HomeAction("bad","c",entity.id,"lock.unlock",mapOf("area_id" to "all_rooms"),0,entity.identity)) };assertEquals(0,posts)
             val result=c.execute(HomeAction("id","c",entity.id,"lock.unlock",createdAt=0,identity=entity.identity));assertEquals(HomeActionStatus.ACCEPTED,result.status);assertEquals(1,posts)
         } finally { c.close();http.close() }
     }
@@ -45,6 +47,41 @@ class SignalHomeConnectorsTest {
             else { assertEquals("/rest/items/Lamp",r.url.encodedPath);assertEquals("ON",(r.body as TextContent).text);assertTrue(r.body.contentType.toString().startsWith("text/plain"));respond("",HttpStatusCode.OK) } })
         val c=SignalHomeConnectorFactory(http,Secrets(),{100}).create(HomeConnection("c","C",HomeConnectorKind.OPENHAB,"https://controller.test"))
         try { val e=c.catalog().single();assertNull(e.updatedAt);assertEquals(HomeActionStatus.ACCEPTED,c.execute(HomeAction("id","c",e.id,"ON",createdAt=0,identity=e.identity)).status) } finally { c.close();http.close() }
+    }
+    @Test fun haCatalogKeepsUnsupportedDevicesButExcludesAdministrationAndSceneEditing():Unit=runBlocking {
+        var mutations=0
+        val http=HttpClient(MockEngine { r ->
+            if(r.method != HttpMethod.Get) mutations++
+            when(r.url.encodedPath) {
+                "/api/services" -> respond("""[
+                    {"domain":"update","services":{"install":{"fields":{}}}},
+                    {"domain":"scene","services":{"create":{"fields":{}},"reload":{"fields":{}},"apply":{"fields":{}},"turn_on":{"fields":{}}}},
+                    {"domain":"input_select","services":{"set_options":{"fields":{}},"select_option":{"fields":{}}}},
+                    {"domain":"remote","services":{"learn_command":{"fields":{}},"delete_command":{"fields":{}},"send_command":{"fields":{}}}},
+                    {"domain":"lock","services":{"unlock":{"fields":{}}}},
+                    {"domain":"custom_admin","services":{"execute":{"fields":{}}}}
+                ]""",HttpStatusCode.OK)
+                "/api/states" -> respond("""[
+                    {"entity_id":"update.firmware","state":"on"}, {"entity_id":"scene.evening","state":"unknown"},
+                    {"entity_id":"input_select.mode","state":"Evening"}, {"entity_id":"remote.television","state":"on"},
+                    {"entity_id":"lock.front","state":"locked"}, {"entity_id":"custom_admin.shell","state":"ready"}
+                ]""",HttpStatusCode.OK)
+                else -> error("Excluded services must never be dispatched")
+            }
+        })
+        val c=SignalHomeConnectorFactory(http,Secrets(),{100}).create(HomeConnection("c","C",HomeConnectorKind.HOME_ASSISTANT,"https://controller.test"))
+        try {
+            val catalog=c.catalog().associateBy { it.id };assertEquals(6,catalog.size)
+            assertTrue(catalog.getValue("update.firmware").capabilities.isEmpty())
+            assertTrue(catalog.getValue("custom_admin.shell").capabilities.isEmpty())
+            assertEquals(listOf("scene.turn_on"),catalog.getValue("scene.evening").capabilities.map { it.id })
+            assertEquals(listOf("input_select.select_option"),catalog.getValue("input_select.mode").capabilities.map { it.id })
+            assertEquals(listOf("remote.send_command"),catalog.getValue("remote.television").capabilities.map { it.id })
+            assertEquals(listOf("lock.unlock"),catalog.getValue("lock.front").capabilities.map { it.id })
+            val excluded=catalog.getValue("update.firmware")
+            assertFailsWith<HomeException> { c.execute(HomeAction("intent","c",excluded.id,"update.install",createdAt=0,identity=excluded.identity)) }
+            assertEquals(0,mutations)
+        } finally { c.close();http.close() }
     }
     @Test fun geepersPreservesIdentityMillisecondsWarningsAndTypedAction():Unit=runBlocking {
         val http=HttpClient(MockEngine { r -> when {
@@ -88,6 +125,36 @@ class SignalHomeConnectorsTest {
         val http=HttpClient(MockEngine { calls++;respond("expired",HttpStatusCode.Unauthorized) })
         val c=SignalHomeConnectorFactory(http,Secrets(),{0}).create(HomeConnection("c","C",HomeConnectorKind.OPENHAB,"https://controller.test"))
         try { assertFailsWith<HomeException> { c.catalog() };assertEquals(1,calls) } finally { c.close();http.close() }
+    }
+    @Test fun geepersUnknownSourceTimeStaysUnknownAndComplexControlsAreUnsupported():Unit=runBlocking {
+        val http=HttpClient(MockEngine { respond("""{"version":1,"devices":[{"id":"zigbee:1","identity":"stable","name":"Waiting","kind":"zigbee","availability":"stale","observed_at":null,"measured_at":null,"values":[],"capabilities":[{"action":"nested","args":{"type":"object","additionalProperties":false,"required":["value"],"properties":{"value":{"type":"object"}}}}]}]}""",HttpStatusCode.OK) })
+        val c=SignalHomeConnectorFactory(http,Secrets(),{999999}).create(HomeConnection("c","C",HomeConnectorKind.GEEPERS,"https://controller.test"))
+        try { val e=c.catalog().single();assertFalse(e.available);assertEquals(0L,e.observedAt);assertNull(e.updatedAt);assertTrue(e.values.isEmpty());assertTrue(e.capabilities.isEmpty()) }
+        finally { c.close();http.close() }
+    }
+    @Test fun haUsesEntityDeclaredChoicesAndNumericLimits():Unit=runBlocking {
+        val http=HttpClient(MockEngine { r -> respond(if(r.url.encodedPath=="/api/services") """[
+            {"domain":"select","services":{"select_option":{"fields":{"option":{"required":true,"selector":{"select":{"options":[]}}}}}}},
+            {"domain":"number","services":{"set_value":{"fields":{"value":{"required":true,"selector":{"number":{"min":0,"max":100}}}}}}}
+        ]""" else """[
+            {"entity_id":"select.mode","state":"Home","attributes":{"options":["Home","Away"]}},
+            {"entity_id":"number.level","state":"15","attributes":{"min":10,"max":20}}
+        ]""",HttpStatusCode.OK) })
+        val c=SignalHomeConnectorFactory(http,Secrets(),{100}).create(HomeConnection("c","C",HomeConnectorKind.HOME_ASSISTANT,"https://controller.test"))
+        try {
+            val devices=c.catalog();val choice=devices[0].capabilities.single();val number=devices[1].capabilities.single()
+            assertEquals(listOf("Home","Away"),choice.parameters.single().options)
+            assertFailsWith<IllegalArgumentException> { normalizeHomeParameters(choice,mapOf("option" to "Invented")) }
+            assertEquals(10.0,number.parameters.single().minimum);assertEquals(20.0,number.parameters.single().maximum)
+            assertFailsWith<IllegalArgumentException> { normalizeHomeParameters(number,mapOf("value" to "21")) }
+        } finally { c.close();http.close() }
+    }
+    @Test fun geepersAmbiguousOrMissingIdentityFailsClosed():Unit=runBlocking {
+        for (rows in listOf("""{"id":"device","identity":""}""", """{"id":"device","identity":"one"},{"id":"device","identity":"two"}""")) {
+            val http=HttpClient(MockEngine { respond("{\"version\":1,\"devices\":[$rows]}",HttpStatusCode.OK) })
+            val c=SignalHomeConnectorFactory(http,Secrets(),{100}).create(HomeConnection("c","C",HomeConnectorKind.GEEPERS,"https://controller.test"))
+            try { assertFailsWith<IllegalArgumentException> { c.catalog() } } finally { c.close();http.close() }
+        }
     }
 
 }

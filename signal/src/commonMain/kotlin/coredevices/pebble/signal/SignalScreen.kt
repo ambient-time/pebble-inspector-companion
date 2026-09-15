@@ -782,7 +782,7 @@ private fun SignalConfiguration(state: SignalState, station: SignalStation, onMa
                 OutlinedButton(onClick = station::testProvider, enabled = !state.busy && !pendingProfile && key.isBlank() && settings.model.isNotBlank() && settings.provider in state.configuredProviders) { Text("Test with provider") }
             }
             if (pendingProfile || key.isNotBlank()) Text("Save these changes before testing or asking.", style = MaterialTheme.typography.bodySmall)
-            SignalToggle("Disable Home agent controls for this model", settings.homeToolsDisabled, !state.busy) { station.updateSettings(settings.copy(homeToolsDisabled = it)) }
+            SignalToggle("Disable Home agent controls", settings.homeToolsDisabled, !state.busy) { station.updateSettings(settings.copy(homeToolsDisabled = it)) }
             if (!signalSupportsHomeTools(settings) && !settings.homeToolsDisabled) SignalToggle("Enable native tools for this model", settings.homeToolsVerifiedFor == "${settings.provider}|${settings.model}|${settings.endpoint}", !state.busy,
                 "Use only if this model supports native function calls. Unsupported requests fail without executing prose commands.") { station.updateSettings(settings.copy(homeToolsVerifiedFor = if (it) "${settings.provider}|${settings.model}|${settings.endpoint}" else "")) }
             state.diagnostics?.let { report ->

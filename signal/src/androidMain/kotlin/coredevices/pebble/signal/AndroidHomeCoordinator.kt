@@ -177,8 +177,8 @@ internal class AndroidHomeCoordinator(
         targets.filter { t -> collected.none { it.fields["connection_id"] == t.connectionId && it.fields["entity_id"] == t.entityId } }.forEach { target -> collected += SignalObservation("home.readings", "home:${target.connectionId}", collectedAt = clock(), status = "unavailable", identity = homeTargetKey(target.connectionId,target.entityId)) }
         return collected
     }
-    private fun observations(entity: HomeEntity): List<SignalObservation> = entity.values.ifEmpty { listOf(HomeValue("state",entity.state,entity.attributes["unit"].orEmpty().ifEmpty { entity.attributes["unit_of_measurement"].orEmpty() })) }.map { value ->
-        SignalObservation("home.readings", "home:${entity.connectionId}", value = value.value, unit = value.unit.orEmpty(), collectedAt = clock(), measuredAt = value.measuredAt, status = if (entity.available) "available" else "unavailable", identity = homeTargetKey(entity.connectionId,entity.id) + ":" + value.key, number = value.value.toDoubleOrNull(), metric = value.key, fields = mapOf("connection_id" to entity.connectionId,"entity_id" to entity.id,"name" to entity.name,"source_received_at" to entity.observedAt.toString(),"reported_update_at" to entity.updatedAt?.toString().orEmpty()))
+    private fun observations(entity: HomeEntity): List<SignalObservation> = homeReadings(entity).map { value ->
+        SignalObservation("home.readings", "home:${entity.connectionId}", value = value.value, unit = value.unit.orEmpty(), collectedAt = clock(), measuredAt = value.measuredAt, status = if (entity.available) "available" else "unavailable", identity = homeTargetKey(entity.connectionId,entity.id) + ":" + value.key, number = value.value.toDoubleOrNull(), metric = value.key, fields = mapOf("connection_id" to entity.connectionId,"entity_id" to entity.id,"name" to entity.name,"source_received_at" to entity.observedAt.takeIf { it > 0 }?.toString().orEmpty(),"reported_update_at" to entity.updatedAt?.toString().orEmpty()))
     }
 
     private suspend fun prepare(connectionId: String, entityId: String, actionId: String, parameters: Map<String, String>): HomeLedgerEntry {
@@ -258,6 +258,8 @@ internal class AndroidHomeCoordinator(
                                 engine.prepare(c, entity, actionId, normalized).also { intents[key] = it.action.id; turnIntents.getOrPut(turn) { mutableSetOf() }.add(it.action.id) }
                             }
                             intentId = entry.action.id; checkActive()
+                            // Link the durable intent into conversation history before any mutation.
+                            activity(SignalHomeActivity(aid, call.name, request, homeStatusLabel(entry.status), clock(), entry.action.id))
                             val sent = dispatch(entry) { valid() && state().homeAccess.containsAll(selected) }
                             buildJsonObject { put("intent_id", sent.action.id); put("status", sent.status.name.lowercase()); put("message", sent.message.ifEmpty { "Review the exact action on the phone. No action was sent." }); put("parameters", json.encodeToJsonElement(sent.action.parameters)) }
                         }
@@ -313,7 +315,9 @@ internal class AndroidHomeCoordinator(
                 val tile = favorites.firstOrNull { it.id == favoriteId } ?: throw HomeException("Favorite unavailable.")
                 val c = connection(tile.connectionId); val entity = read(c.id, tile.entityId); require(valid()); remember(entity)
                 if (kind == "home-open") {
-                    val detail = "${c.name}\n${tile.title}\n${entity.id}\n${entity.state}\n${if (entity.available) "Available" else "Unavailable"}\nFetched ${entity.observedAt}. Measurement time ${entity.attributes["measured_at"] ?: "unknown"}."
+                    val readings = observations(entity).joinToString("\n") { "${it.metric}: ${it.value} ${it.unit}. Measured ${it.measuredAt?.let(::signalDateTime) ?: "unknown"}." }
+                    val received = entity.observedAt.takeIf { it > 0 }?.let(::signalDateTime) ?: "unknown"
+                    val detail = "${c.name}\n${tile.title}\n${entity.id}\n${if (entity.available) "Available" else "Unavailable"}\n$readings\nSource receipt time $received."
                     reply(if (detail.toByteArray().size <= 900) "detail" else "handoff", if (detail.toByteArray().size <= 900) detail else "Open the full device details on the phone.") { tile.capabilityId?.let { put("action_id", it) } }
                 } else {
                     require(text("action_id") == tile.capabilityId)

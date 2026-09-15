@@ -238,6 +238,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
                         mutable.update { it.copy(scopedHistory = SignalScopedHistory(query = it.scopedHistory.query, error = "Sources changed. Refresh these results.")) }
                     }
                     val newThread = old.enabled != sanitized.enabled || old.watchId != sanitized.watchId || old.provider != sanitized.provider || old.endpoint != sanitized.endpoint || old.model != sanitized.model || old.weatherPlace != sanitized.weatherPlace || old.weatherLocation != sanitized.weatherLocation || old.presenceTargets != sanitized.presenceTargets || old.placeFences != sanitized.placeFences
+                    if (newThread || !signalSupportsHomeTools(sanitized)) home.cancelAgentTurns()
                     mutable.update { it.copy(settings = sanitized, homeAccess = if (newThread || !signalSupportsHomeTools(sanitized)) emptySet() else it.homeAccess, configuredProviders = configuredProviders, presenceCandidates = it.presenceCandidates.filter { candidate -> "presence.${candidate.radio}" in sanitized.enabled }, placeLookup = null, threadId = if (newThread) id() else it.threadId, status = "Settings saved. Collection runs only when requested.") }
                 } }
                 if (generation == token) { refreshWatchSettings(); refreshLearning(); suggestMemory(memoryQuery) }

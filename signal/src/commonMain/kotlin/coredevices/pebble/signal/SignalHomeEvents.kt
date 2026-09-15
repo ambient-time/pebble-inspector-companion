@@ -65,7 +65,7 @@ internal fun signalOpenHabEvents(transport:SignalHomeTransport,clock:()->Long):F
                 val existing=entities[parts[2]] ?: return
                 val payload=SignalHomeTransport.parse(obj.text("payload")).jsonObject
                 val value=payload.text("value");if(value.length>512) return
-                val next=existing.copy(state=value,available=true,observedAt=clock(),updatedAt=homeTime(payload.text("lastStateUpdate")) ?: homeTime(obj.text("timestamp")))
+                val next=existing.copy(state=value,available=value !in setOf("", "NULL", "UNDEF", "unavailable"),observedAt=clock(),updatedAt=homeTime(payload.text("lastStateUpdate")) ?: homeTime(obj.text("timestamp")))
                 entities[next.id]=next;emit(next)
             }
             while(true) {

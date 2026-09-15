@@ -1,7 +1,7 @@
 # Home connections
 
 Home is available in Android 0.5.0-home-dev (build 17), with optional favorites in
-watch package 1.7.0. These are validation packages; this change does not publish
+watch package 1.7.1. These are validation packages; this change does not publish
 them or change the public download. Existing data and signing identities remain
 in place. Nothing is connected or preauthorized during upgrade.
 
@@ -26,6 +26,11 @@ and mark watch favorites. A long drag moves a card; **Move earlier** and **Move
 later** offer the same ordering without a drag. Control parameters come from the
 system's declared capabilities: on/off, numbers/ranges, choices, commands and
 named scenes. The app does not infer a command from a device's name.
+Home Assistant controls must be both in the app's supported device-action set
+and declared by the server; firmware installation, scene editing and controller
+administration stay unsupported. Entity choices and numeric limits narrow the
+declared parameters. openHAB command options take precedence over generic Item
+commands, with declared bounds and units preserved.
 
 Three choices remain independent:
 
@@ -112,11 +117,15 @@ tests use fixtures; two opt-in host tests exercised disposable Home Assistant
 2026.9.2 and openHAB 5.2.1 instances with synthetic devices and live events.
 
 The validation run passed the Android host suite, Android build/lint, seven Home
-UI emulator tests (including double text), two real station/storage integration
+UI emulator tests (including double text), four real station/storage integration
 tests, and twelve existing chat/history/storage/capture checks. UI checks verify
 accessibility semantics and actions; they are not a claim of a person's TalkBack
-usability review. The separate watch package compiled all six targets and passed
-native C and JavaScript protocol tests. Physical acceptance and release receipts
+usability review. An additional opt-in emulator test verified that TalkBack stayed
+bound with touch exploration active during grid reordering and exact confirmation
+at 2× system text. The separate watch package compiled all six targets and passed
+native C and JavaScript protocol tests. All six targets have inspected Home
+favorites, details, complete confirmation, scrolling, cancellation and handoff
+screens. Physical acceptance and release receipts
 are recorded separately from source/build results.
 
 Provider references: [Responses function calls](https://developers.openai.com/api/docs/guides/function-calling),

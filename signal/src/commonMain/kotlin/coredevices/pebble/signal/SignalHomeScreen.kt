@@ -131,8 +131,8 @@ internal fun SignalHomePage(state: SignalState, station: SignalStation) {
 @Composable
 private fun HomeReading(entity: HomeEntity) {
     Text(if (entity.available) entity.state else "Unavailable · last reported ${entity.state}")
-    entity.values.take(8).forEach { value -> Text("${value.key}: ${value.value} ${value.unit.orEmpty()}", style = MaterialTheme.typography.bodySmall) }
-    Text("Received by source ${signalDateTime(entity.observedAt)}", style = MaterialTheme.typography.bodySmall)
+    homeReadings(entity).take(8).forEach { value -> Text("${value.key}: ${value.value} ${value.unit.orEmpty()}", style = MaterialTheme.typography.bodySmall) }
+    Text(if (entity.observedAt > 0) "Received by source ${signalDateTime(entity.observedAt)}" else "Source receipt time unknown", style = MaterialTheme.typography.bodySmall)
     val times = entity.values.mapNotNull { it.measuredAt }.distinct()
     Text(if (times.isEmpty()) "Measurement time unknown" else "Measurement times ${times.joinToString { signalDateTime(it) }}", style = MaterialTheme.typography.bodySmall)
 }

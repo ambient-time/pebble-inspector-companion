@@ -1,5 +1,14 @@
 package com.lukesteuber.signalstation
 
+import android.app.UiAutomation
+import android.accessibilityservice.AccessibilityServiceInfo
+import android.graphics.Bitmap
+import android.os.SystemClock
+import android.view.accessibility.AccessibilityManager
+import androidx.test.platform.app.InstrumentationRegistry
+import org.junit.Assume.assumeTrue
+import java.io.File
+import java.io.FileInputStream
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalDensity
@@ -17,6 +26,49 @@ import kotlin.test.assertTrue
 
 class SignalHomeUiTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+
+    /** Opt in with -e signalHomeTalkBack true after enabling TalkBack on the disposable emulator. */
+    @Test fun talkBackBoundDuringDoubleTextGridAndExactConfirmation() {
+        assumeTrue(InstrumentationRegistry.getArguments().getString("signalHomeTalkBack") == "true")
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val automation = instrumentation.getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)
+        val manager = instrumentation.targetContext.getSystemService(AccessibilityManager::class.java)
+        val output = File(instrumentation.targetContext.getExternalFilesDir(null), "home-talkback").apply { mkdirs() }
+        fun verifyBound(label: String) {
+            val deadline = SystemClock.uptimeMillis() + 15_000
+            while ((!manager.isEnabled || !manager.isTouchExplorationEnabled || manager.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK).none { it.id.contains("talkback", ignoreCase = true) }) && SystemClock.uptimeMillis() < deadline) SystemClock.sleep(100)
+            assertTrue(manager.isEnabled, "Accessibility must be enabled during $label")
+            assertTrue(manager.isTouchExplorationEnabled, "TalkBack touch exploration must remain active during $label")
+            assertTrue(manager.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK).any { it.id.contains("talkback", ignoreCase = true) })
+            val dump = automation.executeShellCommand("dumpsys accessibility").use { fd -> FileInputStream(fd.fileDescriptor).bufferedReader().readText() }
+            File(output, "$label-accessibility.txt").writeText(dump)
+            assertTrue(dump.lineSequence().any { it.contains("Bound services", ignoreCase = true) && it.contains("talkback", ignoreCase = true) }, "TalkBack must be bound, not merely listed as enabled")
+        }
+        fun screenshot(name: String) {
+            compose.waitForIdle()
+            val bitmap = checkNotNull(automation.takeScreenshot())
+            File(output, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            bitmap.recycle()
+        }
+        verifyBound("before")
+        val station = HomeUiStation()
+        show(station, 2f)
+        gridNode(hasText("Living lamp", substring = false)).assertIsDisplayed()
+        gridNode(hasContentDescription("Move Living lamp later")).assertHasClickAction().assertIsEnabled().performClick()
+        compose.runOnIdle { assertEquals(listOf("living" to 1), station.moves); assertTrue(station.requested.isEmpty()) }
+        gridNode(hasContentDescription("Turn on Living lamp")).assertHasClickAction().assertIsEnabled()
+        screenshot("grid-double-text")
+        verifyBound("grid")
+        gridNode(hasContentDescription("Turn on Living lamp")).performClick()
+        compose.onNodeWithText("Confirm Home action").assertIsDisplayed()
+        compose.onNode(hasText("System: Test home", substring = true) and hasText("Device: light.living", substring = true) and hasText("Action: turn_on", substring = true)).assertIsDisplayed()
+        compose.onNodeWithContentDescription("Allow this exact action without future confirmation").assertIsOff()
+        screenshot("exact-review-double-text")
+        verifyBound("review")
+        compose.onNodeWithText("Send once").assertHasClickAction().performClick()
+        compose.runOnIdle { assertEquals(listOf("intent-1" to false), station.confirmed) }
+        verifyBound("after")
+    }
 
     private fun show(station: HomeUiStation, scale: Float = 1f) {
         compose.activityRule.scenario.onActivity { activity ->
