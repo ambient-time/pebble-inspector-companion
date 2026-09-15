@@ -11,6 +11,7 @@ jobs:
       - name: Setup JDK
         uses: actions/setup-java@v6.0.1
         with:
+          distribution: 'temurin'
           java-version: 21
       - name: Checkout source
         uses: actions/checkout@v7
@@ -71,6 +72,7 @@ jobs:
       - name: Setup JDK
         uses: actions/setup-java@v6.0.1
         with:
+          distribution: 'temurin'
           java-version: 17
       - name: Cache build deps
         uses: actions/cache@v6
