@@ -29,6 +29,47 @@ class SignalProviders(http: HttpClient, private val secrets: SignalSecrets) {
 
     fun close() = client.close()
 
+    /** Native tools share the ordinary provider transport and byte/deadline limits. */
+    suspend fun answerWithTools(settings: SignalSettings, messages: List<Pair<String, String>>, tools: SignalToolSession): SignalReply =
+        guarded("Home answer request", 60_000) {
+            if (!signalSupportsHomeTools(settings)) fail("Agent controls are disabled for this model. Ordinary chat and attached readings remain available.")
+            if (messages.isEmpty() || messages.any { it.first !in setOf("system", "user", "assistant") }) fail("Conversation is invalid.")
+            val key = secrets.get(settings.provider)?.takeIf { it.isNotBlank() } ?: fail("Add a provider key in Settings.")
+            val (url, base) = request(settings, messages)
+            val dialogue = SignalToolDialogue(settings.provider, base)
+            val seen = mutableMapOf<String, Pair<Pair<String, JsonObject>, JsonObject>>()
+            repeat(9) { round ->
+                currentCoroutineContext().ensureActive()
+                tools.checkActive()
+                val body = dialogue.request()
+                validateEncodedRequest(body)
+                val response = post(url, key, settings.provider, body.toString())
+                val text = parseAnswer(settings.provider, response)
+                val calls = dialogue.calls(response, round)
+                if (calls.isEmpty()) {
+                    if (text.isBlank()) fail("The provider returned no text. Check the selected model.")
+                    val bounded = truncateUtf8(text.trim(), 16 * 1024)
+                    return@guarded SignalReply(bounded, truncateUtf8(bounded, 900))
+                }
+                if (round == 8) fail("The eight-round Home query limit was reached. Sent actions remain in activity.")
+                calls.forEach { call ->
+                    val previous = seen[call.id]
+                    if (previous != null && previous.first != (call.name to call.arguments)) fail("A repeated tool identifier changed its arguments. Nothing further was dispatched.")
+                }
+                val results = calls.map { call ->
+                    currentCoroutineContext().ensureActive(); tools.checkActive()
+                    val fingerprint = call.name to call.arguments
+                    val previous = seen[call.id]
+                    if (previous != null && previous.first != fingerprint) fail("A repeated tool identifier changed its arguments. Nothing further was dispatched.")
+                    val result = previous?.second ?: tools.execute(call).also { seen[call.id] = fingerprint to it }
+                    if (result.toString().encodeToByteArray().size > 24 * 1024) fail("Home tool result exceeded its context budget.")
+                    call to result
+                }
+                dialogue.append(response, results)
+            }
+            fail("Home query limit reached.")
+        }
+
     /** Local preflight uses the same encoding that will be transmitted. */
     fun validateRequest(settings: SignalSettings, messages: List<Pair<String, String>>): Int =
         validateEncodedRequest(request(settings, messages).second)

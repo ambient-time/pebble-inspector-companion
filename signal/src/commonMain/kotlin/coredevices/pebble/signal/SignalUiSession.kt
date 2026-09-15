@@ -4,7 +4,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.*
 
 internal enum class SignalPage(val title: String) {
-    Today("Now"), Live("Around me"), Conversation("Ask"), Capture("Collection presets"), History("History"), Presence("Around me"), Sessions("Record over time"), Memory("Patterns"), Sources("Sources and permissions"), Settings("Settings")
+    Today("Now"), Home("Home"), Live("Around me"), Conversation("Ask"), Capture("Collection presets"), History("History"), Presence("Around me"), Sessions("Record over time"), Memory("Patterns"), Sources("Sources and permissions"), Settings("Settings")
 }
 
 internal data class SignalRoute(val page: SignalPage, val detailId: String? = null, val fieldTest: Boolean = false)

@@ -5,9 +5,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.RadioButtonChecked
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -178,6 +180,10 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
     LaunchedEffect(page) {
         if (page in setOf(SignalPage.Today, SignalPage.History, SignalPage.Capture, SignalPage.Presence, SignalPage.Sessions)) station.searchSavedHistory("")
     }
+    DisposableEffect(page, detailId, fieldTestOpen) {
+        station.setHomeVisible(page == SignalPage.Home && detailId == null && !fieldTestOpen)
+        onDispose { station.setHomeVisible(false) }
+    }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).then(if (standalone) Modifier.statusBarsPadding().navigationBarsPadding() else Modifier).imePadding()) {
         if (!keyboardOpen) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -188,7 +194,7 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
                 TextButton(onClick = { ui.settingsSection = "menu"; page = SignalPage.Settings }) { Text("Settings") }
             }
         }
-        if (page !in setOf(SignalPage.Today, SignalPage.Conversation, SignalPage.History) && detailId == null && !fieldTestOpen) {
+        if (page !in setOf(SignalPage.Today, SignalPage.Conversation, SignalPage.History, SignalPage.Home) && detailId == null && !fieldTestOpen) {
             TextButton(onClick = { ui.back() }, modifier = Modifier.padding(horizontal = 8.dp)) {
                 Text("Back")
             }
@@ -198,6 +204,12 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
                 Text("From your watch", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
                 TextButton(onClick = { detailId = recordId; station.dismissWatchHandoff() }) { Text("Open full reply") }
                 TextButton(onClick = station::dismissWatchHandoff) { Text("Dismiss") }
+            }
+        }
+        state.homeHandoff?.let {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                Text("Home request from watch", Modifier.weight(1f))
+                TextButton({ page = SignalPage.Home; station.dismissHomeHandoff() }) { Text("Open Home") }
             }
         }
         if (state.busy) {
@@ -252,6 +264,7 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
                 if (state.selectedRecordLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
             }
         } else when (page) {
+            SignalPage.Home -> SignalHomePage(state, station)
             SignalPage.Today -> SignalTodayPage(state, station,
                 onAsk = { page = SignalPage.Conversation }, onCapture = station::capture,
                 onCaptureTools = { page = SignalPage.Capture },
@@ -303,20 +316,22 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
         }
         }
         if (!keyboardOpen) NavigationBar(containerColor = MaterialTheme.colorScheme.surface, windowInsets = WindowInsets(0, 0, 0, 0)) {
-            listOf(SignalPage.Today, SignalPage.Conversation, SignalPage.History).forEach { destination ->
-                val roots = setOf(SignalPage.Today, SignalPage.Conversation, SignalPage.History)
+            listOf(SignalPage.Today, SignalPage.Conversation, SignalPage.Home, SignalPage.History).forEach { destination ->
+                val roots = setOf(SignalPage.Today, SignalPage.Conversation, SignalPage.Home, SignalPage.History)
                 val activePage = page.takeIf { it in roots } ?: ui.stack.lastOrNull { it.page in roots }?.page ?: SignalPage.Today
                 val active = destination == activePage
                 NavigationBarItem(selected = active, onClick = { ui.tab(destination) },
                     icon = { Icon(when (destination) {
                         SignalPage.Today -> Icons.Outlined.RadioButtonChecked
                         SignalPage.Conversation -> Icons.Outlined.ChatBubbleOutline
+                        SignalPage.Home -> Icons.Outlined.Home
                         else -> Icons.Outlined.History
                     }, contentDescription = null) }, label = { Text(destination.title) }, alwaysShowLabel = true)
             }
         }
     }
     SignalDeletionDialog(state, station)
+    SignalHomeConfirmationDialog(state, station)
     confirmation?.let { request ->
         AlertDialog(
             onDismissRequest = { confirmation = null },
@@ -388,6 +403,7 @@ private fun SignalConversation(
                         TextButton(onClick = { station.dismissQuestionReview(); panel = "context" }) { Text("Add evidence") }
                     }
                     Text("Only Send contacts your provider. It may use credits.")
+                    if (review.homeConnections.isNotEmpty()) Text("Home access for this question: ${review.homeConnections.joinToString()}. The model can request additional readings from these systems. Retrieved data goes to this provider; actions follow your Home permissions.")
                     if (!ready) OutlinedButton(onClick = onSettings) { Text("Set up answers") }
                     Button(onClick = station::sendReviewedQuestion, enabled = !state.busy && ready, modifier = Modifier.fillMaxWidth().sizeIn(minHeight = 48.dp)) { Text("Send question") }
                 }
@@ -410,6 +426,7 @@ private fun SignalConversation(
                 }
                 item {
                     SignalSuggestedMemoryContext(state, station, onDetail)
+                    SignalHomeAccessSelector(state, station)
                     if (state.evidenceSelection == null) SignalToggle("Ask about saved history", searchHistory, !state.busy, "Review matching saved records before sending.", onHistoryChange)
                     SignalSourcePreview(state.sources, state.settings.enabled, "Sources for a new capture")
                     OutlinedButton(onClick = station::survey, enabled = !state.busy && state.settings.enabled.isNotEmpty()) { Text("Capture and prepare question") }
@@ -471,6 +488,7 @@ private fun SignalConversation(
                     SelectionContainer { Text(record.question, style = MaterialTheme.typography.titleMedium) }
                     Text("${providerLabel(record.provider)} · ${record.state.replace('_', ' ')}", style = MaterialTheme.typography.labelMedium)
                     SignalResponse(record.answer, record.summary.ifBlank { if (record.state == "working") "Waiting for reply…" else record.state })
+                    SignalHomeConversationActivity(record, state)
                     if (record.state in setOf("error", "interrupted", "cancelled")) {
                         Text("Your question is saved. Review it before sending again.")
                         TextButton(onClick = { onDraft(record.question) }, enabled = !state.busy) { Text("Edit question") }
@@ -764,6 +782,9 @@ private fun SignalConfiguration(state: SignalState, station: SignalStation, onMa
                 OutlinedButton(onClick = station::testProvider, enabled = !state.busy && !pendingProfile && key.isBlank() && settings.model.isNotBlank() && settings.provider in state.configuredProviders) { Text("Test with provider") }
             }
             if (pendingProfile || key.isNotBlank()) Text("Save these changes before testing or asking.", style = MaterialTheme.typography.bodySmall)
+            SignalToggle("Disable Home agent controls for this model", settings.homeToolsDisabled, !state.busy) { station.updateSettings(settings.copy(homeToolsDisabled = it)) }
+            if (!signalSupportsHomeTools(settings) && !settings.homeToolsDisabled) SignalToggle("Enable native tools for this model", settings.homeToolsVerifiedFor == "${settings.provider}|${settings.model}|${settings.endpoint}", !state.busy,
+                "Use only if this model supports native function calls. Unsupported requests fail without executing prose commands.") { station.updateSettings(settings.copy(homeToolsVerifiedFor = if (it) "${settings.provider}|${settings.model}|${settings.endpoint}" else "")) }
             state.diagnostics?.let { report ->
                 Text("${report.stage.replace('_', ' ')}: ${report.result.replace('_', ' ')} · ${report.elapsedMs} ms · ${report.payloadBytes} message bytes")
                 TextButton(onClick = station::shareDiagnostics, enabled = !state.busy) { Text("Share diagnostic report") }
@@ -965,6 +986,6 @@ private val providerOptions = listOf(
     "openai" to "OpenAI", "anthropic" to "Anthropic", "gemini" to "Google Gemini",
     "xai" to "xAI", "openrouter" to "OpenRouter", "custom" to "Custom endpoint",
 )
-private fun providerLabel(value: String) = if (value == "local") "On this phone" else providerOptions.firstOrNull { it.first == value }?.second ?: value
+internal fun providerLabel(value: String) = if (value == "local") "On this phone" else providerOptions.firstOrNull { it.first == value }?.second ?: value
 internal fun signalDateTime(value: Long): String = Instant.fromEpochMilliseconds(value)
     .toLocalDateTime(TimeZone.currentSystemDefault()).toString().replace('T', ' ').substringBefore('.')

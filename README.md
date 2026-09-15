@@ -28,6 +28,10 @@ The watch app is still in testing. The current downloads contain Android build
 16 and watch version 1.6.6. The guide explains compatibility, permissions and
 which features have physical-device evidence.
 
+A separate [Home validation build](docs/signal-station/home-connections.md) adds
+optional Home Assistant, openHAB and Geepers connections, configurable controls,
+and Home access in the existing chat package. It has not replaced those downloads.
+
 ## What you can do
 
 **Explore around you.** See nearby wireless signals, repeated sightings and broad

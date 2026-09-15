@@ -33,6 +33,7 @@ kotlin {
             implementation(libs.backhandler)
             implementation(libs.kotlinx.datetime)
             implementation(libs.ktor.client.core)
+            implementation(libs.ktor.websockets)
             implementation("com.mikepenz:multiplatform-markdown-renderer-m3:0.43.0")
         }
         androidMain.dependencies {

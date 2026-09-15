@@ -27,6 +27,8 @@ data class SignalSettings(
     val observationLocalAnalysis: Boolean = true,
     val observationModelAnalysis: Boolean = false,
     val observationAnalysisEveryCaptures: Int = 3,
+    val homeToolsDisabled: Boolean = false,
+    val homeToolsVerifiedFor: String = "",
 )
 
 @Serializable
@@ -78,6 +80,7 @@ data class SignalRecord(
     val memoryReferences: Map<String, Long> = emptyMap(),
     val coverage: List<SignalSourceCoverage> = emptyList(),
     val evidenceScope: SignalEvidenceSelection? = null,
+    val homeActivity: List<SignalHomeActivity> = emptyList(),
 )
 
 @Serializable
@@ -89,6 +92,13 @@ data class SignalSourceCoverage(
 data class SignalSource(val key: String, val name: String, val group: String, val available: Boolean = true)
 data class SignalWatch(val id: String, val name: String, val connected: Boolean, val connectionId: String = id, val appOpen: Boolean = false, val connectionStatus: String = "")
 data class SignalState(
+    val home: HomeState = HomeState(),
+    val homeAccess: Set<String> = emptySet(),
+    val homeBusy: Boolean = false,
+    val homeStatus: String = "Connect a home system to browse its devices.",
+    val homePreview: HomeConnection? = null,
+    val homePreviewEntities: List<HomeEntity> = emptyList(),
+    val homeHandoff: String? = null,
     val scopedHistory: SignalScopedHistory = SignalScopedHistory(),
     val evidenceSelection: SignalEvidenceSelection? = null,
     val live: SignalLiveState = SignalLiveState(),
@@ -147,6 +157,21 @@ interface SignalStation {
     val available: Boolean
     val state: StateFlow<SignalState>
     fun updateSettings(settings: SignalSettings)
+    fun setHomeVisible(visible: Boolean) {}
+    fun refreshHome() {}
+    fun testHomeConnection(connection: HomeConnection, token: String) {}
+    fun saveHomeConnection() {}
+    fun removeHomeConnection(id: String) {}
+    fun setHomeAccess(ids: Set<String>) {}
+    fun saveHomeTile(tile: HomeTile) {}
+    fun removeHomeTile(id: String) {}
+    fun moveHomeTile(id: String, offset: Int) {}
+    fun selectHomeCapture(connectionId: String, entityId: String, selected: Boolean) {}
+    fun requestHomeAction(connectionId: String, entityId: String, actionId: String, parameters: Map<String, String>) {}
+    fun confirmHomeAction(id: String, allowExactAction: Boolean = false) {}
+    fun cancelHomeAction(id: String) {}
+    fun revokeHomeGrant(id: String) {}
+    fun dismissHomeHandoff() {}
     fun saveProvider(model: String, endpoint: String, key: String)
     fun saveKey(provider: String, key: String)
     fun saveQuestion(title: String, question: String, history: Boolean, asNew: Boolean = false) {}
@@ -243,6 +268,7 @@ data class SignalQuestionReview(
     val observationCount: Int = 0,
     val omittedObservations: Int = 0,
     val priorTurnCount: Int = 0,
+    val homeConnections: List<String> = emptyList(),
 ) {
     val bytes: Int get() = messages.sumOf { it.second.encodeToByteArray().size }
 }
