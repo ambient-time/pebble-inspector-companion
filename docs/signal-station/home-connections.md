@@ -1,9 +1,13 @@
 # Home connections
 
 Home is available in Android 0.5.0-home-dev (build 17), with optional favorites in
-watch package 1.7.1. These are validation packages; this change does not publish
-them or change the public download. Existing data and signing identities remain
-in place. Nothing is connected or preauthorized during upgrade.
+watch package 1.7.1. Both were published on September 15, 2026:
+[downloads](https://dr.eamer.dev/downloads/apps/signal-station/) and
+[Pebble Store](https://apps.repebble.com/37360ca4d9764881bd1d6f4d).
+They remain experimental; [release evidence](home-release-2026-09-15.md)
+separates automated checks, publication and outstanding physical acceptance.
+Existing data and signing identities remain in place. Nothing is connected or
+preauthorized during upgrade. iOS/Garmin are [audited future ports](platform-capabilities.md).
 
 ## Connect and choose controls
 

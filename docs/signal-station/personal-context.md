@@ -8,6 +8,19 @@ language model. You can also chat without taking a capture. Your phone is enough
 the Pebble app you already have. The watch app is still in testing; a Time 2
 and Pixel 9a have completed a physical capture trial.
 
+## Home connections and platform support
+
+Android build 17 and Pebble 1.7.1 add optional
+[Home connections, controls and chat access](home-connections.md). Hold Down
+on the watch home screen for favorites chosen on the phone. Home readings,
+shortcuts and chat access are separate selections, all with no automatic action
+grant. The earlier physical capture trial does not validate this new Home path;
+see the [September 15 release record](home-release-2026-09-15.md).
+
+Signal Station currently ships for Android and Pebble. The
+[iOS/Garmin capability matrix](platform-capabilities.md) describes future work,
+including sensor, audio, permission and background limits.
+
 ## Install the Android app
 
 Open the [Signal Station download page](https://dr.eamer.dev/downloads/apps/signal-station/)
@@ -273,7 +286,8 @@ The stock Pebble app, standalone Android app, and Diorite emulator have complete
 connection, button capture, background capture, history and app-restart checks.
 These are emulator results. The separate watch app is available from the download
 page and is still in testing. A Time 2 and Pixel 9a have also completed a physical
-capture trial. The Pebble Store listing is now public and serves version 1.6.6.
+capture trial on an earlier build. As checked September 15, the public Pebble
+Store listing serves version 1.7.1. The new Home flow still needs a physical run.
 The download page also offers the watch package directly. Listing availability
 does not establish installation on every supported watch.
 

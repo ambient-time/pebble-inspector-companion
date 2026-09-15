@@ -1,8 +1,11 @@
 # Signal Station integration evidence
 
-By Luke Steuber. Current checks: September 9, 2026.
+By Luke Steuber. Latest Home release evidence:
+[Android build 17 / Pebble 1.7.1, September 15](docs/signal-station/home-release-2026-09-15.md).
+The lab records below retain their original dates and do not establish current
+Home hardware acceptance.
 
-## Current: lab 8 — September 9, 2026
+## Historical: lab 8 — September 9, 2026
 
 Measured: 182 companion host tests pass, including beacon formats, duplicate
 identities, scan sample bounds, repeated sightings, stale/disabled evidence, and

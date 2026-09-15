@@ -1,4 +1,26 @@
-# CoreApp
+# Signal Station and inherited CoreApp
+
+## Signal Station product boundary — September 15, 2026
+
+Signal Station ships as the separate `:signalApp` Android application
+(`com.lukesteuber.signalstation`); `:signal` holds shared UI/models, Home
+connectors, native provider tools and the exact-action permission engine.
+Android supplies collectors, encrypted persistence, lifecycle and coordination.
+Build 17 and the companion Pebble 1.7.1 package are published; see
+[release evidence](docs/signal-station/home-release-2026-09-15.md) and
+[Home setup](docs/signal-station/home-connections.md). Home is opt-in and no
+standing action permission is granted by setup or upgrade. Sent uncertain
+mutations must never inherit generic networking retry behavior.
+
+The inherited Android/iOS CoreApp targets below are separate products.
+Signal declares iOS compilation targets but has no iOS station registration,
+collector/coordinator/storage adapters or validated product shell yet.
+The cross-platform rule below is a development requirement, not evidence of
+existing Signal parity. Garmin faces likewise have no Signal transport yet.
+Read the [capability matrix](docs/signal-station/platform-capabilities.md)
+before promising sensor, microphone/speaker, permission or background parity.
+
+## Inherited CoreApp
 
 Kotlin Multiplatform / Compose Multiplatform app targeting Android and iOS.
 
@@ -15,6 +37,8 @@ Kotlin Multiplatform / Compose Multiplatform app targeting Android and iOS.
 
 ## Repository layout
 
+- `:signalApp` — standalone Signal Station Android shell; build with `./gradlew :signalApp:assembleDebug`.
+- `:signal` — shared Signal features plus Android collectors, storage and station integration.
 - `:composeApp` — shared Compose UI / Firebase / Cocoapods / Koin DI, and the iOS entry point. KMP library.
 - `:androidApp` — Android application shell: manifest, launcher resources, signing, R8, google-services. `applicationId` is `coredevices.coreapp`; the Activity and Service classes it declares live in `:composeApp`.
 - `:libpebble3` — KMP library for talking to Pebble/Core watches (BLE, protocol, services, endpoint managers). Mirrored from a standalone repo.

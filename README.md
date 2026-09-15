@@ -24,13 +24,17 @@ there; Signal Station uses that connection. Install the watch package, then open
 **Check connection**. Up captures, the middle button asks, and Down opens history.
 Hold the middle button on a reply to open its full text on your phone.
 
-The watch app is still in testing. The current downloads contain Android build
-16 and watch version 1.6.6. The guide explains compatibility, permissions and
-which features have physical-device evidence.
+The September 15, 2026 downloads contain Android build **17**
+(`0.5.0-home-dev`) and Pebble **1.7.1**, also published in the Pebble Store.
+These remain experimental builds. [Home connections](docs/signal-station/home-connections.md)
+add optional Home Assistant, openHAB and Geepers readings, configurable controls,
+and Home access in the existing chat package. Connections and action permissions
+start empty. Hold Down at the watch home screen for phone-selected favorites.
 
-A separate [Home validation build](docs/signal-station/home-connections.md) adds
-optional Home Assistant, openHAB and Geepers connections, configurable controls,
-and Home access in the existing chat package. It has not replaced those downloads.
+See the [release evidence](docs/signal-station/home-release-2026-09-15.md) for
+source/package identities and the remaining physical phone/watch acceptance.
+The [platform capability audit](docs/signal-station/platform-capabilities.md)
+records iOS and Garmin possibilities and limits; those ports are not implemented.
 
 ## What you can do
 
