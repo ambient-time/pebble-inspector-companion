@@ -2,10 +2,9 @@
 
 By Luke Steuber.
 
-Signal Station is a chat app and a field notebook. Talk with your chosen language
-model, ask follow-up questions, and optionally bring selected readings or saved
-history into the conversation. You can chat without taking a capture. Your phone
-is enough. The optional Pebble preview uses
+Signal Station is a field notebook for the signals around you. Save selected
+readings, compare observations over time, and discuss them with your chosen
+language model. You can also chat without taking a capture. Your phone is enough. The optional Pebble preview uses
 the Pebble app you already have. The watch app is still in testing; a Time 2
 and Pixel 9a have completed a physical capture trial.
 
@@ -21,7 +20,7 @@ You can chat before choosing any sensors or connecting a watch.
 For wrist access, keep your usual Pebble app installed and your watch paired
 there. Download the Pebble test build from the same page and open its PBW file
 with your Pebble app. Follow **Optional Pebble connection** below to connect
-Signal Station. Both Android apps are required for watch use.
+Signal Station. Watch use needs both Android apps.
 
 ## Chat on your phone or Pebble
 
@@ -70,8 +69,8 @@ period records retain their measurement dates. Inspect readings for exact times;
 a saved capture is not a live measurement.
 A local capture has a separate allowance from a chat request: up to 2,048
 readings and 1 MiB of serialized reading data. Broad captures can therefore keep
-more detail on the phone while chat uses a smaller reviewed excerpt. Under
-budget pressure, motion variability is retained before optional axis detail.
+more detail on the phone while chat uses a smaller reviewed excerpt. When space runs short, the app keeps
+motion variability before optional axis detail.
 The watch receives a short receipt, not the complete capture. A “phone capture
 limit” notice means some readings were not saved; a scan-retention notice means
 additional radio results exceeded the collector's bounded scan. Inspect source
@@ -97,7 +96,7 @@ before starting it. It sends only the two latest session captures, with bounded
 readings and explicit omissions; provider charges may apply. Model analysis is
 off by default. Its reports keep links to both source captures.
 
-A missing measurement is shown as missing, never zero. Sessions pause below 15%
+The app labels missing measurements instead of displaying zero. Sessions pause below 15%
 battery while unplugged, with low storage, or when the phone is too warm. Finite
 sessions end at their chosen time; ongoing sessions have no scheduled expiration.
 Neither restarts after Android stops the app. Changing collection settings stops
@@ -141,8 +140,8 @@ the phone's connected-network evidence is shown separately with its capture time
 Wi-Fi channel counts describe received advertisements,
 not channel utilization. An advertised open network does not establish internet
 access. Cellular observations include technology, signal and registered or
-neighbor cells; tower identifiers have their own switch. No phone number or
-subscriber identifier is collected.
+neighbor cells; tower identifiers have their own switch. The app does not collect phone numbers or
+subscriber identifiers.
 
 For nearby businesses or addresses, enable **Nearby map places**, capture a
 phone location, then choose a lookup. Review the destination and the exact
@@ -176,8 +175,8 @@ Step deltas use two cumulative readings within one phone boot, not daily totals.
 Turn on learning when you want Signal Station to look for patterns. **Patterns** in History
 shows proposals, confirmed observations and personal notes. A proposal explains
 which records support it. Confirm its wording, correct it, reject it, or leave
-it for later. No model writes memories automatically. Proposals are limited to
-three new patterns a day, using recent original observations:
+it for later. No model writes memories automatically. The app proposes at most
+three new patterns a day from recent original observations:
 
 - A saved place and an enrolled device observed together in at least three
   separate sessions across two days.
@@ -274,9 +273,9 @@ The stock Pebble app, standalone Android app, and Diorite emulator have complete
 connection, button capture, background capture, history and app-restart checks.
 These are emulator results. The separate watch app is available from the download
 page and is still in testing. A Time 2 and Pixel 9a have also completed a physical
-capture trial. The Store listing is unlisted; its share page returned not found
-on September 14, so use the direct download while Store installation remains
-unconfirmed.
+capture trial. The Pebble Store listing is now public and serves version 1.6.6.
+The download page also offers the watch package directly. Listing availability
+does not establish installation on every supported watch.
 
 This is a development preview. Android storage, UI, mapping and service checks
 run on an emulator; physical Android battery behavior, Health Connect account
