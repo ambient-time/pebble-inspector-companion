@@ -2,6 +2,8 @@
 
 Capture signals. Notice what changes.
 
+[![Download Signal Station](https://img.shields.io/badge/Signal_Station-Download-2563eb?style=flat-square)](https://dr.eamer.dev/downloads/apps/signal-station/) [![Ambient Time](https://img.shields.io/badge/Ambient_Time-Collection-181717?style=flat-square)](https://github.com/ambient-time)
+
 I built Signal Station as a field notebook for Android, with a Pebble interface
 for your wrist. Explore nearby Wi-Fi and Bluetooth signals, save sensor readings,
 and compare observations over time. Ask your chosen language model about what
@@ -63,11 +65,17 @@ from the Signal Station Android app.
 ## License and credits
 
 My original contributions are available under [MIT](LICENSE-MIT). The Android
-fork also includes code under [GNU GPLv3](LICENSE); see [licensing scope](LICENSING.md). Core Devices' original notices
+fork also includes code under [GNU GPLv3](LICENSE); see
+[licensing scope](LICENSING.md). Core Devices' original notices
 and [commercial license](LICENSE-COMMERCIAL) remain intact; see
 [upstream licensing](UPSTREAM.md#copyright-and-licensing).
 Public-source preparation is tracked in [the release checklist](docs/signal-station/open-source.md).
 
-Made by [Luke Steuber](https://lukesteuber.com), with upstream software from
-[Core Devices](https://github.com/coredevices/mobileapp). Questions:
+Upstream software by [Core Devices](https://github.com/coredevices/mobileapp).
+
+## Around here
+
+[Luke Steuber](https://github.com/lukeslp) · [Data Poems](https://github.com/data-poems) · [Ambient Time](https://github.com/ambient-time) · [Actually Useful AI](https://github.com/actually-useful-ai) · [One Impossible Thing](https://github.com/one-impossible-thing)
+
+Made by [Luke Steuber](https://lukesteuber.com). Questions or collaboration:
 [luke@lukesteuber.com](mailto:luke@lukesteuber.com).
