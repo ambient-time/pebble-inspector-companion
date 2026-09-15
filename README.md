@@ -69,7 +69,7 @@ fork also includes code under [GNU GPLv3](LICENSE); see
 [licensing scope](LICENSING.md). Core Devices' original notices
 and [commercial license](LICENSE-COMMERCIAL) remain intact; see
 [upstream licensing](UPSTREAM.md#copyright-and-licensing).
-Public-source preparation is tracked in [the release checklist](docs/signal-station/open-source.md).
+See [public source access](docs/signal-station/open-source.md) for repository and release details.
 
 Upstream software by [Core Devices](https://github.com/coredevices/mobileapp).
 
