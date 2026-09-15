@@ -23,5 +23,14 @@
   "TextAck": 10021,
   "ConfirmTranscript": 10022,
   "ReducedMotion": 10023,
-  "BridgeReady": 10024
+  "BridgeReady": 10024,
+  "HomeVersion": 10025,
+  "HomePage": 10026,
+  "HomePages": 10027,
+  "HomeFavorite": 10028,
+  "HomeIntent": 10029,
+  "HomeAction": 10030,
+  "HomeExpires": 10031,
+  "HomeItems": 10032,
+  "HomeMode": 10033
 }
