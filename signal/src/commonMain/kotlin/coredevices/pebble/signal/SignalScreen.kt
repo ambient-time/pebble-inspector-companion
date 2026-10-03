@@ -231,7 +231,9 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
             TextButton(onClick = { page = SignalPage.Conversation; detailId = null }) { Text("Review voice draft") }
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
-        if (fieldTestOpen) {
+        if (state.watchQuestionReview != null) {
+            SignalWatchQuestionPanel(state, station)
+        } else if (fieldTestOpen) {
             SignalFieldTestPage(state, station, fieldTestDraft) { fieldTestOpen = false }
         } else if (selected != null) {
             SignalDetail(
@@ -390,7 +392,9 @@ private fun SignalConversation(
             if (review != null) {
                 item {
                     SignalHeading("Review before sending")
-                    Text("${providerLabel(state.settings.provider)} · ${state.settings.model}")
+                    Text("${providerLabel(review.provider)} · ${review.model}")
+                    if (review.endpoint.isNotBlank()) Text("Endpoint: ${review.endpoint}")
+                    Text(review.contextDescription)
                     Text("${signalCount(review.captureCount, "capture")} · ${signalCount(review.observationCount, "reading")} · ${signalCount(review.priorTurnCount, "earlier turn")}")
                     Text("${signalCount(review.memoryCount, "memory")} · ${review.bytes} message bytes")
                     if (review.omittedObservations > 0) Text("${review.omittedObservations} readings omitted to fit. Originals remain in History.")
@@ -403,9 +407,11 @@ private fun SignalConversation(
                         TextButton(onClick = { station.dismissQuestionReview(); panel = "context" }) { Text("Add evidence") }
                     }
                     Text("Only Send contacts your provider. It may use credits.")
-                    if (review.homeConnections.isNotEmpty()) Text("Home access for this question: ${review.homeConnections.joinToString()}. The model can request additional readings from these systems. Retrieved data goes to this provider; actions follow your Home permissions.")
+                    if (review.homeConnections.isNotEmpty()) Text("Home for this question: ${review.homeConnections.joinToString()}. ${if (review.homeActionsAllowed) "Reads and actions allowed; exact standing grants may execute." else "Read only. Actions are blocked, including standing grants."} Retrieved data goes to this provider.")
+                    val expired = signalQuestionExpired(review.expiresAt)
+                    if (expired) Text("Review expired. Return to the question and review it again. Nothing was sent.")
                     if (!ready) OutlinedButton(onClick = onSettings) { Text("Set up answers") }
-                    Button(onClick = station::sendReviewedQuestion, enabled = !state.busy && ready, modifier = Modifier.fillMaxWidth().sizeIn(minHeight = 48.dp)) { Text("Send question") }
+                    Button(onClick = station::sendReviewedQuestion, enabled = !state.busy && ready && !expired, modifier = Modifier.fillMaxWidth().sizeIn(minHeight = 48.dp)) { Text("Send question once") }
                 }
             } else if (panel == "context") {
                 item {
@@ -896,7 +902,7 @@ private fun SignalConfiguration(state: SignalState, station: SignalStation, onMa
             SignalHeading("Collection sources")
             OutlinedButton(onClick = station::requestPermissions, enabled = !state.busy) { Text("Grant collection permissions") }
             TextButton(onClick = station::openPermissionSettings, enabled = !state.busy) { Text("Open Android permissions") }
-            Text("Enable only what you want included in a capture. Each source is optional. Disabling a source clears active context; saved records remain locally viewable.")
+            Text("These switches control both new collection and whether saved readings may be sent in a question. Each source is optional. Disabling a source clears active context; saved records remain locally viewable.")
         }
         val sourceIssues = state.sourceStatus.filter { it.key in settings.enabled && signalSourceNeedsAttention(it) }
         if (sourceIssues.isNotEmpty()) item { SignalHeading("Sources to review") }

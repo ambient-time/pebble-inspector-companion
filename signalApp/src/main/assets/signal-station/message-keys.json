@@ -32,5 +32,22 @@
   "HomeAction": 10030,
   "HomeExpires": 10031,
   "HomeItems": 10032,
-  "HomeMode": 10033
+  "HomeMode": 10033,
+  "BridgeSession": 10034,
+  "QuestionReviewVersion": 10035,
+  "QuestionMode": 10036,
+  "QuestionDraft": 10037,
+  "QuestionRevision": 10038,
+  "QuestionReview": 10039,
+  "QuestionExpires": 10040,
+  "QuestionContextKind": 10041,
+  "QuestionContextId": 10042,
+  "QuestionHomeMode": 10043,
+  "QuestionSystem": 10044,
+  "QuestionSelected": 10045,
+  "QuestionPage": 10046,
+  "QuestionPages": 10047,
+  "QuestionItems": 10048,
+  "RecordId": 10049,
+  "RecordKind": 10050
 }

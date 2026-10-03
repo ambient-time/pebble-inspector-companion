@@ -41,6 +41,11 @@ interface SignalDao {
     @Query("DELETE FROM signal_records") suspend fun clear()
     @Query("SELECT * FROM signal_documents WHERE kind = :kind") suspend fun documents(kind: String): List<SignalDocumentRow>
     @Query("SELECT * FROM signal_documents WHERE id = :id") suspend fun document(id: String): SignalDocumentRow?
+    @Query("SELECT length(payload) FROM signal_documents WHERE id = :id") suspend fun documentLength(id: String): Int?
+    @Query("SELECT substr(payload, :start, :length) FROM signal_documents WHERE id = :id") suspend fun documentPart(id: String, start: Int, length: Int): String?
+    @Query("SELECT * FROM signal_documents WHERE kind = :kind AND id > :after ORDER BY id LIMIT :limit") suspend fun documentPage(kind: String, after: String, limit: Int): List<SignalDocumentRow>
+    @Query("SELECT COUNT(*) FROM signal_documents WHERE kind = :kind") suspend fun documentCount(kind: String): Long
+    @Query("SELECT COALESCE(MAX(length(payload)),0) FROM signal_documents WHERE kind = :kind") suspend fun maximumDocumentLength(kind: String): Int
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun putDocument(row: SignalDocumentRow)
     @Query("DELETE FROM signal_documents WHERE id IN (:ids)") suspend fun deleteDocuments(ids: List<String>)
     @Query("DELETE FROM signal_documents WHERE kind = :kind") suspend fun clearDocuments(kind: String)
@@ -188,6 +193,34 @@ class SignalStore(context: Context, private val namespace: String = "signal", pr
     suspend fun session(value: SignalObservationSession) = document("s:${value.id}", "session", json.encodeToString(value))
     suspend fun documents(kind: String): List<String> = dao.documents(kind).map { decrypt(it.payload, it.id) }
     suspend fun document(id: String): String? = dao.document(id)?.let { decrypt(it.payload, it.id) }
+    /** Migration-only large-row reader. Each SQL result stays below CursorWindow
+     * size; one transaction prevents mixing chunks from different revisions. */
+    suspend fun documentLarge(id: String, maximumEncodedBytes: Int = 32 * 1024 * 1024): String? = database.withTransaction {
+        val length = dao.documentLength(id) ?: return@withTransaction null
+        require(length in 1..maximumEncodedBytes) { "Stored document exceeds the migration limit." }
+        val encrypted = buildString(length) {
+            var offset = 0
+            while (offset < length) {
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                val count = minOf(64 * 1024, length - offset)
+                val part = dao.documentPart(id, offset + 1, count) ?: error("Stored document disappeared.")
+                check(part.length == count) { "Stored document changed during migration." }
+                append(part); offset += count
+            }
+        }
+        decrypt(encrypted, id)
+    }
+    suspend fun walkDocuments(kind: String, visit: suspend (String, String) -> Unit) {
+        var after = ""
+        while (true) {
+            val page = dao.documentPage(kind, after, 64)
+            if (page.isEmpty()) return
+            for (row in page) { kotlinx.coroutines.currentCoroutineContext().ensureActive(); visit(row.id, decrypt(row.payload, row.id)) }
+            after = page.last().id
+        }
+    }
+    suspend fun documentCount(kind: String) = dao.documentCount(kind)
+    suspend fun maximumDocumentLength(kind: String) = dao.maximumDocumentLength(kind)
     suspend fun document(id: String, kind: String, value: String) = dao.putDocument(SignalDocumentRow(id, kind, encrypt(value, id)))
     suspend fun clearDocuments(kind: String) = dao.clearDocuments(kind)
     suspend fun atomic(block: suspend () -> Unit) = database.withTransaction { block() }

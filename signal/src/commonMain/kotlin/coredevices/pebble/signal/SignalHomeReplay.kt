@@ -30,6 +30,24 @@ class SignalHomeReplay(
     private val inFlight = mutableMapOf<String, CompletableDeferred<JsonObject>>()
     init { require(capacity in 1..4096) }
 
+    /** Call only after pending native intents have been recovered. One atomic write
+     * retires v1 without dropping its evidence. A v1 reader rejects version 2. */
+    suspend fun retireLegacyJournal() = mutex.withLock {
+        check(inFlight.isEmpty()) { "Cannot retire a live legacy journal." }
+        val stored = get(STORE_KEY)
+        val root = stored?.let {
+            require(it.length <= 4096 * (MAX_RESULT_BYTES + 512))
+            Json.parseToJsonElement(it).jsonObject
+        } ?: buildJsonObject { put("version", 1); put("entries", buildJsonObject {}) }
+        if (root["version"]?.jsonPrimitive?.intOrNull == 2) {
+            require(root["retired"]?.jsonPrimitive?.booleanOrNull == true)
+            decodeLegacy(root["legacy"]?.jsonObject ?: error("Missing retained journal"))
+            return@withLock
+        }
+        decodeLegacy(root) // Corruption is never treated as a fresh installation.
+        put(STORE_KEY, buildJsonObject { put("version", 2); put("retired", true); put("legacy", root) }.toString())
+    }
+
     suspend fun run(
         ownerWatchId: String,
         requestId: Int,
@@ -98,6 +116,9 @@ class SignalHomeReplay(
         val stored = get(STORE_KEY) ?: return linkedMapOf()
         require(stored.length <= 4096 * (MAX_RESULT_BYTES + 512)) { "Replay journal too large" }
         val root = Json.parseToJsonElement(stored).jsonObject
+        return decodeLegacy(root)
+    }
+    private fun decodeLegacy(root: JsonObject): MutableMap<String, Entry> {
         require(root["version"]?.jsonPrimitive?.intOrNull == 1)
         val rows = root["entries"]?.jsonObject ?: error("Missing replay entries")
         require(rows.size <= 4096)
@@ -150,6 +171,71 @@ class SignalHomeReplay(
         private const val MAX_RESULT_BYTES = 4096
         private val KINDS = setOf("home-list", "home-open", "home-review", "home-confirm", "home-cancel", "home-phone")
     }
+}
+
+/** A response cache, never authorization. Eviction can recreate a read or review;
+ * dispatch still requires the original durable native intent. In-flight work is
+ * pinned, and cancellation markers expire with the session cache. */
+internal class SignalHomeRequestCache(private val clock: () -> Long, private val capacity: Int = 128, private val ttlMillis: Long = 120_000) {
+    private class Entry(val owner: String, val requestId: Int, val fingerprint: String, val createdAt: Long, val completion: CompletableDeferred<JsonObject> = CompletableDeferred(), var cancelled: Boolean = false)
+    private val mutex = Mutex()
+    private val entries = linkedMapOf<String, Entry>()
+    private val cancellations = linkedMapOf<String, Long>()
+    init { require(capacity > 0 && ttlMillis > 0) }
+    private fun key(owner: String, requestId: Int) = "${owner.length}:$owner:$requestId"
+    private fun prune(owner: String) {
+        val now = clock()
+        entries.entries.removeAll { (_, e) -> e.completion.isCompleted && now - e.createdAt >= ttlMillis }
+        cancellations.entries.removeAll { now - it.value >= ttlMillis }
+        while (entries.values.count { it.owner == owner } >= capacity) {
+            val old = entries.entries.firstOrNull { it.value.owner == owner && it.value.completion.isCompleted } ?: break
+            entries.remove(old.key)
+        }
+        while (cancellations.size >= capacity) cancellations.remove(cancellations.keys.first())
+    }
+    suspend fun cancel(owner: String, requestId: Int) = mutex.withLock {
+        require(owner.isNotBlank() && requestId > 0)
+        prune(owner)
+        entries.values.filter { it.owner == owner && it.requestId == requestId }.forEach { it.cancelled = true }
+        cancellations[key(owner, requestId)] = clock()
+    }
+    suspend fun run(owner: String, requestId: Int, kind: String, request: JsonObject, block: suspend (() -> Boolean) -> JsonObject): JsonObject {
+        require(owner.isNotBlank() && owner.length <= 1024 && requestId > 0 && kind in kinds)
+        require(boundedDepth(request, 0) && request.toString().encodeToByteArray().size <= 8192)
+        require(request["request_id"] == null || (request["request_id"] as? JsonPrimitive)?.intOrNull == requestId)
+        require(request["kind"] == null || (request["kind"] as? JsonPrimitive)?.contentOrNull == kind)
+        val requestKey = key(owner, requestId)
+        val cacheKey = "$requestKey:$kind"
+        val fingerprint = signalHomeReplayDigest(canonical(request).toString())
+        var execute = false
+        val entry = mutex.withLock {
+            prune(owner)
+            entries[cacheKey]?.also { require(it.fingerprint == fingerprint) { "Request identifier changed." }; require(!it.cancelled) { "Request cancelled." } } ?: run {
+                require(entries.values.count { it.owner == owner } < capacity) { "Home is busy. Wait for the current request." }
+                Entry(owner, requestId, fingerprint, clock(), cancelled = requestKey in cancellations).also { entries[cacheKey] = it; execute = true }
+            }
+        }
+        if (!execute) return entry.completion.await()
+        var result = buildJsonObject { put("mode", "result"); put("favorite_id", request["favorite_id"] ?: JsonPrimitive("")); put("outcome", "unknown"); put("text", "Outcome unknown. Check Home activity; do not retry an action automatically.") }
+        try {
+            require(!entry.cancelled) { "Request cancelled." }
+            result = block { !entry.cancelled }.also { require(it.toString().encodeToByteArray().size <= 4096) }
+            return result
+        } finally {
+            withContext(NonCancellable) { mutex.withLock { entry.completion.complete(result) } }
+        }
+    }
+    private fun canonical(value: JsonElement): JsonElement = when (value) {
+        is JsonObject -> JsonObject(value.entries.sortedBy { it.key }.associate { it.key to canonical(it.value) })
+        is JsonArray -> JsonArray(value.map(::canonical))
+        else -> value
+    }
+    private fun boundedDepth(value: JsonElement, depth: Int): Boolean = depth <= 16 && when (value) {
+        is JsonObject -> value.values.all { boundedDepth(it, depth + 1) }
+        is JsonArray -> value.all { boundedDepth(it, depth + 1) }
+        else -> true
+    }
+    private companion object { val kinds = setOf("home-list", "home-open", "home-review", "home-confirm", "home-phone") }
 }
 
 // Portable SHA-256 for opaque journal keys/fingerprints; encryption is the store's job.

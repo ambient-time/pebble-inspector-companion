@@ -29,8 +29,8 @@ class SignalHomeEngineTest {
         val store=Store(HomeState(connections=listOf(connection),grants=listOf(grant)))
         val transport=object:HomeConnector { override suspend fun catalog()=listOf(entity);override suspend fun execute(action:HomeAction):HomeDispatchResult=error("revoked grant must not dispatch") }
         val engine=SignalHomeEngine(store,{transport},{1000},{"intent"})
-        assertEquals(HomeActionStatus.READY,engine.prepare(connection,entity,"unlock",mapOf("duration" to "3")).status)
-        engine.mutateState { it.copy(grants=emptyList()) };assertEquals(HomeActionStatus.EXPIRED,engine.dispatch("intent").status)
+        assertEquals(HomeActionStatus.READY,engine.prepare(connection,entity,"unlock",mapOf("duration" to "3"),HomeAuthorizationMode.MODEL_TURN,"turn").status)
+        engine.mutateState { it.copy(grants=emptyList()) };assertEquals(HomeActionStatus.EXPIRED,engine.dispatch("intent",modelTurn="turn") { true }.status)
     }
     @Test fun changedDeviceOrConnectionCannotReuseConfirmation()=runTest {
         val store=Store(HomeState(connections=listOf(connection)))
@@ -122,6 +122,60 @@ class SignalHomeEngineTest {
         engine.prepare(connection,entity,"unlock",mapOf("duration" to "3"));engine.confirm("intent")
         assertFailsWith<IllegalArgumentException> { engine.dispatch("intent") }
         assertTrue(store.writes.none { it.ledger.any { e -> e.status==HomeActionStatus.SENDING } })
+    }
+
+    @Test fun directReviewNeverUsesGrantAndPersistedModeSurvivesRoundTrip()=runTest {
+        val grant=HomeGrant("g","c","door","unlock",mapOf("duration" to "3"),0,identity=entity.identity,connectionBinding=homeConnectionBinding(connection),capabilityBinding=homeCapabilityBinding(capability))
+        val store=Store(HomeState(connections=listOf(connection),grants=listOf(grant)));var sends=0
+        val transport=object:HomeConnector { override suspend fun catalog()=listOf(entity);override suspend fun execute(action:HomeAction):HomeDispatchResult { sends++;return HomeDispatchResult() } }
+        val engine=SignalHomeEngine(store,{transport},{1000},{"intent"})
+        val review=engine.prepare(connection,entity,"unlock",mapOf("duration" to "3"),authorizationOwner="watch:session",favoriteId="favorite")
+        assertEquals(HomeActionStatus.AWAITING_CONFIRMATION,review.status);assertNull(review.grantId)
+        val serialized=kotlinx.serialization.json.Json.encodeToString(HomeLedgerEntry.serializer(),review)
+        assertEquals(review,kotlinx.serialization.json.Json.decodeFromString(HomeLedgerEntry.serializer(),serialized))
+        engine.dispatch(review.action.id);assertEquals(0,sends)
+        engine.confirm(review.action.id);engine.dispatch(review.action.id);assertEquals(1,sends)
+    }
+
+    @Test fun grantedModelActionRequiresMatchingLiveTurnAndCannotOutliveReview()=runTest {
+        val grant=HomeGrant("g","c","door","unlock",mapOf("duration" to "3"),0,identity=entity.identity,connectionBinding=homeConnectionBinding(connection),capabilityBinding=homeCapabilityBinding(capability))
+        for (case in listOf("missing","different","missingLease","revoked","expired","valid")) {
+            var now=1000L;var sends=0
+            val store=Store(HomeState(connections=listOf(connection),grants=listOf(grant)))
+            val transport=object:HomeConnector { override suspend fun catalog()=listOf(entity);override suspend fun execute(action:HomeAction):HomeDispatchResult { sends++;return HomeDispatchResult() } }
+            val engine=SignalHomeEngine(store,{transport},{now},{"intent"})
+            engine.prepare(connection,entity,"unlock",mapOf("duration" to "3"),HomeAuthorizationMode.MODEL_TURN,"turn")
+            if(case=="expired") now+=120_000
+            if (case=="missingLease") engine.dispatch("intent",modelTurn="turn")
+            else engine.dispatch("intent",modelTurn=when(case){"missing"->null;"different"->"other";else->"turn"}) { case!="revoked" }
+            assertEquals(if(case=="valid") 1 else 0,sends,case)
+        }
+    }
+
+    @Test fun tenThousandConfirmedIntentsDoNotHavePermanentRequestCapacityAndMissingIntentRefuses()=runTest {
+        // Deleted IDs cannot be recreated by confirmation after cache/process loss.
+        val store=object:HomePersistence { var state=HomeState(connections=listOf(connection));override suspend fun load()=state;override suspend fun save(state:HomeState){this.state=state} }
+        var sequence=0;var sends=0
+        val transport=object:HomeConnector { override suspend fun catalog()=listOf(entity);override suspend fun execute(action:HomeAction):HomeDispatchResult { sends++;return HomeDispatchResult() } }
+        val engine=SignalHomeEngine(store,{transport},{1000},{"intent${sequence++}"})
+        repeat(10_001) {
+            val entry=engine.prepare(connection,entity,"unlock",mapOf("duration" to "3"));engine.confirm(entry.action.id);engine.dispatch(entry.action.id)
+        }
+        assertEquals(10_001,sends)
+        assertEquals(10_001,store.state.ledger.size)
+        engine.mutateState { it.copy(ledger=it.ledger.takeLast(4)) }
+        assertFailsWith<HomeException> { engine.confirm("intent0") }
+        assertFailsWith<HomeException> { engine.dispatch("intent0") }
+        assertEquals(10_001,sends)
+    }
+
+    @Test fun failedDurableSendingWriteNeverReachesController()=runTest {
+        val store=object:HomePersistence { var state=HomeState(connections=listOf(connection));override suspend fun load()=state;override suspend fun save(state:HomeState){check(state.ledger.none { it.status==HomeActionStatus.SENDING });this.state=state} }
+        val transport=object:HomeConnector { override suspend fun catalog()=listOf(entity);override suspend fun execute(action:HomeAction):HomeDispatchResult=error("Must persist sending first") }
+        val engine=SignalHomeEngine(store,{transport},{1000},{"intent"})
+        engine.prepare(connection,entity,"unlock",mapOf("duration" to "3"));engine.confirm("intent")
+        assertFailsWith<IllegalStateException> { engine.dispatch("intent") }
+        engine.recoverInterrupted();assertEquals(HomeActionStatus.EXPIRED,store.state.ledger.single().status)
     }
 
 }

@@ -73,7 +73,7 @@ class SignalHomeIntegrationTest {
         }
     }
 
-    @Test fun typedProviderToolsRequireReviewCancelAndHonorOnlyExactGrant() = runBlocking {
+    @Test fun typedProviderToolsRequireCurrentTurnActionsAndHonorOnlyExactGrant() = runBlocking {
         fixture { f ->
             val connection = f.connect()
             f.main { setHomeAccess(setOf(connection.id)) }
@@ -84,20 +84,33 @@ class SignalHomeIntegrationTest {
             assertTrue(f.posts.isEmpty())
             assertTrue(f.station.state.value.home.ledger.isEmpty())
 
+            // Even a supported action tool cannot create an intent in a read-only turn.
+            f.main { setHomeAccess(setOf(connection.id)) }
+            f.replies += tool("read-only-action", "home_request_action", connection.id, "switch.turn_on")
+            f.replies += answer
+            f.ask("Inspect the lamp")
+            assertTrue(f.station.state.value.home.ledger.isEmpty())
+            assertTrue(f.posts.isEmpty())
+            assertTrue(f.station.state.value.homeAccess.isEmpty())
+            assertFalse(f.station.state.value.homeActionsAllowed)
+
             suspend fun agentAction(action: String): HomeLedgerEntry {
                 val before = f.station.state.value.home.ledger.map { it.action.id }.toSet()
+                f.main { setHomeAccess(setOf(connection.id)); setHomeActionsAllowed(true) }
                 f.replies += tool("action-${UUID.randomUUID()}", "home_request_action", connection.id, action)
                 f.replies += answer
                 f.ask("Request $action for the lamp")
+                until { f.station.state.value.home.ledger.any { it.action.id !in before && it.status != HomeActionStatus.AWAITING_CONFIRMATION } }
                 return f.station.state.value.home.ledger.single { it.action.id !in before }
             }
             val cancelled = agentAction("switch.turn_on")
-            assertEquals(HomeActionStatus.AWAITING_CONFIRMATION, cancelled.status)
+            assertEquals(HomeActionStatus.CANCELLED, cancelled.status)
             assertTrue(f.posts.isEmpty())
-            f.main { cancelHomeAction(cancelled.action.id) }
-            until { f.entry(cancelled.action.id).status == HomeActionStatus.CANCELLED }
+            f.main { confirmHomeAction(cancelled.action.id, false) }
+            delay(100)
             assertTrue(f.posts.isEmpty())
-            val approved = agentAction("switch.turn_on")
+            // A fresh direct Home review supplies independent, explicit permission.
+            val approved = f.request("switch.turn_on")
             assertEquals(HomeActionStatus.AWAITING_CONFIRMATION, approved.status)
             f.main { confirmHomeAction(approved.action.id, true) }
             until { f.posts.size == 1 && f.station.state.value.home.grants.size == 1 }
@@ -105,7 +118,7 @@ class SignalHomeIntegrationTest {
             until { f.posts.size == 2 }
             assertTrue(granted.status in setOf(HomeActionStatus.ACCEPTED, HomeActionStatus.OBSERVED))
             val different = agentAction("switch.turn_off")
-            assertEquals(HomeActionStatus.AWAITING_CONFIRMATION, different.status)
+            assertEquals(HomeActionStatus.CANCELLED, different.status)
             assertEquals(2, f.posts.size)
             assertTrue(f.posts.all { it == "/api/services/switch/turn_on" })
             assertTrue(f.providerRequests.none { it.contains(f.token) })
@@ -120,7 +133,7 @@ class SignalHomeIntegrationTest {
             val approved = f.request("switch.turn_on")
             f.main { confirmHomeAction(approved.action.id, true) }
             until { f.posts.size == 1 && f.entry(approved.action.id).status == HomeActionStatus.OBSERVED && f.station.state.value.home.grants.size == 1 }
-            f.main { setHomeAccess(setOf(connection.id)) }
+            f.main { setHomeAccess(setOf(connection.id)); setHomeActionsAllowed(true) }
             val postEntered = CompletableDeferred<Unit>()
             val postCancelled = CompletableDeferred<Unit>()
             f.postHook = {
@@ -157,15 +170,16 @@ class SignalHomeIntegrationTest {
         }
     }
 
-    @Test fun disablingHomeAccessOrToolsCancelsUnconfirmedIntentFromCompletedTurn() = runBlocking {
+    @Test fun completedTurnCancelsUnconfirmedIntentAndNeverCarriesPermission() = runBlocking {
         for (viaSettings in listOf(false, true)) fixture { f ->
             val connection = f.connect()
-            f.main { setHomeAccess(setOf(connection.id)) }
+            f.main { setHomeAccess(setOf(connection.id)); setHomeActionsAllowed(true) }
             f.replies += tool("pending-action", "home_request_action", connection.id, "switch.turn_on")
             f.replies += answer
             f.ask("Request turning on the lamp")
+            until { f.station.state.value.home.ledger.singleOrNull()?.status == HomeActionStatus.CANCELLED }
             val pending = f.station.state.value.home.ledger.single()
-            assertEquals(HomeActionStatus.AWAITING_CONFIRMATION, pending.status)
+            assertEquals(HomeActionStatus.CANCELLED, pending.status)
             val conversation = f.station.state.value.records.single { row -> row.homeActivity.any { it.intentId == pending.action.id } }
             assertEquals("ready", conversation.state)
             f.main {
@@ -174,6 +188,7 @@ class SignalHomeIntegrationTest {
             }
             until { f.entry(pending.action.id).status == HomeActionStatus.CANCELLED }
             assertTrue(f.station.state.value.homeAccess.isEmpty())
+            assertFalse(f.station.state.value.homeActionsAllowed)
             f.main { confirmHomeAction(pending.action.id, false) }
             delay(250)
             assertTrue(f.posts.isEmpty())
@@ -183,7 +198,86 @@ class SignalHomeIntegrationTest {
         }
     }
 
-    private inner class Fixture {
+    @Test fun corruptHomeSafetyStateDisablesControlsWithoutErasingEvidence() = runBlocking {
+        val f=Fixture()
+        try {
+            f.store.settings(SignalSettings(onboardingComplete=true,enabled=emptySet()))
+            f.store.document("home:v1","home","{broken")
+            f.main { initialize() }
+            until { f.station.state.value.homeStatus.contains("Controls are disabled") }
+            assertFalse(f.station.state.value.homeReady)
+            assertEquals("{broken",f.store.document("home:v1"))
+            f.main { requestHomeAction("controller","switch.lamp","switch.turn_on",emptyMap()) }
+            delay(100)
+            assertTrue(f.posts.isEmpty())
+            assertEquals("{broken",f.store.document("home:v1"))
+        } finally {
+            f.main { close() };f.store.close();f.provider.close();f.home.close()
+            context.deleteDatabase("${f.name}-history.db")
+            context.getSharedPreferences("${f.name}_private",0).edit().clear().commit()
+        }
+    }
+
+    @Test fun watchReviewNeverUsesStandingGrantAndConfirmationIsBoundToNativeSessionIntent() = runBlocking {
+        val session=object:SignalWatchSession {
+            override val watchId="home-fixture-watch"
+            override val connectionId="home-fixture-link"
+            override val ready=true
+            override suspend fun sendConfigMessage(message:String)=Unit
+        }
+        val link=object:SignalWatchLink {
+            override val watches=MutableStateFlow(listOf(SignalWatch(session.watchId,"Fixture",true,session.connectionId,true)))
+            override val capabilities=SignalWatchCapabilities(messages=true)
+            override fun initialize(scope:CoroutineScope)=Unit
+            override suspend fun isTrusted(session:SignalWatchSession)=session.connectionId=="home-fixture-link"
+            override suspend fun launch(watchId:String)=Unit
+            override suspend fun install(watchId:String)=error("No device installation")
+        }
+        fixture(link) { f ->
+            val c=f.connect()
+            val approved=f.request("switch.turn_on")
+            f.main { confirmHomeAction(approved.action.id,true) }
+            until { f.posts.size==1 && f.station.state.value.home.grants.size==1 }
+            f.main { saveHomeTile(HomeTile("favorite",c.id,"switch.lamp","Lamp","switch.turn_on",watchFavorite=true)) }
+            until { f.station.state.value.home.tiles.size==1 }
+            suspend fun capabilities(caller:SignalWatchSession) = f.station.handleWatchRequest(AndroidSignalStation.PREFIX+"capabilities","GET",null,caller)
+            suspend fun request(id:Int,kind:String,intent:String="",favorite:String="favorite",caller:SignalWatchSession=session):JsonObject {
+                val data=buildJsonObject { put("request_id",id);put("kind",kind);put("favorite_id",favorite);put("action_id","switch.turn_on");if(intent.isNotEmpty())put("intent_id",intent) }
+                val response=f.station.handleWatchRequest(AndroidSignalStation.PREFIX+"home","POST",data.toString(),caller)
+                assertEquals(200,response.status)
+                return Json.parseToJsonElement(response.result).jsonObject
+            }
+            assertEquals(200,capabilities(session).status)
+            val review=request(101,"home-review")
+            assertEquals("review",review["mode"]?.jsonPrimitive?.content)
+            val intent=assertNotNull(review["intent_id"]?.jsonPrimitive?.content)
+            assertEquals(HomeActionStatus.AWAITING_CONFIRMATION,f.entry(intent).status)
+            assertEquals(1,f.posts.size)
+            request(102,"home-confirm",intent,"different")
+            assertEquals(1,f.posts.size)
+            request(103,"home-confirm",intent)
+            until { f.posts.size==2 }
+            request(104,"home-confirm",intent)
+            assertEquals(2,f.posts.size)
+            val cancelledReview=request(105,"home-review")
+            val cancelledIntent=cancelledReview["intent_id"]!!.jsonPrimitive.content
+            request(105,"home-cancel") // Lost review response: no native intent ID available on the watch.
+            assertEquals(HomeActionStatus.CANCELLED,f.entry(cancelledIntent).status)
+            request(106,"home-confirm",cancelledIntent)
+            assertEquals(2,f.posts.size)
+            val oldReview=request(107,"home-review")
+            val oldIntent=oldReview["intent_id"]!!.jsonPrimitive.content
+            val replacement=object:SignalWatchSession by session {}
+            assertEquals(200,capabilities(replacement).status)
+            request(108,"home-confirm",oldIntent,caller=replacement)
+            assertEquals(2,f.posts.size)
+            assertEquals(HomeActionStatus.AWAITING_CONFIRMATION,f.entry(oldIntent).status)
+            val retired=Json.parseToJsonElement(assertNotNull(f.store.document("signal-home-watch-replay-v1"))).jsonObject
+            assertEquals(2,retired["version"]?.jsonPrimitive?.int)
+        }
+    }
+
+    private inner class Fixture(val watchLink:SignalWatchLink=noWatch) {
         val name = "home-integration-${UUID.randomUUID()}"
         val store = SignalStore(context, name)
         var token = "home-private-${UUID.randomUUID()}"
@@ -213,7 +307,7 @@ class SignalHomeIntegrationTest {
             }
             respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
         })
-        val station = AndroidSignalStation(context, noWatch, provider, name, homeClient = home)
+        val station = AndroidSignalStation(context, watchLink, provider, name, homeClient = home)
         suspend fun main(block: AndroidSignalStation.() -> Unit) = withContext(Dispatchers.Main) { station.block() }
         suspend fun connect(draft: HomeConnection = HomeConnection("controller", "Test Home", HomeConnectorKind.HOME_ASSISTANT, "https://controller.test")): HomeConnection {
             main { testHomeConnection(draft, token) }
@@ -246,10 +340,10 @@ class SignalHomeIntegrationTest {
             main { sendReviewedQuestion() }
         }
     }
-    private suspend fun fixture(test: suspend (Fixture) -> Unit) {
-        val f = Fixture()
+    private suspend fun fixture(watchLink:SignalWatchLink=noWatch,test: suspend (Fixture) -> Unit) {
+        val f = Fixture(watchLink)
         try {
-            f.store.settings(SignalSettings(onboardingComplete = true, enabled = emptySet()))
+            f.store.settings(SignalSettings(onboardingComplete = true, enabled = emptySet(),watchId=watchLink.watches.value.firstOrNull()?.id.orEmpty()))
             f.store.put("openai", "fixture-provider-key")
             f.main { initialize() }
             until { f.station.state.value.initialized && f.station.state.value.historyReady }

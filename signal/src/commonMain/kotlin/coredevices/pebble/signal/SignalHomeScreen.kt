@@ -30,6 +30,13 @@ fun homeStatusLabel(status: HomeActionStatus): String = when (status) {
 
 @Composable
 internal fun SignalHomePage(state: SignalState, station: SignalStation) {
+    if (!state.homeReady) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Home", style = MaterialTheme.typography.headlineMedium)
+            Text(state.homeStatus.ifBlank { "Opening Home safety records…" }, Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+        }
+        return
+    }
     var section by signalUiState("home.section") { "grid" }
     var query by remember { mutableStateOf("") }
     var room by remember { mutableStateOf("") }
@@ -82,9 +89,13 @@ internal fun SignalHomePage(state: SignalState, station: SignalStation) {
                 }
             }
             "activity" -> {
-                item(span = { GridItemSpan(maxLineSpan) }) { Text("Permissions name an exact connection, device, action and parameters. Revoking a grant prevents further dispatch; it does not undo a sent action.") }
+                item(span = { GridItemSpan(maxLineSpan) }) { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Permissions name an exact connection, device, action and parameters. Revoking a grant prevents further dispatch; it does not undo a sent action.")
+                    Text("Up to 128 recent actions and active reviews are shown. ${state.home.archivedIntents} older actions are retained in the encrypted archive. Export includes complete action history, targets and parameters, but not saved connection or provider credentials.")
+                    TextButton(station::exportHomeActivity, enabled = !state.homeBusy) { Text("Export action history") }
+                } }
                 items(state.home.grants, key = { "grant:${it.id}" }, span = { GridItemSpan(maxLineSpan) }) { g -> Card { Column(Modifier.padding(16.dp)) {
-                    Text("Allowed without confirmation", style = MaterialTheme.typography.titleMedium)
+                    Text("Allowed in action-enabled questions", style = MaterialTheme.typography.titleMedium)
                     Text("${state.home.connections.firstOrNull { it.id == g.connectionId }?.name}\n${g.entityId}\n${g.capabilityId}\n${g.constraints}")
                     TextButton({ station.revokeHomeGrant(g.id) }) { Text("Revoke permission") }
                 } } }
@@ -183,27 +194,43 @@ private fun HomeTileDialog(initial: HomeTile, entity: HomeEntity?, dismiss: () -
 @Composable
 internal fun SignalHomeAccessSelector(state: SignalState, station: SignalStation) {
     val supported = signalSupportsHomeTools(state.settings)
-    SignalToggle("Home access",state.homeAccess.isNotEmpty(),supported && state.home.connections.any { it.enabled },"During this question, query the full catalog of selected systems and request supported actions. Retrieved data goes to ${providerLabel(state.settings.provider)}. Actions use your saved permissions or require confirmation.") {
+    SignalToggle("Read Home for this question",state.homeAccess.isNotEmpty(),supported && state.homeReady && state.home.connections.any { it.enabled },"Read the full catalog of selected systems for this question only. Retrieved data goes to ${providerLabel(state.settings.provider)}. Reading does not allow actions.") {
         station.setHomeAccess(if (it) state.home.connections.filter { c -> c.enabled }.map { c -> c.id }.toSet() else emptySet())
     }
     if (!supported) Text("Agent controls are disabled for this model. Ordinary chat and attached Home readings still work.")
     if (state.homeAccess.isNotEmpty()) state.home.connections.filter { it.enabled }.forEach { c -> SignalToggle(c.name,c.id in state.homeAccess) { enabled -> station.setHomeAccess(if (enabled) state.homeAccess + c.id else state.homeAccess - c.id) } }
+    if (state.homeAccess.isNotEmpty()) SignalToggle("Allow actions for this question", state.homeActionsAllowed, supported && state.homeReady, "Exact saved permissions may execute immediately, including locks and scenes. Other actions require review. This permission ends with this question; follow-ups start with Home off.", station::setHomeActionsAllowed)
 }
 
 @Composable
 internal fun SignalHomeConfirmationDialog(state: SignalState, station: SignalStation) {
+    if (!state.homeReady) return
     var now by remember { mutableLongStateOf(Clock.System.now().toEpochMilliseconds()) }
     LaunchedEffect(state.home.ledger) { while (true) { now = Clock.System.now().toEpochMilliseconds(); delay(500) } }
-    val entry = state.home.ledger.firstOrNull { it.status == HomeActionStatus.AWAITING_CONFIRMATION && it.confirmationExpiresAt > now } ?: return
+    val entry = state.home.ledger.firstOrNull { it.status == HomeActionStatus.AWAITING_CONFIRMATION } ?: return
     var allow by remember(entry.action.id) { mutableStateOf(false) }
+    val reviewScroll = key(entry.action.id) { rememberScrollState() }
     val connection = state.home.connections.firstOrNull { it.id == entry.action.connectionId }?.name ?: entry.action.connectionId
     val target = state.home.snapshot.entities.firstOrNull { it.connectionId == entry.action.connectionId && it.id == entry.action.entityId }?.name ?: entry.action.entityId
-    AlertDialog(onDismissRequest = { station.cancelHomeAction(entry.action.id) }, title = { Text("Confirm Home action") }, text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("System: $connection\nTarget: $target\nDevice: ${entry.action.entityId}\nAction: ${entry.action.capabilityId}\nParameters: ${entry.action.parameters.ifEmpty { mapOf("none" to "") }}")
+    AlertDialog(onDismissRequest = { station.cancelHomeAction(entry.action.id) }, title = { Text("Confirm Home action") }, text = { Column(Modifier.verticalScroll(reviewScroll), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("System: $connection\nTarget: $target\nDevice: ${entry.action.entityId}\nAction: ${entry.action.capabilityId}")
+        Text("Parameters", style = MaterialTheme.typography.titleSmall)
+        if (entry.action.parameters.isEmpty()) Text("None")
+        else entry.action.parameters.toSortedMap().forEach { (name,value) -> Text("$name: $value") }
         Text("Expires in ${((entry.confirmationExpiresAt-now)/1000).coerceAtLeast(0)} seconds. Confirmation can be used once.")
-        SignalToggle("Allow this exact action without future confirmation",allow,description = "Applies to this system, device, action and these parameter values, including locks and scenes if selected. You can revoke it in Home permissions.") { allow = it }
+        SignalToggle("Save permission for this exact action",allow,description = "Allows this system, device, action and these parameter values during future questions where you explicitly allow actions. Direct phone and watch controls still require confirmation. You can revoke it in Home permissions.") { allow = it }
         if (entry.action.capabilityId.contains("scene") || entry.action.entityId.startsWith("scene.") || entry.action.entityId.startsWith("script.")) Text("A scene invokes the server's current definition. Detectable identity or definition changes revoke permission; hidden server edits may not be detectable.")
-    } },confirmButton = { TextButton({ station.confirmHomeAction(entry.action.id,allow) },enabled = now < entry.confirmationExpiresAt) { Text(if(allow) "Allow & send" else "Send once") } },dismissButton = { TextButton({ station.cancelHomeAction(entry.action.id) }) { Text("Cancel") } })
+        // Confirmation is in the reading/scroll order after every parameter, not
+        // in an always-visible footer or gated on visual scrolling (TalkBack).
+        if (now < entry.confirmationExpiresAt) Button({ station.confirmHomeAction(entry.action.id,allow) }, modifier = Modifier.fillMaxWidth().sizeIn(minHeight = 48.dp)) { Text(if(allow) "Save permission & send once" else "Send once") }
+        else {
+            Text("This review expired. Nothing was sent. Review again to read current action details; this does not send the action.")
+            TextButton({
+                station.cancelHomeAction(entry.action.id)
+                station.requestHomeAction(entry.action.connectionId, entry.action.entityId, entry.action.capabilityId, entry.action.parameters)
+            }) { Text("Review again") }
+        }
+    } },confirmButton = {},dismissButton = { TextButton({ station.cancelHomeAction(entry.action.id) }) { Text("Cancel") } })
 }
 
 @Composable

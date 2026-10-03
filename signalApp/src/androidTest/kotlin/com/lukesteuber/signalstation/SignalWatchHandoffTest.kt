@@ -7,6 +7,7 @@ import io.ktor.client.engine.mock.*
 import io.ktor.http.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.serialization.json.*
 import org.junit.Test
 import java.util.UUID
 import kotlin.test.*
@@ -41,15 +42,22 @@ class SignalWatchHandoffTest {
         suspend fun until(check: () -> Boolean) = withTimeout(30000) { while (!check()) delay(30) }
         suspend fun route(path: String, body: String? = null, caller: SignalWatchSession = session) = station.handleWatchRequest(
             AndroidSignalStation.PREFIX + path, if (path == "capabilities") "GET" else "POST", body, caller)
+        suspend fun reviewedAsk(request: Int, prompt: String) {
+            val opened = Json.parseToJsonElement(route("question", """{"request_id":${request + 1000},"kind":"question-open","prompt":"$prompt","context_kind":"none"}""").result).jsonObject
+            val draft = opened["draft_id"]!!.jsonPrimitive.content
+            val review = Json.parseToJsonElement(route("question", """{"request_id":${request + 2000},"kind":"question-review","draft_id":"$draft","revision":1}""").result).jsonObject
+            val token = review["review_id"]!!.jsonPrimitive.content
+            assertEquals(200, route("question", """{"request_id":$request,"kind":"question-send","draft_id":"$draft","revision":1,"review_id":"$token"}""").status)
+        }
         try {
             withContext(Dispatchers.Main) { station.initialize() }
             until { station.state.value.historyReady }
             assertEquals(200, route("capabilities").status)
-            assertEquals(200, route("start", """{"request_id":301,"kind":"ask","prompt":"First"}""").status)
+            reviewedAsk(301, "First")
             until { !station.state.value.busy && calls == 1 }
             val first = station.state.value.records.first { it.question == "First" }
             assertEquals("ready", first.state)
-            assertEquals(200, route("start", """{"request_id":302,"kind":"ask","prompt":"Second"}""").status)
+            reviewedAsk(302, "Second")
             until { !station.state.value.busy && calls == 2 }
             withContext(Dispatchers.Main) { station.ask("Unsent phone question") }
             until { !station.state.value.busy && station.state.value.questionReview != null }

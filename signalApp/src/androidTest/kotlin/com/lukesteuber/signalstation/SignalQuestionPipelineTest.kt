@@ -70,7 +70,10 @@ class SignalQuestionPipelineTest {
             failNext = true
             send()
             assertEquals(original.id, station.state.value.attachedRecords.single().id, "Failure must preserve the attachment")
-            assertNotNull(station.state.value.questionReview, "Retry should retain the reviewed request")
+            assertNull(station.state.value.questionReview, "A claimed review is single use even when the result is ambiguous")
+            send()
+            assertEquals(1, requests.size, "Repeated Send cannot replay a claimed review")
+            review(station.state.value.questionDraft)
             send()
             assertEquals(requests[0], requests[1], "Retry must use the same reviewed payload")
             review("What was the battery reading in that capture?")
@@ -193,8 +196,13 @@ class SignalQuestionPipelineTest {
             store.put("openai", "test-only-key"); store.save(row("a"))
             withContext(Dispatchers.Main) { station.initialize() }
             until { station.state.value.historyReady }
-            withContext(Dispatchers.Main) { station.ask("steps on 2026-09-07", true) }
-            until { !station.state.value.busy && station.state.value.questionReview != null }
+            withContext(Dispatchers.Main) {
+                // Match Ask's UI readiness guard; historyReady precedes the initial page load.
+                until { !station.state.value.historyLoading }
+                station.ask("steps on 2026-09-07", true)
+            }
+            until { !station.state.value.busy }
+            assertNotNull(station.state.value.questionReview, "Review preparation: ${station.state.value.status}")
             val review = station.state.value.questionReview!!
             assertTrue(requests.isEmpty())
             val evidence = review.messages.last().second

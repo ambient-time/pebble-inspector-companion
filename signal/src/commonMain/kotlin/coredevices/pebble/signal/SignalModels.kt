@@ -81,6 +81,7 @@ data class SignalRecord(
     val coverage: List<SignalSourceCoverage> = emptyList(),
     val evidenceScope: SignalEvidenceSelection? = null,
     val homeActivity: List<SignalHomeActivity> = emptyList(),
+    val questionConsent: SignalQuestionConsent? = null,
 )
 
 @Serializable
@@ -94,6 +95,8 @@ data class SignalWatch(val id: String, val name: String, val connected: Boolean,
 data class SignalState(
     val home: HomeState = HomeState(),
     val homeAccess: Set<String> = emptySet(),
+    val homeActionsAllowed: Boolean = false,
+    val homeReady: Boolean = false,
     val homeBusy: Boolean = false,
     val homeStatus: String = "Connect a home system to browse its devices.",
     val homePreview: HomeConnection? = null,
@@ -110,6 +113,7 @@ data class SignalState(
     val savedQuestionDraft: SavedQuestion? = null,
     val savedQuestionOpenToken: String = "",
     val questionReview: SignalQuestionReview? = null,
+    val watchQuestionReview: SignalQuestionReview? = null,
     val initialized: Boolean = false,
     val buildVersion: String = "",
     val installStatus: String = "",
@@ -163,6 +167,7 @@ interface SignalStation {
     fun saveHomeConnection() {}
     fun removeHomeConnection(id: String) {}
     fun setHomeAccess(ids: Set<String>) {}
+    fun setHomeActionsAllowed(allowed: Boolean) {}
     fun saveHomeTile(tile: HomeTile) {}
     fun removeHomeTile(id: String) {}
     fun moveHomeTile(id: String, offset: Int) {}
@@ -172,6 +177,7 @@ interface SignalStation {
     fun cancelHomeAction(id: String) {}
     fun revokeHomeGrant(id: String) {}
     fun dismissHomeHandoff() {}
+    fun exportHomeActivity() {}
     fun saveProvider(model: String, endpoint: String, key: String)
     fun saveKey(provider: String, key: String)
     fun saveQuestion(title: String, question: String, history: Boolean, asNew: Boolean = false) {}
@@ -180,6 +186,10 @@ interface SignalStation {
     fun dismissSavedQuestion() {}
     fun dismissQuestionReview() {}
     fun sendReviewedQuestion() {}
+    fun sendWatchQuestionReview() {}
+    fun reviewWatchQuestion(text: String) {}
+    fun invalidateWatchQuestionReview() {}
+    fun dismissWatchQuestionReview() {}
     fun checkAnswerSetup() {}
     fun shareDiagnostics() {}
     fun testProvider()
@@ -269,9 +279,25 @@ data class SignalQuestionReview(
     val omittedObservations: Int = 0,
     val priorTurnCount: Int = 0,
     val homeConnections: List<String> = emptyList(),
+    val homeActionsAllowed: Boolean = false,
+    val reviewId: String = "",
+    val expiresAt: Long = 0,
+    val provider: String = "",
+    val model: String = "",
+    val contextDescription: String = "",
+    val endpoint: String = "",
+    val draftId: String = "",
 ) {
     val bytes: Int get() = messages.sumOf { it.second.encodeToByteArray().size }
 }
+
+/** Durable receipt of the frozen authority claimed before a provider call; never a reusable permission. */
+@Serializable
+data class SignalQuestionConsent(
+    val reviewId: String, val origin: String, val claimedAt: Long,
+    val evidenceRevisions: Map<String, String> = emptyMap(),
+    val homeConnectionIds: Set<String> = emptySet(), val homeActionsAllowed: Boolean = false,
+)
 
 @Serializable
 data class SavedQuestion(

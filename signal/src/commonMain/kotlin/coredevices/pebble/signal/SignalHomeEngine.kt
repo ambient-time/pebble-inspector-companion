@@ -20,7 +20,8 @@ class SignalHomeEngine(private val persistence: HomePersistence, private val con
         require(next.connections.map { it.id }.distinct().size == next.connections.size)
         persistence.save(next); next
     }
-    suspend fun prepare(connection: HomeConnection, entity: HomeEntity, capabilityId: String, parameters: Map<String, String> = emptyMap()): HomeLedgerEntry = mutex.withLock {
+    suspend fun prepare(connection: HomeConnection, entity: HomeEntity, capabilityId: String, parameters: Map<String, String> = emptyMap(), authorizationMode: HomeAuthorizationMode = HomeAuthorizationMode.EXPLICIT_CONFIRMATION, authorizationOwner: String = "", favoriteId: String = "", watchRequestId: Int = 0): HomeLedgerEntry = mutex.withLock {
+        require(authorizationMode != HomeAuthorizationMode.MODEL_TURN || authorizationOwner.isNotBlank()) { "A model action requires a current turn." }
         val state = persistence.load()
         val current = state.connections.firstOrNull { it.id == connection.id } ?: throw HomeException("Connection was removed.")
         require(current == connection && current.enabled && entity.connectionId == current.id)
@@ -29,8 +30,9 @@ class SignalHomeEngine(private val persistence: HomePersistence, private val con
         val now = clock()
         val action = HomeAction(id(), current.id, entity.id, capabilityId, normalized, now, entity.identity, homeConnectionBinding(current), capability.expectedValues.mapValues { (_, value) -> if (value.startsWith("$")) normalized[value.drop(1)].orEmpty() else value }, homeCapabilityBinding(capability))
         require(state.ledger.none { it.action.id == action.id }) { "Duplicate action identifier." }
-        val grant = state.grants.firstOrNull { matches(it, action, now) }
-        val entry = HomeLedgerEntry(action, if (grant == null) HomeActionStatus.AWAITING_CONFIRMATION else HomeActionStatus.READY, now, now + 120_000, grantId = grant?.id)
+        require(persistence.archived(action.id) == null) { "Action identifier was already archived." }
+        val grant = if (authorizationMode == HomeAuthorizationMode.MODEL_TURN) state.grants.firstOrNull { matches(it, action, now) } else null
+        val entry = HomeLedgerEntry(action, if (grant == null) HomeActionStatus.AWAITING_CONFIRMATION else HomeActionStatus.READY, now, now + 120_000, grantId = grant?.id, authorizationMode = authorizationMode, authorizationOwner = authorizationOwner, favoriteId = favoriteId, watchRequestId = watchRequestId)
         persistence.save(state.copy(ledger = state.ledger + entry)); entry
     }
     suspend fun confirm(actionId: String): HomeLedgerEntry = change(actionId) { entry ->
@@ -43,11 +45,14 @@ class SignalHomeEngine(private val persistence: HomePersistence, private val con
         else entry.copy(cancelRequested = true, updatedAt = clock(), message = "Further processing cancelled. A sent action may already have taken effect.")
     }
     /** The final gate runs under the state mutex; it must not call back into this engine. */
-    suspend fun dispatch(actionId: String, allowed: suspend () -> Boolean = { true }): HomeLedgerEntry {
+    suspend fun dispatch(actionId: String, modelTurn: String? = null, allowed: (suspend () -> Boolean)? = null): HomeLedgerEntry {
         // Resolve metadata first; the final authorization and durable intent occur after this read.
-        val initial = mutex.withLock { persistence.load() }
+        val initial = mutex.withLock {
+            persistence.load().also { state -> if (state.ledger.any { it.action.id == actionId && it.status == HomeActionStatus.READY }) persistence.pin(actionId) }
+        }
         val entry = initial.ledger.firstOrNull { it.action.id == actionId } ?: throw HomeException("Action not found.")
         if (entry.status != HomeActionStatus.READY) return entry
+        try {
         val connection = initial.connections.firstOrNull { it.id == entry.action.connectionId } ?: throw HomeException("Connection removed.")
         val transport = connector(connection)
         try {
@@ -61,12 +66,13 @@ class SignalHomeEngine(private val persistence: HomePersistence, private val con
                 val cap = device.capabilities.firstOrNull { it.id == current.action.capabilityId } ?: throw HomeException("Action no longer supported.")
                 require(homeCapabilityBinding(cap) == current.action.capabilityBinding) { "Capability changed; review again." }
                 require(normalizeHomeParameters(cap, current.action.parameters) == current.action.parameters)
-                if (!allowed()) {
+                val permitted = allowed?.invoke() ?: (current.authorizationMode != HomeAuthorizationMode.MODEL_TURN)
+                if ((current.authorizationMode == HomeAuthorizationMode.MODEL_TURN && (modelTurn.isNullOrBlank() || modelTurn != current.authorizationOwner)) || !permitted) {
                     val cancelled = current.copy(status = HomeActionStatus.CANCELLED, cancelRequested = true, updatedAt = clock(), message = "Action permission was withdrawn before sending.")
                     persistence.save(state.replace(cancelled)); return@withLock null
                 }
                 val now = clock()
-                val granted = current.grantId?.let { gid -> state.grants.any { it.id == gid && matches(it, current.action, now) } } == true
+                val granted = current.authorizationMode == HomeAuthorizationMode.MODEL_TURN && now < current.confirmationExpiresAt && current.grantId?.let { gid -> state.grants.any { it.id == gid && matches(it, current.action, now) } } == true
                 val confirmed = current.confirmedAt != null && now < current.confirmationExpiresAt
                 if (!granted && !confirmed) {
                     val expired = current.copy(status = HomeActionStatus.EXPIRED, updatedAt = now, message = "Permission expired or was revoked. Review again.")
@@ -81,9 +87,17 @@ class SignalHomeEngine(private val persistence: HomePersistence, private val con
             } catch (_: Exception) { HomeDispatchResult(HomeActionStatus.UNKNOWN, message = "Delivery outcome is unknown. No automatic retry.") }
             return change(actionId) { it.copy(status = result.status.takeIf { s -> s in setOf(HomeActionStatus.ACCEPTED, HomeActionStatus.OBSERVED, HomeActionStatus.FAILED, HomeActionStatus.UNKNOWN) } ?: HomeActionStatus.UNKNOWN, receiptId = result.receiptId ?: it.receiptId, updatedAt = clock(), message = result.message) }
         } finally { transport.close() }
+        } finally { withContext(NonCancellable) { mutex.withLock { persistence.unpin(actionId) } } }
     }
     /** At most thirty seconds, read-only; never sends the original action again. */
     suspend fun reconcile(actionId: String): HomeLedgerEntry {
+        val retained = mutex.withLock {
+            val exists = persistence.load().ledger.any { it.action.id == actionId }
+            if (exists) persistence.pin(actionId)
+            exists
+        }
+        if (!retained) return persistence.archived(actionId) ?: throw HomeException("Action not found.")
+        try {
         val start = clock()
         try { withTimeoutOrNull(30_000) {
             while (true) {
@@ -109,6 +123,7 @@ class SignalHomeEngine(private val persistence: HomePersistence, private val con
             }
         } } catch (e: CancellationException) { throw e } catch (_: Exception) { /* retain truthful accepted/unknown */ }
         return mutex.withLock { persistence.load().ledger.first { it.action.id == actionId } }
+        } finally { withContext(NonCancellable) { mutex.withLock { persistence.unpin(actionId) } } }
     }
     suspend fun recoverInterrupted() = mutex.withLock {
         val state = persistence.load(); val now = clock()

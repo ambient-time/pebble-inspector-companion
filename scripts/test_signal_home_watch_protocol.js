@@ -4,7 +4,7 @@ const protocol=require('../signalApp/src/main/assets/signal-station/protocol.js'
 function setup(negotiated=true){
  const h={messages:[],requests:[],timers:[],now:1000};
  h.client=protocol.createClient({now:()=>h.now,send:(p,done)=>{h.messages.push(p);done();},request:(method,url,body,done)=>{h.requests.push({method,url,body,done});return ()=>{};},setTimer:(fn,ms)=>{const t={fn,ms};h.timers.push(t);return t;},clearTimer:t=>t.cancelled=true});
- if(negotiated){h.client.handle({RequestType:'ready',HomeVersion:1});h.requests.at(-1).done(null,{home_version:1});}
+ if(negotiated){h.client.handle({RequestType:'ready',HomeVersion:1,QuestionReviewVersion:1});h.requests.at(-1).done(null,{home_version:1,question_review_version:1});}
  return h;
 }
 function send(h,id,kind,extra={}){h.client.handle(Object.assign({RequestId:id,RequestType:kind,HomeVersion:1},extra));}
@@ -40,8 +40,8 @@ test('oversized review and labels hand off whole instead of truncating',()=>{
  const h=setup();send(h,10,'home-review',{HomeFavorite:'fav',HomeAction:'on'});last(h).done(null,{mode:'review',favorite_id:'fav',action_id:'on',intent_id:'nonce',expires_at:1120,text:'界'.repeat(301)});assert.equal(h.messages.at(-1).HomeMode,'handoff');assert(!h.messages.at(-1).HomeIntent);assert(!h.messages.at(-1).HomeAction);
  send(h,11,'home-list',{HomePage:0});last(h).done(null,{mode:'list',page:0,pages:1,items:[{id:'fav',label:'界'.repeat(34)}]});assert.equal(h.messages.at(-1).HomeMode,'handoff');
 });
-test('standing grant result bypasses watch confirmation without fabricating intent',()=>{
- const h=setup();send(h,10,'home-review',{HomeFavorite:'fav',HomeAction:'on'});last(h).done(null,{mode:'result',favorite_id:'fav',text:'Executed under your existing permission.'});assert.equal(h.messages.at(-1).HomeMode,'result');assert(!h.messages.at(-1).HomeIntent);
+test('review error result never fabricates an executable intent',()=>{
+ const h=setup();send(h,10,'home-review',{HomeFavorite:'fav',HomeAction:'on'});last(h).done(null,{mode:'result',favorite_id:'fav',text:'Action unavailable. Check the phone.'});assert.equal(h.messages.at(-1).HomeMode,'result');assert(!h.messages.at(-1).HomeIntent);
 });
 test('invalid pages, duplicate IDs, changed response binding fail safely',()=>{
  for(const data of [{mode:'list',page:1,pages:2,items:[]},{mode:'list',page:0,pages:1,items:[{id:'a',label:'A'},{id:'a',label:'B'}]},{mode:'detail',favorite_id:'wrong',text:'Wrong'}]){
@@ -51,10 +51,17 @@ test('invalid pages, duplicate IDs, changed response binding fail safely',()=>{
 test('ready after prior Home negotiation with an old watch disables Home',()=>{
  const h=setup();h.client.handle({RequestType:'ready'});last(h).done(null,{home_version:1});send(h,10,'home-list',{HomePage:0});assert(!nativeHomes(h,'home-list').length);
 });
+test('older Home watch keeps reads but cannot review or confirm an action',()=>{
+ const h=setup(false);h.client.handle({RequestType:'ready',HomeVersion:1});last(h).done(null,{home_version:1,question_review_version:1});
+ send(h,1,'home-list',{HomePage:0});assert.equal(nativeHomes(h,'home-list').length,1);
+ send(h,2,'home-review',{HomeFavorite:'fav',HomeAction:'on'});assert.equal(nativeHomes(h,'home-review').length,0);assert.equal(h.messages.at(-1).HomeMode,'handoff');
+ send(h,3,'home-confirm',{HomeFavorite:'fav',HomeAction:'on',HomeIntent:'nonce'});assert.equal(nativeHomes(h,'home-confirm').length,0);assert.equal(h.messages.at(-1).HomeMode,'handoff');
+});
 test('wire keys preserve all existing numeric values and append Home',()=>{
  const keys=require('../signalApp/src/main/assets/signal-station/message-keys.json');const names=['RequestType','RequestId','Prompt','SpeakerAvailable','Muted','ResponseText','StatusText','AudioExpected','AudioBegin','AudioChunk','AudioEnd','AudioAck','AudioSequence','Demo','Configured','VoiceEnabled','Volume','Snapshot','Command','Enabled','Complete','TextAck','ConfirmTranscript','ReducedMotion','BridgeReady','HomeVersion','HomePage','HomePages','HomeFavorite','HomeIntent','HomeAction','HomeExpires','HomeItems','HomeMode'];names.forEach((k,i)=>assert.equal(keys[k],10000+i));
 });
-// Exercise existing protocol regressions against the actual standalone asset.
+// The historical PKJS has a separate compatibility contract. Its old immediate
+// Ask/confirm-wake assertions must not weaken the standalone review boundary.
 const watchTests=process.argv[2];
-if(watchTests){const file=path.resolve(watchTests);new Function('require','__dirname',fs.readFileSync(file,'utf8'))(p=>p==='../src/pkjs/protocol'?protocol:require(p),path.dirname(file));}
+if(watchTests)require('child_process').execFileSync(process.execPath,[path.resolve(watchTests)],{stdio:'inherit'});
 console.log(count+' standalone Home protocol tests passed.');

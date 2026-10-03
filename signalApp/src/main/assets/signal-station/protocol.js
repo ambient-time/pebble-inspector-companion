@@ -8,6 +8,8 @@ function utf8Bytes(s) {
 function requestId(id) { return typeof id === 'number' && id > 0 && id <= 2147483647 && Math.floor(id) === id; }
 function createClient(options) {
   var active = null, generation = 0, reviewedIds = [], homeVersion = 0, homeReady = false, homeSeen = [];
+  var questionVersion=0, questionReady=false, questionSeen=[], questionDraft=null;
+  var bridgeSession=String(Date.now())+'-'+Math.random().toString(36).slice(2,12);
   var now = options.now || function () { return Math.floor(Date.now()/1000); };
   var later = options.setTimer || setTimeout, clear = options.clearTimer || clearTimeout;
   function send(packet, done, failed) {
@@ -23,7 +25,8 @@ function createClient(options) {
       if (old.timer) clear(old.timer);
       if (old.abort) old.abort();
       // XHR abort alone does not cancel a native coroutine.
-      if (!fromNative && old.home) native('POST', 'home', Object.assign({},old.home,{kind:'home-cancel'}));
+      if (!fromNative && old.question && !old.questionSent) { /* Draft lifetime is explicit; navigation is not cancellation. */ }
+      else if (!fromNative && old.home) native('POST', 'home', Object.assign({},old.home,{kind:'home-cancel'}));
       else if (!fromNative && !old.history) native('POST', 'cancel', {request_id:old.id});
     }
   }
@@ -37,7 +40,7 @@ function createClient(options) {
   function deliver(a) {
     if (!valid(a) || a.delivered) return;
     if (++a.deliveries > 3) return error(a, 'Watch delivery timed out. Ask again when connected.');
-    send(a.homePacket || {RequestId:a.id, ResponseText:a.text, Complete:1}, function () {
+    send(a.questionPacket || a.homePacket || Object.assign({RequestId:a.id, ResponseText:a.text, Complete:1},a.record || {}), function () {
       if (valid(a) && !a.delivered) a.timer = later(function () { deliver(a); }, 3000);
     }, function () { error(a, 'Watch connection lost.'); });
   }
@@ -74,6 +77,7 @@ function createClient(options) {
           return error(a, 'Invalid report size. Check the phone.');
         }
         a.text = data.text; a.terminal = true; a.deliveries = 0;
+        a.record=homeId(data.record_id) && ['capture','answer'].indexOf(data.record_kind)>=0 ? {RecordId:data.record_id,RecordKind:data.record_kind} : {};
         return deliver(a);
       }
       if (data.state !== 'working') return error(a, 'Unknown companion response.');
@@ -92,10 +96,15 @@ function createClient(options) {
   }
   function sync() {
     native('GET', 'capabilities', null, function (err, cfg) {
-      if (err || !cfg) { homeReady=false; return send({BridgeReady:0, Configured:0, HomeVersion:0, StatusText:'Open Signal Station on your phone.'}); }
+      if (err || !cfg) { homeReady=false; questionReady=false; return send({BridgeReady:0, Configured:0, HomeVersion:0, QuestionReviewVersion:0, StatusText:'Open Signal Station on your phone.'}); }
       homeReady=homeVersion===1 && cfg.home_version===1;
+      questionReady=questionVersion===1 && cfg.question_review_version===1;
       var packet={BridgeReady:1, Configured:cfg.configured ? 1 : 0, Enabled:JSON.stringify(cfg.enabled || []),
-        ConfirmTranscript:cfg.confirmTranscript ? 1 : 0, ReducedMotion:cfg.reducedMotion ? 1 : 0};
+        ConfirmTranscript:cfg.confirmTranscript ? 1 : 0, ReducedMotion:cfg.reducedMotion ? 1 : 0,
+        BridgeSession:bridgeSession, QuestionReviewVersion:questionReady?1:0};
+      // A replacement runtime has forgotten the watch capabilities. Challenge it
+      // rather than waiting for the watch app to close and reopen.
+      if (!homeVersion && !questionVersion) packet.Command='ready-challenge';
       if (homeVersion===1) packet.HomeVersion=homeReady?1:0;
       send(packet);
     });
@@ -137,6 +146,7 @@ function createClient(options) {
   function handleHome(p) {
     var kind=p.RequestType;
     if (p.HomeVersion!==1 || !homeReady || ['home-list','home-open','home-review','home-confirm','home-cancel','home-phone'].indexOf(kind)<0) return;
+    if ((kind==='home-review'||kind==='home-confirm') && !questionReady) return send({RequestId:p.RequestId,Command:'home',HomeVersion:1,HomeMode:'handoff',HomeFavorite:homeId(p.HomeFavorite)?p.HomeFavorite:'',ResponseText:'Update the watch for complete action review, or continue on your phone.',Complete:1});
     var body={kind:kind,request_id:p.RequestId};
     if (kind==='home-list') { if (!Number.isInteger(p.HomePage)||p.HomePage<0||p.HomePage>=1000) return; body.page=p.HomePage; }
     else {
@@ -167,11 +177,90 @@ function createClient(options) {
       a.terminal=true; a.deliveries=0; deliver(a);
     });
   }
+  function questionPacket(a,data) {
+    if (!data || !homeId(data.draft_id) || !Number.isInteger(data.revision) || data.revision<1 || ['none','read','actions'].indexOf(data.home_mode)<0) return null;
+    var packet={RequestId:a.id,Command:'question',QuestionReviewVersion:1,QuestionMode:data.mode,
+      QuestionDraft:data.draft_id,QuestionRevision:data.revision,QuestionHomeMode:data.home_mode,Complete:1};
+    if (questionDraft && a.question.kind!=='question-open' && data.draft_id!==a.question.draft_id) return null;
+    if (data.mode==='systems') {
+      if (!Number.isInteger(data.page)||!Number.isInteger(data.pages)||data.page<0||data.pages<1||data.pages>1000||data.page>=data.pages||!Array.isArray(data.home_connections)||data.home_connections.length>4) return null;
+      var ids=[], rows=[];
+      for(var i=0;i<data.home_connections.length;i++) {
+        var system=data.home_connections[i];
+        if (!system || !homeId(system.id)||!homeText(system.name,96)||/[\x00-\x1f\x7f]/.test(system.name)||typeof system.selected!=='boolean'||ids.indexOf(system.id)>=0) return null;
+        ids.push(system.id); rows.push(system.id+'\t'+(system.selected?'[x] ':'[ ] ')+system.name);
+      }
+      packet.QuestionItems=rows.join('\n'); packet.QuestionPage=data.page; packet.QuestionPages=data.pages;
+      if (utf8Bytes(packet.QuestionItems)>700) return null;
+    } else if (['draft','review','phone'].indexOf(data.mode)>=0) {
+      if (!homeText(data.text,900)) return null;
+      packet.ResponseText=data.text;
+      if (data.mode==='review') {
+        if (!homeId(data.review_id)||!Number.isInteger(data.expires_at)||data.expires_at<=now()||data.expires_at-now()>120) return null;
+        packet.QuestionReview=data.review_id; packet.QuestionExpires=data.expires_at;
+      }
+    } else return null;
+    questionDraft={id:data.draft_id,revision:data.revision,review:packet.QuestionReview,expires:packet.QuestionExpires};
+    return packet;
+  }
+  function handleQuestion(p) {
+    var kind=p.RequestType;
+    if (p.QuestionReviewVersion!==1 || !questionReady) return send({RequestId:p.RequestId,StatusText:'Update the companion and review this question on your phone.',Complete:1});
+    if (['question-open','question-home','question-systems','question-review','question-send','question-cancel','question-phone'].indexOf(kind)<0) return;
+    if (questionSeen.indexOf(p.RequestId)>=0) return;
+    var body={kind:kind,request_id:p.RequestId};
+    if (kind==='question-open') {
+      // Empty transcript is only a scoped phone handoff (for watches without a microphone).
+      if (typeof p.Prompt!=='string'||utf8Bytes(p.Prompt)>400||p.Prompt.indexOf('\0')>=0||['none','capture','answer'].indexOf(p.QuestionContextKind)<0) return;
+      body.prompt=p.Prompt; body.context_kind=p.QuestionContextKind;
+      if (body.context_kind!=='none') { if (!homeId(p.QuestionContextId)) return; body.context_id=p.QuestionContextId; }
+      if (p.QuestionDraft!==undefined) {
+        if (!questionDraft || p.QuestionDraft!==questionDraft.id || p.QuestionRevision!==questionDraft.revision) return;
+        body.draft_id=questionDraft.id; body.revision=questionDraft.revision;
+      }
+      questionDraft=null;
+    } else {
+      if (!questionDraft||p.QuestionDraft!==questionDraft.id||p.QuestionRevision!==questionDraft.revision) return;
+      body.draft_id=questionDraft.id; body.revision=questionDraft.revision;
+      if (kind==='question-home') {
+        if (['none','read','actions'].indexOf(p.QuestionHomeMode)<0) return;
+        body.mode=p.QuestionHomeMode;
+        if (p.QuestionSystem!==undefined) { if (!homeId(p.QuestionSystem)||(p.QuestionSelected!==0&&p.QuestionSelected!==1)) return; body.connection_id=p.QuestionSystem; body.selected=!!p.QuestionSelected; }
+      }
+      if (kind==='question-systems') { if (!Number.isInteger(p.QuestionPage)||p.QuestionPage<0||p.QuestionPage>=1000) return; body.page=p.QuestionPage; }
+      if (kind==='question-send') {
+        if (!questionDraft.review||p.QuestionReview!==questionDraft.review||questionDraft.expires<=now()||questionDraft.expires-now()>120) return;
+        body.review_id=questionDraft.review; questionDraft.review=null; // Claim before native dispatch.
+      }
+    }
+    if (active && active.question) cancel(true);
+    var a=attach(p.RequestId); a.question=body; a.questionSent=kind==='question-send';
+    questionSeen.push(p.RequestId); if(questionSeen.length>64) questionSeen.shift();
+    if (kind==='question-home'||kind==='question-systems') questionDraft.review=null;
+    a.abort=native('POST','question',body,function(err,data) {
+      if(!valid(a)) return;
+      if(err) return error(a,err);
+      if(kind==='question-cancel') { questionDraft=null; a.terminal=true; return; }
+      if(kind==='question-send') { if(!data||data.mode!=='working') return error(a,'Question was not started. Review it on your phone.'); questionDraft=null; return poll(a); }
+      a.questionPacket=questionPacket(a,data);
+      if(!a.questionPacket) return error(a,'Question cannot be reviewed safely. Continue on your phone.');
+      a.text=a.questionPacket.ResponseText||a.questionPacket.QuestionItems||'Question'; a.terminal=true; a.deliveries=0; deliver(a);
+    });
+  }
   return {
     sync:sync,
     cancel:cancel,
     configuration:function (command) {
       if (command && command.kind === 'refresh') return sync();
+      if (command && command.kind==='question-review' && requestId(command.request_id)) {
+        if (!questionReady || reviewedIds.indexOf(command.request_id)>=0) return;
+        reviewedIds.push(command.request_id); if(reviewedIds.length>64) reviewedIds.shift();
+        var offered=attach(command.request_id); offered.question={kind:'question-open',request_id:command.request_id};
+        offered.questionPacket=questionPacket(offered,Object.assign({},command,{mode:'review'}));
+        if(!offered.questionPacket) return error(offered,'Open the exact draft on your phone for review.');
+        offered.questionPacket.Command='question-offer'; offered.text=offered.questionPacket.ResponseText; offered.terminal=true; offered.deliveries=0; deliver(offered);
+        return;
+      }
       if (command && command.kind === 'cancel' && requestId(command.request_id)) {
         if (active && active.id === command.request_id) {
           cancel(true);
@@ -180,22 +269,7 @@ function createClient(options) {
         return;
       }
       if (command && command.kind === 'review' && requestId(command.request_id)) {
-        // The phone retains the original draft; the watch confirms only this bound ID.
-        if ((active && active.id === command.request_id) || reviewedIds.indexOf(command.request_id) >= 0) return;
-        if (typeof command.prompt !== 'string' || !command.prompt.trim() || utf8Bytes(command.prompt) > 400 ||
-            command.prompt.indexOf('\0') >= 0 || typeof command.review_context !== 'string' ||
-            !command.review_context.trim() || utf8Bytes(command.review_context) > 350 || command.review_context.indexOf('\0') >= 0) return;
-        reviewedIds.push(command.request_id);
-        if (reviewedIds.length > 64) reviewedIds.shift();
-        var review = attach(command.request_id);
-        review.reviewing = true;
-        send({RequestId:review.id, Command:'review', Prompt:command.prompt, ResponseText:command.review_context},
-          function () {}, function () { if (valid(review)) { cancel(); send({RequestId:review.id, Command:'cancel'}); } });
-        review.timer = later(function () {
-          if (!valid(review) || !review.reviewing) return;
-          cancel(); send({RequestId:review.id, Command:'cancel'});
-        }, 100000);
-        return;
+        return send({RequestId:command.request_id,StatusText:'Review the complete draft on your phone. Update both apps for wrist review.',Complete:1});
       }
       if (!command || ['survey','capture','record','ask'].indexOf(command.kind) < 0 || !requestId(command.request_id)) return;
       var already = active && active.id === command.request_id;
@@ -208,10 +282,11 @@ function createClient(options) {
     settings:function () { native('POST', 'settings', {}); },
     handle:function (p) {
       if (!p) return;
-      if (p.RequestType === 'ready') { homeVersion=p.HomeVersion===1?1:0; return sync(); }
+      if (p.RequestType === 'ready') { homeVersion=p.HomeVersion===1?1:0; questionVersion=p.QuestionReviewVersion===1?1:0; return sync(); }
       if (p.RequestType === 'clear') { cancel(); return native('POST', 'clear', {}, function () { sync(); }); }
       if (p.RequestType === 'settings') return native('POST', 'settings', {});
       if (!requestId(p.RequestId)) return;
+      if (typeof p.RequestType==='string' && p.RequestType.indexOf('question-')===0) return handleQuestion(p);
       if (typeof p.RequestType==='string' && p.RequestType.indexOf('home-')===0) return handleHome(p);
       if (p.RequestType === 'continue-phone') {
         var reply = active;
@@ -229,22 +304,13 @@ function createClient(options) {
       }
       if (p.RequestType === 'cancel') { if (active && active.id === p.RequestId) cancel(); return; }
       if (p.RequestType === 'confirm-wake') {
-        var review = active;
-        if (!review || review.id !== p.RequestId || !review.reviewing || review.terminal) return;
-        review.reviewing = false; // Claim before sending; repeated button packets cannot bill twice.
-        if (review.timer) clear(review.timer);
-        review.abort = native('POST', 'confirm-wake', {request_id:review.id}, function (err) {
-          if (!valid(review)) return;
-          if (err) return error(review, err);
-          poll(review);
-        });
-        return;
+        return send({RequestId:p.RequestId,StatusText:'Review the complete draft on your phone.',Complete:1});
       }
       if (p.TextAck !== undefined) {
         var a = active;
         if (!a || a.id !== p.RequestId || !a.text || a.delivered || a.committing) return;
         if (a.timer) clear(a.timer);
-        if (a.history || a.home) { a.delivered = true; return; }
+        if (a.history || a.home || (a.question && !a.questionSent)) { a.delivered = true; return; }
         return acknowledge(a, 1);
       }
       if (p.Snapshot !== undefined || p.RequestType === 'watch-data') {
@@ -272,6 +338,7 @@ function createClient(options) {
         return;
       }
       if (['ask','survey','capture','record'].indexOf(p.RequestType) < 0) return;
+      if (p.RequestType==='ask') return send({RequestId:p.RequestId,StatusText:'This watch needs a companion update. Review questions on your phone.',Complete:1});
       var recordTransition = active && active.id === p.RequestId && active.recording && p.RequestType === 'ask';
       if (active && active.id === p.RequestId && !recordTransition) return; // A transport retry must not bill twice.
       if (p.RequestType === 'ask' && (typeof p.Prompt !== 'string' || !p.Prompt.trim() || utf8Bytes(p.Prompt) > 400)) {
