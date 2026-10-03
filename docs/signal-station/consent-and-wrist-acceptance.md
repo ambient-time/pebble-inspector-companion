@@ -1,6 +1,6 @@
 # Reviewed wrist questions and Home consent
 
-By Luke Steuber. October 3, 2026. Development preview; not published or installed on personal devices.
+By Luke Steuber. October 3, 2026. Implementation-checkpoint record. Subsequent private staging and Android installation are recorded in [private delivery](private-delivery-2026-10-03.md); this checkpoint itself did not publish or install packages on personal devices.
 
 ## Behavior
 
