@@ -32,6 +32,20 @@ data class SignalTrendSeries(
 object SignalTrend {
     private val originalKinds = setOf("capture", "presence", "observation", "health_import")
 
+    fun baselineSeries(records: List<SignalRecord>, enabled: Set<String>): List<SignalTrendSeries> {
+        val originals = records.filter { eligible(it, enabled) }.map(SignalLearning::normalize)
+        return originals.flatMap { record -> record.observations.map { record to it } }
+            .groupBy { (record, row) -> identity(record, row) to duration(row) }
+            .values.mapNotNull { rows ->
+                val anchor = rows.filter { (_, row) -> supported(row) && numeric(row) != null && SignalLearning.fresh(row) }
+                    .maxByOrNull { it.second.measuredAt!! } ?: return@mapNotNull null
+                val selected = rows.groupBy { it.first.id }.values.map { group ->
+                    group.first().first.copy(observations = group.map { it.second })
+                }
+                series(selected.first { it.id == anchor.first.id }, selected, enabled, Int.MAX_VALUE).singleOrNull()
+            }
+    }
+
     fun series(anchor: SignalRecord, records: List<SignalRecord>, enabled: Set<String>, limit: Int = 60): List<SignalTrendSeries> {
         require(limit > 0)
         if (!eligible(anchor, enabled)) return emptyList()

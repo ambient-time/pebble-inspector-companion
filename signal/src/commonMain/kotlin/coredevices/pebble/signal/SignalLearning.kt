@@ -27,6 +27,9 @@ data class SignalMemory(
     val acceptedPatternText: String = "",
     val proposedEvidence: List<SignalEvidence> = emptyList(),
     val entityIds: Set<String> = emptySet(),
+    val derivationVersion: Int = 0,
+    val proposedDerivationVersion: Int = 0,
+    val fingerprintAliases: Set<String> = emptySet(),
 )
 
 @Serializable
@@ -64,6 +67,14 @@ data class SignalDeletionPreview(val recordIds: Set<String>, val recordCount: In
 
 object SignalLearning {
     const val WINDOW_MILLIS = 28L * 24 * 60 * 60 * 1000
+    const val BASELINE_VERSION = 2
+
+    fun canConfirm(memory: SignalMemory): Boolean = memory.kind != "baseline" ||
+        memory.derivationVersion == BASELINE_VERSION || (memory.proposedDerivationVersion == BASELINE_VERSION &&
+            memory.proposedText.isNotBlank() && memory.proposedEvidence.isNotEmpty())
+
+    fun legacyBaselineFingerprint(record: SignalRecord, row: SignalObservation, zoneId: String): String =
+        "baseline:${row.source}|${record.watchId}|${row.key}${row.metric.takeIf { it.isNotBlank() }?.let { ":$it" }.orEmpty()}|${row.unit}|${row.period}|${row.identity}${listOf("deviceManufacturer", "deviceModel", "deviceType").mapNotNull { key -> row.fields[key] }.takeIf { it.isNotEmpty() }?.joinToString(":", prefix = "|device:").orEmpty()}|$zoneId"
 
     fun normalize(record: SignalRecord): SignalRecord = record.copy(
         observations = record.observations.mapIndexed { index, observation ->
@@ -75,6 +86,7 @@ object SignalLearning {
 
     fun eligible(memory: SignalMemory, settings: SignalSettings): Boolean =
         settings.learningEnabled && memory.state in setOf("confirmed", "note") && !memory.needsReview &&
+            (memory.kind != "baseline" || memory.derivationVersion == BASELINE_VERSION) &&
             memory.sourceKeys.all { it in settings.enabled } && memory.entityIds.all { entity ->
                 when {
                     entity.startsWith("target:") -> settings.presenceTargets.any { "target:${it.id}" == entity && it.enabled }
@@ -108,13 +120,14 @@ object SignalLearning {
         val originals = records.filter { it.kind in setOf("capture", "presence", "observation", "health_import") && it.state == "ready" && it.references.isEmpty() &&
             now - it.createdAt in 0..WINDOW_MILLIS && SignalHistory.allowed(it, settings.enabled) }.map(::normalize)
         val result = mutableListOf<SignalMemory>()
-        fun proposal(fingerprint: String, kind: String, text: String, rows: List<Pair<SignalRecord, SignalObservation>>, coverage: String, entities: Set<String> = emptySet()) {
+        fun proposal(fingerprint: String, kind: String, text: String, rows: List<Pair<SignalRecord, SignalObservation>>, coverage: String, entities: Set<String> = emptySet(), aliases: Set<String> = emptySet()) {
             val evidence = rows.groupBy { it.first.id }.values.map { entries ->
                 SignalEvidence(entries.first().first.id, entries.map { it.second.id }.distinct(), entries.first().first.createdAt,
                     entries.joinToString("; ") { "${it.second.key}: ${it.second.value.take(150)} ${it.second.unit}" }.take(600))
             }.sortedByDescending { it.collectedAt }
             result += SignalMemory("", fingerprint, kind, text, createdAt = now, evaluatedAt = now,
-                sourceKeys = rows.map { it.second.key }.toSet(), evidence = evidence, coverage = coverage, entityIds = entities)
+                sourceKeys = rows.map { it.second.key }.toSet(), evidence = evidence, coverage = coverage, entityIds = entities,
+                derivationVersion = if (kind == "baseline") BASELINE_VERSION else 0, fingerprintAliases = aliases)
         }
         settings.placeFences.filter { it.enabled }.forEach { place ->
             val placeId = "fence:${place.id}"
@@ -138,18 +151,22 @@ object SignalLearning {
                         "Observed inside on ${supportive.size} of ${days.size} sampled days. Unsampled time is unknown. Timezone: ${zone.id}.", setOf(placeId))
             }
         }
-        originals.flatMap { r -> r.observations.filter { it.number != null && fresh(it) && !it.key.startsWith("wifi") && !it.key.startsWith("bluetooth") && !it.key.startsWith("presence.") && !it.key.startsWith("cellular") && it.period != "since_reboot" }
-            .map { r to it } }.groupBy { (r, o) -> "${o.source}|${r.watchId}|${o.key}${o.metric.takeIf { it.isNotBlank() }?.let { ":$it" }.orEmpty()}|${o.unit}|${o.period}|${o.identity}${listOf("deviceManufacturer", "deviceModel", "deviceType").mapNotNull { key -> o.fields[key] }.takeIf { it.isNotEmpty() }?.joinToString(":", prefix = "|device:").orEmpty()}|${zone.id}" }.forEach { (identity, rows) ->
-                val samples = rows.sortedByDescending { it.first.createdAt }.distinctBy { (_, o) -> if (o.period == "day") "${o.date}:${o.windowStart}:${o.windowEnd}" else "${o.measuredAt}" }
-                val days = samples.map { (_, o) -> o.date ?: date(o.measuredAt!!) }.distinct()
-                if (samples.size >= 10 && days.size >= 5) {
-                    val values = samples.mapNotNull { it.second.number }.sorted()
-                    val median = if (values.size % 2 == 0) values[values.size / 2 - 1] / 2 + values[values.size / 2] / 2 else values[values.size / 2]
-                    val o = samples.first().second
-                    proposal("baseline:$identity", "baseline", "${o.key.replace('.', ' ')} ${o.metric.replace('_', ' ')}: observed median $median ${o.unit}; range ${values.first()}–${values.last()} ${o.unit}.", samples,
-                        "${values.size} comparable measurements across ${days.size} days. Origin: ${o.source}; period: ${o.period}. Descriptive observations, not a health assessment.")
-                }
+        val byId = originals.associateBy { it.id }
+        SignalTrend.baselineSeries(originals, settings.enabled).forEach { series ->
+            val samples = series.points.mapNotNull { point ->
+                byId[point.recordId]?.let { record -> record.observations.firstOrNull { it.id == point.observationId }?.let { record to it } }
             }
+            val days = samples.map { (_, o) -> o.date ?: date(o.measuredAt!!) }.distinct()
+            if (samples.size >= 10 && days.size >= 5) {
+                val o = samples.last().second
+                val duration = o.windowStart?.let { start -> o.windowEnd?.minus(start) }
+                val omitted = series.unusableRows + series.conflictingRows + series.overlappingRows + series.incompatibleWindows
+                proposal("baseline:v$BASELINE_VERSION:${series.identity.id}|${duration ?: "instant"}|${zone.id}", "baseline",
+                    "${o.key.replace('.', ' ')} ${o.metric.replace('_', ' ')}: observed median ${series.median} ${o.unit}; range ${series.minimum}–${series.maximum} ${o.unit}.", samples,
+                    "${samples.size} comparable measurements across ${days.size} days. Origin: ${o.source}; period: ${o.period}; interval: ${duration?.let { "$it ms" } ?: "instant"}. $omitted unusable or overlapping readings excluded; ${series.duplicateCopies} copies deduplicated. Descriptive observations, not a health assessment.",
+                    aliases = samples.map { (r, row) -> legacyBaselineFingerprint(r, row, zone.id) }.toSet())
+            }
+        }
         return result
     }
 }
