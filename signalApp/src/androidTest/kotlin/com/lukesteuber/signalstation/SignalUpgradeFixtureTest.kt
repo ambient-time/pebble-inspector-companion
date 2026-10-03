@@ -19,8 +19,9 @@ class SignalUpgradeFixtureTest {
         assumeTrue(mode == "seed" || mode == "verify")
         assumeTrue(Build.MODEL.contains("sdk") || Build.HARDWARE.contains("ranchu"))
         val context = instrumentation.targetContext
-        withTimeout(15_000) { (context.applicationContext as SignalApplication).station.state.first { it.initialized && it.homeReady } }
         val version = androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(context.packageManager.getPackageInfo(context.packageName, 0))
+        // Keep the seed runner binary-compatible with the distributed app's older SignalState.
+        withTimeout(15_000) { (context.applicationContext as SignalApplication).station.state.first { it.initialized && (version < 18 || it.homeReady) } }
         val store = SignalStore(context)
         try {
             if (mode == "seed") {
