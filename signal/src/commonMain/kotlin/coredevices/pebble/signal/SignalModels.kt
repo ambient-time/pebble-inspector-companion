@@ -128,6 +128,7 @@ data class SignalState(
     val selectedRecordId: String? = null,
     val watchHandoffRecordId: String? = null,
     val configuredProviders: Set<String> = emptySet(),
+    val localModelsSupported: Boolean = false,
     val weatherPlaces: List<SignalPlace> = emptyList(),
     val weatherSearchStatus: String = "",
     val weatherSearching: Boolean = false,

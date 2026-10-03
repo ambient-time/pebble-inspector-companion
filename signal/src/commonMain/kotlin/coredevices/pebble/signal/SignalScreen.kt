@@ -406,7 +406,7 @@ private fun SignalConversation(
                         Text("No saved readings are included. You can send an ordinary question, or add evidence first.")
                         TextButton(onClick = { station.dismissQuestionReview(); panel = "context" }) { Text("Add evidence") }
                     }
-                    Text("Only Send contacts your provider. It may use credits.")
+                    Text(if (review.provider in SignalLocalModels.providers) "Only Send runs the selected model on this phone. No cloud fallback. Dictation and external lookups have separate settings." else "Only Send contacts your provider. It may use credits.")
                     if (review.homeConnections.isNotEmpty()) Text("Home for this question: ${review.homeConnections.joinToString()}. ${if (review.homeActionsAllowed) "Reads and actions allowed; exact standing grants may execute." else "Read only. Actions are blocked, including standing grants."} Retrieved data goes to this provider.")
                     val expired = signalQuestionExpired(review.expiresAt)
                     if (expired) Text("Review expired. Return to the question and review it again. Nothing was sent.")
@@ -767,37 +767,42 @@ private fun SignalConfiguration(state: SignalState, station: SignalStation, onMa
         if (section == "answers") {
         item {
             SignalHeading("Settings")
-            Text("Capture works without a provider key. Add a key when you want model analysis.")
+            Text("Capture works without an answer source. Choose an on-phone model or add your own cloud provider key for analysis.")
             SignalHeading("Answers")
         }
         item {
-            SignalChoice("Provider", settings.provider, providerOptions, enabled = !state.busy) { provider ->
-                station.updateSettings(settings.copy(provider = provider, model = if (provider == "openai") "gpt-4.1-mini" else "", endpoint = ""))
+            val local = settings.provider in SignalLocalModels.providers
+            SignalChoice("Provider", settings.provider, providerOptions.filter { state.localModelsSupported || it.first !in SignalLocalModels.providers }, enabled = !state.busy) { provider ->
+                station.updateSettings(settings.copy(provider = provider, model = SignalLocalModels.defaultModel(provider), endpoint = ""))
             }
             Text("Changing providers starts a new conversation. Previous history stays on this phone.", style = MaterialTheme.typography.bodySmall)
+            if (local) SignalLocalModelPanel(settings.provider)
+            if (!local) {
             OutlinedTextField(model, { model = it }, Modifier.fillMaxWidth(), label = { Text("Model ID") }, singleLine = true, enabled = !state.busy)
             if (settings.provider == "custom") {
                 OutlinedTextField(endpoint, { endpoint = it }, Modifier.fillMaxWidth(), label = { Text("HTTPS endpoint") }, supportingText = { Text("OpenAI-compatible Chat Completions endpoint") }, singleLine = true, enabled = !state.busy, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
             }
             Text(if (settings.provider in state.configuredProviders) "Key saved · leave blank to keep it" else "Add your provider key")
             SignalKeyField(key, { key = it }, "Answer provider key", !state.busy)
+            }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { station.saveProvider(model, endpoint, key); key = "" },
-                    enabled = !state.busy && model.isNotBlank() && (key.isNotBlank() || settings.provider in state.configuredProviders) && (settings.provider != "custom" || endpoint.startsWith("https://"))) { Text("Save answer setup") }
+                    enabled = !state.busy && model.isNotBlank() && (local || key.isNotBlank() || settings.provider in state.configuredProviders) && (settings.provider != "custom" || endpoint.startsWith("https://"))) { Text("Save answer setup") }
                 OutlinedButton(onClick = station::checkAnswerSetup, enabled = !state.busy && !pendingProfile && key.isBlank()) { Text("Check local setup") }
-                OutlinedButton(onClick = station::testProvider, enabled = !state.busy && !pendingProfile && key.isBlank() && settings.model.isNotBlank() && settings.provider in state.configuredProviders) { Text("Test with provider") }
+                OutlinedButton(onClick = station::testProvider, enabled = !state.busy && !pendingProfile && key.isBlank() && settings.model.isNotBlank() && settings.provider in state.configuredProviders) { Text(if (local) "Test on this phone" else "Test with provider") }
             }
             if (pendingProfile || key.isNotBlank()) Text("Save these changes before testing or asking.", style = MaterialTheme.typography.bodySmall)
             SignalToggle("Disable Home agent controls", settings.homeToolsDisabled, !state.busy) { station.updateSettings(settings.copy(homeToolsDisabled = it)) }
-            if (!signalSupportsHomeTools(settings) && !settings.homeToolsDisabled) SignalToggle("Enable native tools for this model", settings.homeToolsVerifiedFor == "${settings.provider}|${settings.model}|${settings.endpoint}", !state.busy,
+            if (local) Text("On-phone models cannot control Home devices. Reviewed, attached readings remain available.")
+            if (!local && !signalSupportsHomeTools(settings) && !settings.homeToolsDisabled) SignalToggle("Enable native tools for this model", settings.homeToolsVerifiedFor == "${settings.provider}|${settings.model}|${settings.endpoint}", !state.busy,
                 "Use only if this model supports native function calls. Unsupported requests fail without executing prose commands.") { station.updateSettings(settings.copy(homeToolsVerifiedFor = if (it) "${settings.provider}|${settings.model}|${settings.endpoint}" else "")) }
             state.diagnostics?.let { report ->
                 Text("${report.stage.replace('_', ' ')}: ${report.result.replace('_', ' ')} · ${report.elapsedMs} ms · ${report.payloadBytes} message bytes")
                 TextButton(onClick = station::shareDiagnostics, enabled = !state.busy) { Text("Share diagnostic report") }
                 Text("The report contains build, timing, size, source outcomes and scheduler state. Your question, keys and readings are excluded.", style = MaterialTheme.typography.bodySmall)
             }
-            Text("The test sends a short question using the saved model and key. Provider charges may apply.", style = MaterialTheme.typography.bodySmall)
-            TextButton(onClick = {
+            Text(if (local) "The test runs a short question on this phone. Installed files and a successful test are separate checks." else "The test sends a short question using the saved model and key. Provider charges may apply.", style = MaterialTheme.typography.bodySmall)
+            if (!local) TextButton(onClick = {
                 onConfirm(SignalConfirmation("Remove answer key?", "You can add another key later.") { station.saveKey(settings.provider, "") })
             }, enabled = !state.busy && settings.provider in state.configuredProviders) { Text("Remove saved key") }
         }
@@ -989,6 +994,7 @@ internal fun SignalChoice(label: String, value: String, options: List<Pair<Strin
 }
 
 private val providerOptions = listOf(
+    "local-nano" to "On phone · Gemini Nano", "local-gemma" to "On phone · Gemma",
     "openai" to "OpenAI", "anthropic" to "Anthropic", "gemini" to "Google Gemini",
     "xai" to "xAI", "openrouter" to "OpenRouter", "custom" to "Custom endpoint",
 )

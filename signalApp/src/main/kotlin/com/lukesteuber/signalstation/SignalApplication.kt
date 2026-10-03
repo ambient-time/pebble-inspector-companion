@@ -11,6 +11,8 @@ class SignalApplication : Application(), coredevices.pebble.signal.SignalObserva
         private set
     override fun onCreate() {
         super.onCreate()
+        if (com.lukesteuber.localmodels.LocalModels.isModelProcess(this)) return
+        com.lukesteuber.localmodels.LocalModels.get(this)
         DefaultPebbleAndroidAppPicker.getInstance(this).enableAutoSelect = false
         watchLink = PebbleAppLink(this)
         station = AndroidSignalStation(this, watchLink)

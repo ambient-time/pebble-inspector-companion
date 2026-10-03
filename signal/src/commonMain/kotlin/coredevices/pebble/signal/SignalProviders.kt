@@ -13,7 +13,8 @@ import kotlinx.serialization.json.*
 /** Error messages are deliberately fixed: upstream bodies and URLs may contain private input. */
 class SignalProviderException(message: String) : Exception(message)
 
-class SignalProviders(http: HttpClient, private val secrets: SignalSecrets) {
+class SignalProviders(http: HttpClient, private val secrets: SignalSecrets,
+    private val localAnswer: (suspend (String, List<Pair<String, String>>) -> String)? = null) {
     // Redirects must never forward credentials or private prompts to a different destination.
     // Reuse only transport, not upstream logging, authentication, retries or default headers.
     private val client = HttpClient(http.engine) {
@@ -72,7 +73,8 @@ class SignalProviders(http: HttpClient, private val secrets: SignalSecrets) {
 
     /** Local preflight uses the same encoding that will be transmitted. */
     fun validateRequest(settings: SignalSettings, messages: List<Pair<String, String>>): Int =
-        validateEncodedRequest(request(settings, messages).second)
+        if (settings.provider in SignalLocalModels.providers) SignalLocalModels.validate(messages)
+        else validateEncodedRequest(request(settings, messages).second)
 
     private fun validateEncodedRequest(body: JsonObject): Int {
         val bytes = body.toString().encodeToByteArray().size
@@ -91,6 +93,14 @@ class SignalProviders(http: HttpClient, private val secrets: SignalSecrets) {
             if (messages.sumOf { it.second.encodeToByteArray().size.toLong() } > 256 * 1024)
                 fail("Conversation is too large. Start a new thread.")
             if (settings.model.isBlank()) fail("Choose a model in Settings.")
+            if (settings.provider in SignalLocalModels.providers) {
+                validateRequest(settings, messages)
+                val text = localAnswer?.invoke(settings.provider, messages)
+                    ?: fail("Local models are unavailable on this device.")
+                if (text.isBlank() || text.encodeToByteArray().size > 16 * 1024)
+                    fail("The local model returned an empty or oversized answer.")
+                return@guarded SignalReply(text.trim(), truncateUtf8(text.trim(), 900))
+            }
             val key = secrets.get(settings.provider)?.takeIf { it.isNotBlank() }
                 ?: fail("Add a key for the selected provider in Settings.")
             val request = request(settings, messages)

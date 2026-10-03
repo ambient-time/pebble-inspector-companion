@@ -42,6 +42,7 @@ android {
     sourceSets.getByName("main").assets.srcDir(rootProject.layout.projectDirectory.dir("androidApp/build/generated/signalWakeAssets"))
 }
 dependencies {
+    implementation(project(":localmodels"))
     implementation(project(":signal"))
     implementation(libs.androidx.activity.compose)
     implementation(libs.compose.material3)

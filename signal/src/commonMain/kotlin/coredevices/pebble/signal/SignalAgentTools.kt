@@ -13,6 +13,7 @@ interface SignalToolSession {
 
 /** Unknown/custom model support is explicit; choosing a connection never enables tools. */
 fun signalSupportsHomeTools(settings: SignalSettings): Boolean {
+    if (settings.provider in SignalLocalModels.providers) return false
     if (settings.homeToolsDisabled) return false
     if (settings.homeToolsVerifiedFor == "${settings.provider}|${settings.model}|${settings.endpoint}") return true
     return when (settings.provider) {

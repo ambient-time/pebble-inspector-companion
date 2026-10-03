@@ -1,0 +1,3 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <instrumentation android:name="com.lukesteuber.signalstation.LocalModelProbeRunner" android:targetPackage="com.lukesteuber.signalstation" android:label="Private local model check" />
+</manifest>

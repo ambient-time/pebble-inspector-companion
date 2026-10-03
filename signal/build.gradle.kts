@@ -37,6 +37,7 @@ kotlin {
             implementation("com.mikepenz:multiplatform-markdown-renderer-m3:0.43.0")
         }
         androidMain.dependencies {
+            implementation(project(":localmodels"))
             implementation(libs.androidx.activity.compose)
             implementation(libs.room.runtime)
             implementation("androidx.health.connect:connect-client:1.1.0")
