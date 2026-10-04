@@ -42,13 +42,16 @@ class LocalModelProbeRunner : AndroidJUnitRunner() {
         return LocalModelProbeActivity()
     }
     override fun onCreate(arguments: Bundle?) {
-        super.onCreate(Bundle(arguments ?: Bundle()).apply { putString("class", LocalModelDeviceProbe::class.java.name) })
+        val selected = arguments?.getString("class")?.takeIf { it == SignalLocalConsentTest::class.java.name }
+            ?: LocalModelDeviceProbe::class.java.name
+        super.onCreate(Bundle(arguments ?: Bundle()).apply { putString("class", selected) })
     }
 }
 class LocalModelProbeActivity : ComponentActivity() {
     var provider by mutableStateOf(LocalModelPolicy.GEMMA)
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
+        if (Build.VERSION.SDK_INT >= 27) { setShowWhenLocked(true); setTurnScreenOn(true) }
         setContent {
             MaterialTheme {
                 val density = LocalDensity.current
@@ -64,6 +67,33 @@ class LocalModelProbeActivity : ComponentActivity() {
     }
 }
 class LocalModelDeviceProbe {
+    @Test fun privateNativeProcessStartsAndReturnsMissingModelWithoutDownloading() = runBlocking {
+        assumeTrue(instrumentation is LocalModelProbeRunner)
+        val context = instrumentation.targetContext
+        assumeTrue(LocalModels.get(context).installedLabel() == null)
+        val result = CompletableDeferred<Bundle>()
+        val connection = object : ServiceConnection {
+            override fun onServiceConnected(name: ComponentName, binder: IBinder) {
+                val replies = Messenger(Handler(Looper.getMainLooper()) { message -> result.complete(message.data); true })
+                Messenger(binder).send(Message.obtain(null, ModelInferenceService.ANSWER, 42, 0).apply {
+                    replyTo = replies; data = Bundle().apply { putString("prompt", "user:\\nSynthetic model-process check") }
+                })
+            }
+            override fun onServiceDisconnected(name: ComponentName) {
+                result.completeExceptionally(AssertionError("Native process disconnected before responding"))
+            }
+        }
+        val bound = withContext(Dispatchers.Main) {
+            context.bindService(Intent(context, ModelInferenceService::class.java), connection, Context.BIND_AUTO_CREATE)
+        }
+        assertTrue(bound)
+        try {
+            val response = withTimeout(10_000) { result.await() }
+            assertTrue(response.getString("error").orEmpty().contains("Download or import"))
+            assertNull(response.getString("text"))
+            report("Private native process responded safely with no model installed.")
+        } finally { withContext(Dispatchers.Main) { context.unbindService(connection) } }
+    }
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
     private fun report(value: String) = instrumentation.sendStatus(2, Bundle().apply { putString("stream", "\n$value\n") })
     private fun capture(activity: Activity, name: String) {
@@ -88,13 +118,16 @@ class LocalModelDeviceProbe {
         val context = instrumentation.targetContext
         val runtime = LocalModels.get(context)
         val before = runtime.installedLabel()
-        val jobs = context.getSystemService(JobScheduler::class.java).allPendingJobs.map { it.id }.toSet()
+        fun downloadJobs() = context.getSystemService(JobScheduler::class.java).allPendingJobs
+            .filter { it.service.className == ModelDownloadJobService::class.java.name }.map { it.id }.toSet()
+        val jobs = downloadJobs()
         val service = context.packageManager.getServiceInfo(ComponentName(context, ModelInferenceService::class.java), 0)
         assertFalse(service.exported); assertTrue(service.processName.endsWith(":local_model"))
         val background = runCatching { runtime.answer(LocalModelPolicy.NANO, listOf("user" to "Reply OK.")) }.exceptionOrNull()
         assertTrue(background is LocalModelFailure && background.message.orEmpty().contains("open on screen"))
         val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as LocalModelProbeActivity
         try {
+            withTimeout(10_000) { while (!activity.hasWindowFocus()) delay(50) }
             delay(1200); capture(activity, "gemma-missing-large-font")
             instrumentation.runOnMainSync { activity.provider = LocalModelPolicy.NANO }
             val availability = withContext(Dispatchers.Main) { runtime.checkNano() }
@@ -106,7 +139,7 @@ class LocalModelDeviceProbe {
             }
             delay(1000); capture(activity, "nano-availability-large-font")
             assertEquals(before, runtime.installedLabel())
-            assertEquals(jobs, context.getSystemService(JobScheduler::class.java).allPendingJobs.map { it.id }.toSet())
+            assertEquals(jobs, downloadJobs())
         } finally { instrumentation.runOnMainSync { activity.finish() } }
         withTimeout(5000) { while (LocalModelPolicy.NANO in runtime.ready.value) delay(20) }
         val after = runCatching { runtime.answer(LocalModelPolicy.NANO, listOf("user" to "Reply OK.")) }.exceptionOrNull()

@@ -51,7 +51,9 @@ internal class GemmaModelStore(directory: File, private val pinned: PinnedModel 
     }
 
     fun remove() {
-        listOf(receipt, partial, model).forEach { it.delete() }
+        listOf(receipt, partial, model, File(receipt.parentFile, "${receipt.name}.new")).forEach {
+            if (it.exists() && !it.delete()) throw LocalModelFailure("Could not remove all model files. Try again.")
+        }
     }
 
     private fun receiptText() = "${pinned.sha256}\n${pinned.bytes}\n${model.lastModified()}\n"

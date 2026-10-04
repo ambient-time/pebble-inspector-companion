@@ -43,7 +43,7 @@ import kotlinx.coroutines.*
         uri?.let { runtime.importModel(it) { result -> message = result } }
     }
     LaunchedEffect(provider) {
-        runtime.checkNano()
+        if (provider == LocalModelPolicy.NANO) runtime.checkNano()
         while (isActive) {
             progress = runtime.downloadProgress()
             installed = runtime.installedLabel()

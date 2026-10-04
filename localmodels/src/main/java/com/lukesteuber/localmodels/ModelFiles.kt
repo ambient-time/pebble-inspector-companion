@@ -62,10 +62,12 @@ internal class ModelFiles(private val context: Context) {
             if (expected != null && pending.length() != expected) throw LocalModelFailure("The model file is incomplete.")
             currentCoroutineContext().ensureActive()
             Files.move(pending.toPath(), imported.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
-            name.writeText(displayName.take(200))
         } finally { pending.delete() }
     }
     fun remove() {
-        imported.delete(); name.delete(); downloaded.remove()
+        listOf(imported, name).forEach {
+            if (it.exists() && !it.delete()) throw LocalModelFailure("Could not remove all model files. Try again.")
+        }
+        downloaded.remove()
     }
 }

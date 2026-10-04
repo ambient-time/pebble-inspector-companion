@@ -31,11 +31,19 @@ class LocalModels private constructor(private val app: Application) {
     private val mutableImport = MutableStateFlow<String?>(null)
     val importing: StateFlow<String?> = mutableImport.asStateFlow()
     private var importJob: Job? = null
+    private var readinessRevision = 0L
+    private var nanoInterested = false
+    fun selectSource(provider: String) {
+        if (provider == LocalModelPolicy.NANO && !nanoInterested) {
+            nanoInterested = true
+            scope.launch { checkNano() }
+        }
+    }
     init {
         app.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
             override fun onActivityResumed(activity: Activity) {
                 resumed += activity; filesChanged()
-                scope.launch { checkNano() }
+                if (nanoInterested) scope.launch { checkNano() }
             }
             override fun onActivityPaused(activity: Activity) {
                 resumed -= activity
@@ -52,7 +60,9 @@ class LocalModels private constructor(private val app: Application) {
     }
     fun filesChanged() {
         scope.launch {
+            val revision = ++readinessRevision
             val gemma = withContext(Dispatchers.IO) { files.active() != null }
+            if (revision != readinessRevision) return@launch
             mutableReady.value = buildSet {
                 if (gemma && mutableImport.value == null) add(LocalModelPolicy.GEMMA)
                 if (resumed.isNotEmpty() && mutableNano.value == NanoAvailability.READY) add(LocalModelPolicy.NANO)
@@ -60,6 +70,7 @@ class LocalModels private constructor(private val app: Application) {
         }
     }
     suspend fun checkNano(): NanoAvailability {
+        nanoInterested = true
         mutableNano.value = try {
             app.packageManager.getPackageInfo("com.google.android.aicore", 0)
             when (withTimeout(10_000) { nano.checkStatus() }) {
@@ -160,6 +171,7 @@ class LocalModels private constructor(private val app: Application) {
         gate.withLock { withContext(Dispatchers.IO) {
             if (downloadProgress().isActive || mutableImport.value != null) throw LocalModelFailure("Wait for the current model operation to finish.")
             files.remove()
+            ModelDownloads.writeProgress(app, ModelDownloadProgress(ModelDownloadProgress.State.IDLE))
         } }
         filesChanged()
     }

@@ -169,6 +169,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
                     }
                 }
                 initialized.complete(Unit)
+                localModels.selectSource(settings.provider)
                 (localReadiness ?: localModels.ready).onEach {
                     val available = configured()
                     mutable.update { state -> state.copy(configuredProviders = available) }
@@ -272,7 +273,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
                     if (newThread || !signalSupportsHomeTools(sanitized)) home.cancelAgentTurns()
                     mutable.update { it.copy(settings = sanitized, homeAccess = if (newThread || !signalSupportsHomeTools(sanitized)) emptySet() else it.homeAccess, configuredProviders = configuredProviders, presenceCandidates = it.presenceCandidates.filter { candidate -> "presence.${candidate.radio}" in sanitized.enabled }, placeLookup = null, threadId = if (newThread) id() else it.threadId, status = "Settings saved. Collection runs only when requested.") }
                 } }
-                if (generation == token) { refreshWatchSettings(); refreshLearning(); suggestMemory(memoryQuery) }
+                if (generation == token) { localModels.selectSource(sanitized.provider); refreshWatchSettings(); refreshLearning(); suggestMemory(memoryQuery) }
             } catch (_: Exception) { status("Settings could not be saved.") }
             finally { if (generation == token) mutable.update { it.copy(busy = false) } }
         }
