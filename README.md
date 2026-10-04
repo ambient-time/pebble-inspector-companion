@@ -24,14 +24,15 @@ there; Signal Station uses that connection. Install the watch package, then open
 **Check connection**. Up captures, the middle button asks, and Down opens history.
 Hold the middle button on a reply to open its full text on your phone.
 
-The September 15, 2026 downloads contain Android build **17**
-(`0.5.0-home-dev`) and Pebble **1.7.1**, also published in the Pebble Store.
+The October 3, 2026 testing downloads contain Android build **20**
+(`0.7.0-local-dev`) and Pebble **1.8.1**. Pebble 1.8.1 is staged as a draft;
+1.7.1 remains the published Store release.
 These remain experimental builds. [Home connections](docs/signal-station/home-connections.md)
 add optional Home Assistant, openHAB and Geepers readings, configurable controls,
 and Home access in the existing chat package. Connections and action permissions
 start empty. Hold Down at the watch home screen for phone-selected favorites.
 
-See the [release evidence](docs/signal-station/home-release-2026-09-15.md) for
+See the [current release evidence](docs/signal-station/download-preview-2026-10-03.md) for
 source/package identities and the remaining physical phone/watch acceptance.
 The [platform capability audit](docs/signal-station/platform-capabilities.md)
 records iOS and Garmin possibilities and limits; those ports are not implemented.
