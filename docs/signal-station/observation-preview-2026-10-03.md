@@ -77,3 +77,12 @@ its existing host and firmware, and conduct a bounded acceptance run using the
 exact package above. Rendering, dictation, selected-source capture, question
 review/cancel/send and reconnect on the physical 2 SE remain open. Store draft
 staging and a public release remain separate from those checks.
+
+## Subsequent receipts
+
+The [2 SE installation record](pebble-2-se-install-2026-10-03.md) supersedes the
+earlier no-physical-install checkpoint for this exact package: installation,
+home rendering and phone/watch acknowledgement were verified on Pixel 9a and
+the 2 SE. Full wearer acceptance remains open. Separate
+[download and Store staging work](download-preview-2026-10-03.md) records later
+distribution changes; this original packaging run did not perform them.
