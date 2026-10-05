@@ -51,3 +51,8 @@ measurement age. Tests use synthetic data and disposable local brokers.
 Observed: clean companion checkout at `0a805ddd`; existing three connectors,
 phone Home cards and native watch favorites; Android ambient sensor discovery.
 Planned: implementation, broker fixtures, regression tests and rendered UI.
+
+Completed October 4: implementation source `e192c383`, Android preview build 21,
+host/broker/UI regression, shared iOS compilation, rendered large-text checks and
+Pixel 9a in-place installation. See the [delivery record](environment-delivery-2026-10-04.md)
+for measured counts, artifact identity and unverified acceptance boundaries.

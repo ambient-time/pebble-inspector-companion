@@ -75,8 +75,8 @@ Missing hardware is shown as unavailable. No sensor is enabled by this upgrade.
 The existing Home-favorites watch protocol is unchanged and does not require a
 speaker. The shared source targets Android and iOS; Signal's iOS application
 shell is not yet validated. Build, automated checks, physical installation and
-public release are separate milestones. See the dated implementation record for
-this preview's measured evidence.
+public release are separate milestones. See the [October 4 delivery record](environment-delivery-2026-10-04.md)
+for this preview's measured evidence and remaining physical acceptance work.
 
 Protocol references: [MQTT 5](https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html),
 [shared client library](https://github.com/ukemp/ktor-mqtt),
