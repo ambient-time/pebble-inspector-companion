@@ -12,6 +12,13 @@ Build 17 and the companion Pebble 1.7.1 package are published; see
 standing action permission is granted by setup or upgrade. Sent uncertain
 mutations must never inherit generic networking retry behavior.
 
+The latest private validation checkpoint is Android **0.9.1-public-data-dev (23)**,
+installed in place on Pixel 9a and Pixel 10 with matching APK checksums. See
+[build 23 evidence](docs/signal-station/attention-watch-validation-2026-10-04.md).
+The October 3 testing downloads remain Android build 20 / Pebble 1.8.1; build 23
+was not publicly distributed. Physical 2 SE favorite-screen acceptance and the
+current TalkBack journey remain open. Keep dated release records distinct.
+
 The inherited Android/iOS CoreApp targets below are separate products.
 Signal declares iOS compilation targets but has no iOS station registration,
 collector/coordinator/storage adapters or validated product shell yet.
@@ -166,4 +173,3 @@ When asked to make a release build and install it on a local device, follow the 
     - wait long enough for `PebbleService` / Ring BLE scanning to start, then check for `FATAL EXCEPTION`, `ClassNotFoundException`, `Room cannot verify`, and `Process: coredevices.coreapp`.
 
 Release builds are minified. If a release-only crash appears in Haversine/native BLE code, check R8 keep rules before changing app logic. In particular, the Haversine native library resolves `com.wtlp.haversinesatellitelibrary.logging.HaversineLog` by exact JVM class name, so the app proguard rules must keep that class.
-

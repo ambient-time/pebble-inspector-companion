@@ -40,9 +40,8 @@ and Connections screen consume it unchanged.
 
 APK SHA-256:
 `4dcf9a639f37e524d16ed7310b3f5428cdb87133776a5669809c920c58c27636`.
-Both Pixel 9a and Pixel 10 installed APKs match. Pixel 10 was upgraded in place
-after the coordinating Dick Tracy Watch task's rendering checks. Its package
-version and installed APK checksum were then independently verified over ADB.
+Both Pixel 9a and Pixel 10 installed APKs match. Pixel 10 was upgraded in place;
+its package version and installed APK checksum were independently verified over ADB.
 This adds installation evidence, not a Pixel 10 interaction or watch acceptance
 claim; no Signal configuration, watch pairing or firmware change was reported.
 
@@ -67,7 +66,10 @@ checking the app. A protocol acknowledgement is not visual acceptance.
 - Physical 2 SE Home favorite acceptance: press Back to dismiss Ping, open
   Signal if necessary, hold Down, select a favorite, and inspect its value,
   source and age. This still requires actual button/screen evidence.
-- TalkBack acceptance was not performed by this change.
+- TalkBack acceptance of this changed warning/recovery flow was not performed.
+  Earlier build 21 TalkBack-enabled automation is recorded in the
+  [environmental delivery evidence](environment-delivery-2026-10-04.md); it does
+  not establish a complete physical screen-reader journey for build 23.
 
 Private captures, test logs and the previous installed APK are retained outside
 Git on Galactus. The owned emulator was stopped, the temporary ADB forward was

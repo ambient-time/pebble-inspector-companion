@@ -37,6 +37,18 @@ source/package identities and the remaining physical phone/watch acceptance.
 The [platform capability audit](docs/signal-station/platform-capabilities.md)
 records iOS and Garmin possibilities and limits; those ports are not implemented.
 
+## Private validation checkpoint — October 4, 2026
+
+Android **0.9.1-public-data-dev (23)** is installed on Pixel 9a and Pixel 10;
+both installed APK hashes match the tested artifact. This private build includes
+environmental readings and makes partial public-feed failures visible in
+connection status. It does not replace the testing downloads described above.
+
+The [build 23 validation record](docs/signal-station/attention-watch-validation-2026-10-04.md)
+separates automated checks, phone installation and watch evidence. Physical
+2 SE favorite-screen acceptance and the current TalkBack journey remain open.
+No new watch package or public release was made for this fix.
+
 ## What you can do
 
 **Explore around you.** See nearby wireless signals, repeated sightings and broad
