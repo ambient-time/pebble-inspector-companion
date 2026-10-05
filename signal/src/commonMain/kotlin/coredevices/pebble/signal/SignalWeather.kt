@@ -31,15 +31,19 @@ class SignalWeather(http: HttpClient) {
         if (selected.isEmpty()) return@supervisorScope emptyList()
         if (!validPlace(place)) return@supervisorScope missing(selected, "place_unavailable", now)
         val base = mapOf("latitude" to place.latitude.toString(), "longitude" to place.longitude.toString(), "timezone" to "auto", "timeformat" to "unixtime")
-        val weatherKeys = selected - setOf("weather.air_quality", "weather.uv")
-        val airKeys = selected - weatherKeys
+        val weatherKeys = selected - setOf("weather.air_quality", "weather.uv", "weather.pollen")
+        val airKeys = selected.intersect(setOf("weather.air_quality", "weather.uv"))
         listOf(async {
             guarded(weatherKeys, now) {
                 val params = base + buildMap {
                     put("forecast_days", "2")
-                    if ("weather.current" in weatherKeys) put("current", "temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,weather_code,wind_speed_10m")
+                    if ("weather.current" in weatherKeys) put("current", currentFields.joinToString(","))
                     if ("weather.forecast" in weatherKeys) { put("hourly", "temperature_2m,precipitation_probability,precipitation"); put("forecast_hours", "7") }
-                    if ("weather.daylight" in weatherKeys) put("daily", "sunrise,sunset,daylight_duration")
+                    val daily = buildList {
+                        if ("weather.daylight" in weatherKeys) addAll(listOf("sunrise", "sunset", "daylight_duration"))
+                        if ("weather.daily" in weatherKeys) addAll(listOf("temperature_2m_max", "temperature_2m_min"))
+                    }
+                    if (daily.isNotEmpty()) put("daily", daily.joinToString(","))
                 }
                 parse(get("https://api.open-meteo.com/v1/forecast", params), weatherKeys, place.name, locationNote, now)
             }
@@ -51,6 +55,11 @@ class SignalWeather(http: HttpClient) {
                 }
                 parse(get("https://air-quality-api.open-meteo.com/v1/air-quality", base + mapOf("current" to fields.joinToString(","))), airKeys, place.name, locationNote, now)
             }
+        }, async {
+            val pollenKeys = selected.intersect(setOf("weather.pollen"))
+            guarded(pollenKeys, now) {
+                parse(get("https://air-quality-api.open-meteo.com/v1/air-quality", base + mapOf("current" to pollenFields.joinToString(","), "domains" to "cams_europe")), pollenKeys, place.name, locationNote, now)
+            }
         }).awaitAll().flatten()
     }
 
@@ -58,13 +67,13 @@ class SignalWeather(http: HttpClient) {
         if (keys.isEmpty()) return emptyList()
         return try { block() }
         catch (e: CancellationException) { throw e }
+        catch (_: WeatherCoverageException) { missing(keys, "unsupported_region", now) }
         catch (_: Exception) { missing(keys, "service_unavailable", now) }
     }
 
     private suspend fun get(url: String, parameters: Map<String, String>): JsonObject =
         withTimeoutOrNull(7_000) {
             client.prepareGet(url) { parameters.forEach { (key, value) -> parameter(key, value) } }.execute { response ->
-                check(response.status.value in 200..299)
                 val channel = response.bodyAsChannel()
                 val bytes = ByteArray(64 * 1024 + 1)
                 var count = 0
@@ -74,17 +83,24 @@ class SignalWeather(http: HttpClient) {
                     count += read
                 }
                 check(count <= 64 * 1024)
-                Json.parseToJsonElement(bytes.decodeToString(0, count)).jsonObject.also { check(it["error"] != JsonPrimitive(true)) }
+                Json.parseToJsonElement(bytes.decodeToString(0, count)).jsonObject.also {
+                    if (parameters["domains"] == "cams_europe" && response.status.value == 400 && it["error"] == JsonPrimitive(true) && it["reason"] == JsonPrimitive("No data is available for this location")) throw WeatherCoverageException()
+                    check(response.status.value in 200..299 && it["error"] != JsonPrimitive(true))
+                }
             }
         } ?: error("Weather request timed out")
 
     companion object {
+        val currentFields = listOf("temperature_2m", "apparent_temperature", "relative_humidity_2m", "precipitation", "weather_code", "wind_speed_10m", "wind_direction_10m", "wind_gusts_10m", "pressure_msl", "surface_pressure", "dew_point_2m", "visibility", "cloud_cover")
+        val pollenFields = listOf("alder_pollen", "birch_pollen", "grass_pollen", "mugwort_pollen", "olive_pollen", "ragweed_pollen")
         val sources = listOf(
             SignalSource("weather.current", "Current weather", "Weather"),
             SignalSource("weather.forecast", "Next six hours", "Weather"),
             SignalSource("weather.daylight", "Sunrise, sunset and daylight", "Weather"),
             SignalSource("weather.air_quality", "Air quality", "Weather"),
             SignalSource("weather.uv", "UV index", "Weather"),
+            SignalSource("weather.daily", "Daily high and low", "Weather"),
+            SignalSource("weather.pollen", "Pollen · Europe, seasonal", "Weather"),
         )
         val keys = sources.map { it.key }.toSet()
         fun validPlace(place: SignalPlace) = place.name.isNotBlank() && place.latitude.isFinite() && place.longitude.isFinite() && place.latitude in -90.0..90.0 && place.longitude in -180.0..180.0
@@ -102,15 +118,22 @@ class SignalWeather(http: HttpClient) {
             fun fields(row: JsonObject, names: List<String>, units: JsonObject): String = names.joinToString("; ") { name ->
                 "$name=${row.number(name)?.toString() ?: "unavailable"} ${(units[name] as? JsonPrimitive)?.contentOrNull.orEmpty().take(30)}".trim()
             }
+            fun structured(row: JsonObject, names: List<String>, units: JsonObject): Map<String, String> = buildMap {
+                names.forEach { name ->
+                    row.number(name)?.let { put(name, it.toString()) }
+                    (units[name] as? JsonPrimitive)?.contentOrNull?.let { put("$name.unit", it.take(30)) }
+                }
+            }
             fun addCurrent(key: String, names: List<String>) {
                 if (key !in enabled) return
                 if (at == null || names.none { current.number(it) != null }) { output += missing(listOf(key), "unavailable", now); return }
                 val status = if (at > now + 15 * 60_000 || now - at > 2 * 60 * 60_000) "stale_model" else "modeled"
-                output += SignalObservation(key, "Open-Meteo" + if (key == "weather.air_quality" || key == "weather.uv") " / CAMS" else "", "$label; ${fields(current, names, currentUnits)}", collectedAt = now, measuredAt = at, status = status)
+                output += SignalObservation(key, "Open-Meteo" + if (key in setOf("weather.air_quality", "weather.uv", "weather.pollen")) " / CAMS" else "", "$label; ${fields(current, names, currentUnits)}", collectedAt = now, measuredAt = at, status = status, fields = structured(current, names, currentUnits))
             }
-            addCurrent("weather.current", listOf("temperature_2m", "apparent_temperature", "relative_humidity_2m", "precipitation", "weather_code", "wind_speed_10m"))
+            addCurrent("weather.current", currentFields)
             addCurrent("weather.air_quality", listOf("us_aqi", "pm2_5", "pm10"))
             addCurrent("weather.uv", listOf("uv_index"))
+            addCurrent("weather.pollen", pollenFields)
             if ("weather.forecast" in enabled) {
                 val hourly = data["hourly"] as? JsonObject ?: JsonObject(emptyMap())
                 val times = hourly["time"] as? JsonArray ?: JsonArray(emptyList())
@@ -122,7 +145,14 @@ class SignalWeather(http: HttpClient) {
                     if (names.none { row.number(it) != null }) null else t to "${stamp(t)}: ${fields(row, names, units)}"
                 }.distinctBy { it.first }.sortedBy { it.first }.take(6)
                 if (rows.isEmpty()) output += missing(listOf("weather.forecast"), "unavailable", now)
-                else output += SignalObservation("weather.forecast", "Open-Meteo", "$label; forecast hours=${rows.size}/6; ${rows.joinToString(" | ") { it.second }}", collectedAt = now, status = "forecast", period = "next_6_hours", windowStart = rows.first().first, windowEnd = rows.last().first)
+                else output += SignalObservation("weather.forecast", "Open-Meteo", "$label; forecast hours=${rows.size}/6; ${rows.joinToString(" | ") { it.second }}", collectedAt = now, status = "forecast", period = "next_6_hours", windowStart = rows.first().first, windowEnd = rows.last().first, fields = buildMap {
+                    rows.forEachIndexed { n, row ->
+                        val index = times.indexOfFirst { seconds(it) == row.first }
+                        put("hour.$n.time", row.first.toString())
+                        val values = JsonObject(names.associateWith { (hourly[it] as? JsonArray)?.getOrNull(index) ?: JsonNull })
+                        structured(values, names, units).forEach { (key, value) -> put("hour.$n.$key", value) }
+                    }
+                })
             }
             if ("weather.daylight" in enabled) {
                 val daily = data["daily"] as? JsonObject ?: JsonObject(emptyMap())
@@ -133,9 +163,30 @@ class SignalWeather(http: HttpClient) {
                 val normalDay = sunrise != null && sunset != null && sunrise < sunset && sunset - sunrise <= 86_400_000 && kotlin.math.abs(sunrise - now) < 86_400_000
                 val remaining = if (normalDay) ((sunset!! - maxOf(now, sunrise!!)).coerceAtLeast(0) / 1000).toString() else "unavailable"
                 val value = "$label; sunrise=${sunrise?.let(::stamp) ?: "unavailable"}; sunset=${sunset?.let(::stamp) ?: "unavailable"}; daylight_seconds=${duration ?: "unavailable"}; daylight_remaining_seconds=$remaining"
-                output += SignalObservation("weather.daylight", "Open-Meteo", value, collectedAt = now, status = if (normalDay) "calculated" else if (duration == null && sunrise == null && sunset == null) "unavailable" else "partial_or_polar", period = "daylight", windowStart = sunrise, windowEnd = sunset)
+                output += SignalObservation("weather.daylight", "Open-Meteo", value, collectedAt = now, status = if (normalDay) "calculated" else if (duration == null && sunrise == null && sunset == null) "unavailable" else "partial_or_polar", period = "daylight", windowStart = sunrise, windowEnd = sunset, fields = buildMap {
+                    sunrise?.let { put("sunrise", it.toString()) }; sunset?.let { put("sunset", it.toString()) }
+                    duration?.let { put("daylight_seconds", it.toString()) }
+                    if (normalDay) put("daylight_remaining_seconds", remaining)
+                })
+            }
+            if ("weather.daily" in enabled) {
+                val daily = data["daily"] as? JsonObject ?: JsonObject(emptyMap())
+                val units = data["daily_units"] as? JsonObject ?: JsonObject(emptyMap())
+                val names = listOf("temperature_2m_max", "temperature_2m_min")
+                val values = buildMap {
+                    (daily["time"] as? JsonArray).orEmpty().take(2).forEachIndexed { n, time ->
+                        val t = seconds(time)?.takeIf { it in now - 86_400_000..now + 2 * 86_400_000 } ?: return@forEachIndexed
+                        put("day.$n.time", t.toString())
+                        val row = JsonObject(names.associateWith { (daily[it] as? JsonArray)?.getOrNull(n) ?: JsonNull })
+                        structured(row, names, units).forEach { (key, value) -> put("day.$n.$key", value) }
+                    }
+                    (data["timezone"] as? JsonPrimitive)?.contentOrNull?.let { put("timezone", it.take(100)) }
+                }
+                output += SignalObservation("weather.daily", "Open-Meteo", "$label; ${values.entries.joinToString("; ") { "${it.key}=${it.value}" }}", collectedAt = now, status = if (values.keys.any { it.endsWith("temperature_2m_max") || it.endsWith("temperature_2m_min") }) "forecast" else "unavailable", period = "daily", fields = values)
             }
             return output.filter { it.key in enabled }
         }
     }
 }
+
+private class WeatherCoverageException : Exception()
