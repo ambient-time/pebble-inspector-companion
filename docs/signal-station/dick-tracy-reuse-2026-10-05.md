@@ -58,3 +58,7 @@ This is a source-level safety port, not a device acceptance or release receipt.
 The existing private build 23 installs, public downloads, watch package and
 pairings are untouched. Physical favorites and current TalkBack acceptance
 remain open as recorded in the [build 23 receipt](attention-watch-validation-2026-10-04.md).
+
+Subsequent delivery: these guards were packaged and privately installed on both
+Pixels in [build 24](private-build24-2026-10-05.md). That separate receipt does
+not change the source-only scope of this original reuse check.

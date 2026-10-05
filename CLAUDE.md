@@ -12,10 +12,10 @@ Build 17 and the companion Pebble 1.7.1 package are published; see
 standing action permission is granted by setup or upgrade. Sent uncertain
 mutations must never inherit generic networking retry behavior.
 
-The latest private validation checkpoint is Android **0.9.1-public-data-dev (23)**,
+The latest private installation checkpoint is Android **0.9.2-public-data-dev (24)**,
 installed in place on Pixel 9a and Pixel 10 with matching APK checksums. See
-[build 23 evidence](docs/signal-station/attention-watch-validation-2026-10-04.md).
-The October 3 testing downloads remain Android build 20 / Pebble 1.8.1; build 23
+[build 24 evidence](docs/signal-station/private-build24-2026-10-05.md).
+The October 3 testing downloads remain Android build 20 / Pebble 1.8.1; build 24
 was not publicly distributed. Physical 2 SE favorite-screen acceptance and the
 current TalkBack journey remain open. Keep dated release records distinct.
 
