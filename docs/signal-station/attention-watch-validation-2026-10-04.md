@@ -40,9 +40,11 @@ and Connections screen consume it unchanged.
 
 APK SHA-256:
 `4dcf9a639f37e524d16ed7310b3f5428cdb87133776a5669809c920c58c27636`.
-Pixel 9a's installed APK matches. Pixel 10 installation was handed to the
-Dick Tracy Watch task to avoid interrupting its active rendering checks; its
-completion is not claimed here.
+Both Pixel 9a and Pixel 10 installed APKs match. Pixel 10 was upgraded in place
+after the coordinating Dick Tracy Watch task's rendering checks. Its package
+version and installed APK checksum were then independently verified over ADB.
+This adds installation evidence, not a Pixel 10 interaction or watch acceptance
+claim; no Signal configuration, watch pairing or firmware change was reported.
 
 ## Watch finding
 
@@ -65,7 +67,6 @@ checking the app. A protocol acknowledgement is not visual acceptance.
 - Physical 2 SE Home favorite acceptance: press Back to dismiss Ping, open
   Signal if necessary, hold Down, select a favorite, and inspect its value,
   source and age. This still requires actual button/screen evidence.
-- Pixel 10 upgrade receipt is owned by the coordinating Dick Tracy Watch task.
 - TalkBack acceptance was not performed by this change.
 
 Private captures, test logs and the previous installed APK are retained outside
