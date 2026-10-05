@@ -256,6 +256,9 @@ class SignalProviders(http: HttpClient, private val secrets: SignalSecrets,
                             (block as? JsonObject)?.text("type") == "refusal"
                         }
                     }) declined()
+                    if ((root["output"] as? JsonArray).orEmpty().any {
+                        (it as? JsonObject)?.text("type") in setOf("computer_call", "mcp_approval_request", "shell_call")
+                    }) fail("The provider requested an unavailable tool. Nothing further was dispatched.")
                 }
                 "anthropic" -> when (root.text("stop_reason")) {
                     "max_tokens" -> incomplete()
@@ -270,9 +273,10 @@ class SignalProviders(http: HttpClient, private val secrets: SignalSecrets,
                         "SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII" -> declined()
                     }
                 }
-                "openrouter", "custom" -> when (((root["choices"] as? JsonArray)?.firstOrNull() as? JsonObject)?.text("finish_reason")) {
+                "openrouter", "custom" -> when (((root["choices"] as? JsonArray)?.firstOrNull() as? JsonObject)?.text("finish_reason")?.lowercase()) {
                     "length" -> incomplete()
                     "content_filter" -> declined()
+                    "error", "error_limit" -> fail("The provider did not complete the answer. No automatic retry was made.")
                     else -> Unit
                 }
             }
