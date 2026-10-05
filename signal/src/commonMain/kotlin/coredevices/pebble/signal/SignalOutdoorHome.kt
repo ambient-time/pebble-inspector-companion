@@ -16,7 +16,19 @@ fun validateOutdoorConnection(connection: HomeConnection): OutdoorConfig {
 
 class SignalOutdoorConnector(http: HttpClient, private val connection: HomeConnection, private val clock: () -> Long) : HomeConnector {
     private val api = SignalOutdoorClient(http)
-    override suspend fun catalog(): List<HomeEntity> = api.collect(validateOutdoorConnection(connection), clock()).map { it.homeEntity(connection) }
+    override var warnings: List<String> = emptyList()
+        private set
+    override suspend fun catalog(): List<HomeEntity> {
+        warnings = emptyList()
+        val now = clock()
+        val readings = api.collect(validateOutdoorConnection(connection), now)
+        warnings = readings.filter { it.status !in setOf(OutdoorStatus.AVAILABLE, OutdoorStatus.EMPTY) || now >= it.expiresAt }
+            .groupBy { it.sourceKey }.map { (key, rows) ->
+                val name = SignalOutdoorSources.sources.first { it.key == key }.name
+                "$name: ${rows.map { outdoorStatusLabel(it, now) }.distinct().joinToString(", ")}."
+            }
+        return readings.map { it.homeEntity(connection) }
+    }
     override suspend fun read(entityId: String): HomeEntity? {
         val config = validateOutdoorConnection(connection)
         val key = config.sources.firstOrNull { entityId == it || entityId.startsWith("$it.") || entityId.startsWith("$it:") } ?: return null

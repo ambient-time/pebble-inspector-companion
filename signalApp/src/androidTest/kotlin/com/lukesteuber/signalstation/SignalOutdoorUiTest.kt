@@ -85,6 +85,26 @@ class SignalOutdoorUiTest {
         compose.runOnIdle { assertEquals(1, station.cancels); assertNull(station.state.value.homePreview) }
     }
 
+    @Test fun connectionAttentionShowsFailedSourceAndClearsAfterRecovery() {
+        val warning = "Next six hours: Unavailable."
+        val station = OutdoorUiStation().apply {
+            configure(favorite = true)
+            state.value = state.value.copy(homeStatus = "1 devices. 1 connections need attention.",
+                home = state.value.home.copy(snapshot = state.value.home.snapshot.copy(errors = mapOf("outside" to warning))))
+        }
+        show(station)
+        grid(hasText("1 devices. 1 connections need attention.")).assertIsDisplayed()
+        grid(hasText("Connections", substring = false)).performClick()
+        grid(hasText(warning)).assertIsDisplayed()
+        screenshot("outdoor-connection-attention")
+        compose.runOnIdle {
+            station.state.value = station.state.value.copy(homeStatus = "1 devices. 0 connections need attention.",
+                home = station.state.value.home.copy(snapshot = station.state.value.home.snapshot.copy(errors = emptyMap())))
+        }
+        compose.onNodeWithText(warning).assertDoesNotExist()
+        grid(hasText("1 devices. 0 connections need attention.")).assertIsDisplayed()
+    }
+
     private fun show(station: OutdoorUiStation, scale: Float = 1f) {
         compose.activityRule.scenario.onActivity { activity ->
             // Dialogs own a separate Compose view. Scale the Android context so

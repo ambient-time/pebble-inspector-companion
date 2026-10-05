@@ -119,6 +119,26 @@ class SignalOutdoorIntegrationTest {
         }
     }
 
+    @Test fun failedPublicFeedUpdatesAttentionCountAndRecoveryClearsIt(): Unit = runBlocking {
+        fixture { f ->
+            val connection = f.connect()
+            f.hook = { throw java.io.IOException("Synthetic public provider failure") }
+            f.main { refreshHome() }
+            until { !f.station.state.value.homeBusy && f.station.state.value.home.snapshot.errors.isNotEmpty() }
+            val failed = f.station.state.value
+            assertEquals("1 devices. 1 connections need attention.", failed.homeStatus)
+            assertTrue(failed.home.snapshot.errors.getValue(connection.id).contains("Unavailable"))
+            assertFalse(failed.home.snapshot.entities.single().available)
+            f.hook = null
+            f.main { refreshHome() }
+            until { !f.station.state.value.homeBusy && f.station.state.value.home.snapshot.errors.isEmpty() }
+            assertEquals("1 devices. 0 connections need attention.", f.station.state.value.homeStatus)
+            assertTrue(f.station.state.value.home.snapshot.entities.single().available)
+            assertTrue(f.station.state.value.homeAccess.isEmpty())
+            assertTrue(f.station.state.value.home.grants.isEmpty())
+        }
+    }
+
     private inner class Fixture {
         val name = "outdoor-integration-${UUID.randomUUID()}"
         val store = SignalStore(context, name)

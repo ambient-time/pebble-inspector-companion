@@ -113,6 +113,22 @@ class SignalOutdoorHomeTest {
         } finally { connector.close(); http.close() }
     }
 
+    @Test fun catalogWarnsForPartialForecastAndStaleModelData(): Unit = runBlocking {
+        val http = HttpClient(MockEngine { request ->
+            if (request.url.host == "air-quality-api.open-meteo.com")
+                respond("""{"current":{"time":${(now - 3 * 3_600_000) / 1000},"uv_index":2},"current_units":{"uv_index":""}}""")
+            else respond("""{"hourly":{"time":[${(now + 3_600_000) / 1000}],"temperature_2m":[20],"precipitation_probability":[0],"precipitation":[0]},"hourly_units":{"temperature_2m":"°C","precipitation_probability":"%","precipitation":"mm"}}""")
+        })
+        val connector = SignalOutdoorConnector(http, connection.copy(outdoor = config.copy(sources = setOf("weather.forecast", "weather.uv")))) { now }
+        try {
+            val rows = connector.catalog()
+            assertEquals(setOf(OutdoorStatus.PARTIAL, OutdoorStatus.STALE), rows.map { it.outdoor!!.status }.toSet())
+            assertEquals(2, connector.warnings.size)
+            assertTrue(connector.warnings.any { it.contains("Partial results") })
+            assertTrue(connector.warnings.any { it.contains("Stale") })
+        } finally { connector.close(); http.close() }
+    }
+
     @Test fun homeConversionPreservesOriginalTypedProvenanceAndUnits() {
         val entity = reading.homeEntity(connection)
         assertNull(entity.values.single().measuredAt); assertNull(entity.updatedAt)
