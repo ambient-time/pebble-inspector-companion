@@ -35,6 +35,7 @@ internal class AndroidHomeCoordinator(
     }, factory::create, clock, ::id)
     private var visibleJob: Job? = null
     private var refreshJob: Job? = null
+    private var previewJob: Job? = null
     private var previewToken = ""
     private var previewGeneration = 0L
     private var visible = false
@@ -62,7 +63,7 @@ internal class AndroidHomeCoordinator(
             update { it.copy(homeReady = false, homeBusy = false, homeStatus = "Home safety records could not be opened. Controls are disabled; stored records have not been erased.") }
         } finally { initialized.complete(ready) }
     }
-    fun close() { ready = false; visibleJob?.cancel(); refreshJob?.cancel(); http.close() }
+    fun close() { ready = false; visibleJob?.cancel(); refreshJob?.cancel(); previewJob?.cancel(); http.close() }
     private suspend fun requireReady() { check(initialized.await() && ready) { "Home safety records are unavailable." } }
     private fun id() = UUID.randomUUID().toString()
     private fun launch(block: suspend () -> Unit) = scope.launch {
@@ -86,7 +87,7 @@ internal class AndroidHomeCoordinator(
 
     fun setVisible(value: Boolean) {
         visible = value; visibleJob?.cancel(); visibleJob = null
-        if (!value) return
+        if (!value) { refreshJob?.cancel(); cancelPreview(); return }
         refresh()
         visibleJob = scope.launch {
             if (!initialized.await() || !ready) return@launch
@@ -116,6 +117,17 @@ internal class AndroidHomeCoordinator(
     }
     fun refresh() { refreshJob?.cancel(); refreshJob = launch { refreshAll() } }
     fun temperatureUnit(unit: HomeTemperatureUnit) = launch { mutate { it.copy(temperatureUnit = unit) } }
+    private suspend fun <T> foregroundRead(block: suspend () -> T): T = coroutineScope {
+        check(foreground()) { "Open the phone to read public environmental data." }
+        val request = async { block() }
+        val watcher = this.launch { while (isActive) { if (!foreground()) { request.cancel(); break }; delay(100) } }
+        try { request.await() }
+        catch (e: CancellationException) {
+            currentCoroutineContext().ensureActive()
+            if (!foreground()) throw HomeException("Public data preview stopped when the phone left the foreground. Open it and try again.")
+            throw e
+        } finally { watcher.cancel() }
+    }
     private suspend fun refreshAll() {
         update { it.copy(homeBusy = true, homeStatus = "Reading connected systems…") }
         val current = engine.currentState()
@@ -123,7 +135,7 @@ internal class AndroidHomeCoordinator(
         for (connection in current.connections.filter { it.enabled }) {
             currentCoroutineContext().ensureActive()
             val connector = factory.create(connection)
-            try { entities += withTimeout(20_000) { connector.catalog() }; if (connector.warnings.isNotEmpty()) errors[connection.id] = connector.warnings.joinToString(" ").take(400) }
+            try { entities += withTimeout(20_000) { if (connection.kind == HomeConnectorKind.PUBLIC_ENVIRONMENT) foregroundRead { connector.catalog() } else connector.catalog() }; if (connector.warnings.isNotEmpty()) errors[connection.id] = connector.warnings.joinToString(" ").take(400) }
             catch (_: TimeoutCancellationException) { errors[connection.id] = "Connection timed out. Saved readings may be stale."; entities += current.snapshot.entities.filter { it.connectionId == connection.id }.map { it.copy(available = false) } }
             catch (e: CancellationException) { throw e }
             catch (_: Exception) { errors[connection.id] = "Connection unavailable. Saved readings may be stale."; entities += current.snapshot.entities.filter { it.connectionId == connection.id }.map { it.copy(available = false) } }
@@ -138,35 +150,44 @@ internal class AndroidHomeCoordinator(
         }
         update { it.copy(homeBusy = false, homeStatus = "${entities.size} devices. ${errors.size} connections need attention.") }
     }
-    fun testConnection(draft: HomeConnection, token: String) {
+    fun cancelPreview() {
+        previewGeneration++; previewJob?.cancel(); previewJob = null; previewToken = ""
+        update { it.copy(homeBusy = false, homePreview = null, homePreviewEntities = emptyList()) }
+    }
+    fun testConnection(draft: HomeConnection, token: String, publicDisclosureAccepted: Boolean = false) {
+        previewJob?.cancel()
         val generation = ++previewGeneration
         update { it.copy(homeBusy = true, homePreview = null, homePreviewEntities = emptyList(), homeStatus = "Testing connection…") }
-        launch {
-            require(draft.name.isNotBlank() && draft.name.length <= 100 && token.isNotBlank() && token.length <= 8192)
+        previewJob = launch {
+            val public = draft.kind == HomeConnectorKind.PUBLIC_ENVIRONMENT
+            require(draft.name.isNotBlank() && draft.name.length <= 100)
+            if (public) { require(publicDisclosureAccepted && token.isEmpty()); validateOutdoorConnection(draft) }
+            else require(token.isNotBlank() && token.length <= 8192)
             val prior = engine.currentState().connections.firstOrNull { it.id == draft.id }
             require(prior != null || engine.currentState().connections.size < 8) { "At most eight connections are supported." }
-            val candidate = draft.copy(id = draft.id.ifBlank { id() }, revision = (prior?.revision ?: 0) + 1).let { it.copy(credentialKey = "home:${it.id}:${it.revision}") }
+            val candidate = draft.copy(id = draft.id.ifBlank { id() }, revision = (prior?.revision ?: 0) + 1).let { it.copy(credentialKey = if (public) "" else "home:${it.id}:${it.revision}") }
             val secrets = object : SignalSecrets { override suspend fun get(provider: String) = token; override suspend fun put(provider: String, key: String) = Unit }
             val connector = SignalHomeConnectorFactory(http, secrets, clock).create(candidate)
-            val catalog = try { withTimeout(20_000) { connector.catalog() } } finally { connector.close() }
+            val catalog = try { withTimeout(20_000) { if (public) foregroundRead { connector.catalog() } else connector.catalog() } } finally { connector.close() }
             if (generation != previewGeneration) return@launch
             previewToken = token
-            update { it.copy(homeBusy = false, homePreview = candidate, homePreviewEntities = catalog, homeStatus = "Connection test passed. Review the catalog, then save.") }
+            update { it.copy(homeBusy = false, homePreview = candidate, homePreviewEntities = catalog, homeStatus = if (public) "Preview ready. Check coverage and availability before saving." else "Connection test passed. Review the catalog, then save.") }
         }
     }
     fun saveConnection() = launch {
         val candidate = state().homePreview ?: return@launch
         val token = previewToken; val entities = state().homePreviewEntities
-        require(token.isNotBlank())
+        if (candidate.kind == HomeConnectorKind.PUBLIC_ENVIRONMENT) validateOutdoorConnection(candidate) else require(token.isNotBlank())
         previewToken = ""
         update { it.copy(homePreview = null, homePreviewEntities = emptyList()) }
-        store.put(candidate.credentialKey, token)
+        if (candidate.kind != HomeConnectorKind.PUBLIC_ENVIRONMENT) store.put(candidate.credentialKey, token)
         val old = engine.currentState().connections.firstOrNull { it.id == candidate.id }
         mutate { it.copy(connections = it.connections.filterNot { c -> c.id == candidate.id } + candidate,
             grants = it.grants.filterNot { g -> g.connectionId == candidate.id },
+            captureTargets = if (old?.outdoor != candidate.outdoor) it.captureTargets.filterNot { t -> t.connectionId == candidate.id } else it.captureTargets,
             ledger = it.ledger.map { entry -> if (entry.action.connectionId == candidate.id && entry.status in pending) entry.copy(status = HomeActionStatus.CANCELLED, message = "Connection replaced; review again.") else entry },
             snapshot = it.snapshot.copy(entities = it.snapshot.entities.filterNot { e -> e.connectionId == candidate.id } + entities)) }
-        old?.takeIf { it.credentialKey != candidate.credentialKey }?.let { store.put(it.credentialKey, "") }
+        old?.takeIf { it.kind != HomeConnectorKind.PUBLIC_ENVIRONMENT && it.credentialKey != candidate.credentialKey }?.let { store.put(it.credentialKey, "") }
         previewToken = ""
         update { it.copy(homePreview = null, homePreviewEntities = emptyList(), homeAccess = it.homeAccess - candidate.id, homeActionsAllowed = false, homeStatus = "Connection saved. No action permissions were granted.") }
         if (visible) setVisible(true)
@@ -174,7 +195,7 @@ internal class AndroidHomeCoordinator(
     fun removeConnection(id: String) = launch {
         val old = engine.currentState().connections.firstOrNull { it.id == id }
         mutate { it.copy(connections = it.connections.filterNot { c -> c.id == id }, grants = it.grants.filterNot { g -> g.connectionId == id }, tiles = it.tiles.filterNot { t -> t.connectionId == id }, captureTargets = it.captureTargets.filterNot { t -> t.connectionId == id }, snapshot = it.snapshot.copy(entities = it.snapshot.entities.filterNot { e -> e.connectionId == id }), ledger = it.ledger.map { e -> if (e.action.connectionId == id && e.status in pending) e.copy(status = HomeActionStatus.CANCELLED) else e }) }
-        old?.let { store.put(it.credentialKey, "") }
+        old?.takeIf { it.kind != HomeConnectorKind.PUBLIC_ENVIRONMENT }?.let { store.put(it.credentialKey, "") }
         update { it.copy(homeAccess = it.homeAccess - id, homeActionsAllowed = false, homeStatus = "Connection removed and grants revoked.") }
         if (visible) setVisible(true)
     }
@@ -199,7 +220,11 @@ internal class AndroidHomeCoordinator(
         withTimeoutOrNull(25_000) {
             for (chunk in targets.chunked(4)) coroutineScope {
                 chunk.map { target -> async {
-                    try { val entity = read(target.connectionId, target.entityId); remember(entity); observations(entity) }
+                    try {
+                        val c = connection(target.connectionId)
+                        val entity = if (c.kind == HomeConnectorKind.PUBLIC_ENVIRONMENT) foregroundRead { read(target.connectionId, target.entityId) } else read(target.connectionId, target.entityId)
+                        remember(entity); observations(entity)
+                    }
                     catch (_: TimeoutCancellationException) { emptyList() }
                     catch (e: CancellationException) { throw e }
                     catch (_: Exception) { emptyList() }
@@ -209,7 +234,7 @@ internal class AndroidHomeCoordinator(
         targets.filter { t -> collected.none { it.fields["connection_id"] == t.connectionId && it.fields["entity_id"] == t.entityId } }.forEach { target -> collected += SignalObservation("home.readings", "home:${target.connectionId}", collectedAt = clock(), status = "unavailable", identity = homeTargetKey(target.connectionId,target.entityId)) }
         return collected
     }
-    private fun observations(entity: HomeEntity): List<SignalObservation> = homeReadings(entity).map { value ->
+    private fun observations(entity: HomeEntity): List<SignalObservation> = if (entity.outdoor != null) outdoorObservations(entity, clock()) else homeReadings(entity).map { value ->
         SignalObservation("home.readings", "home:${entity.connectionId}", value = value.value, unit = value.unit.orEmpty(), collectedAt = clock(), measuredAt = value.measuredAt, status = if (homeEntityAvailable(entity, clock())) "available" else "unavailable", identity = homeTargetKey(entity.connectionId,entity.id) + ":" + value.key, number = value.value.toDoubleOrNull(), metric = value.key, fields = mapOf("connection_id" to entity.connectionId,"entity_id" to entity.id,"name" to entity.name,"source_received_at" to entity.observedAt.takeIf { it > 0 }?.toString().orEmpty(),"reported_update_at" to entity.updatedAt?.toString().orEmpty(), "observation_basis" to entity.observationBasis, "retained" to entity.retained.toString()))
     }
 
@@ -394,7 +419,8 @@ internal class AndroidHomeCoordinator(
                 val c = connection(tile.connectionId); val entity = read(c.id, tile.entityId); require(valid()); remember(entity)
                 if (kind == "home-open") {
                     val readings = homeDisplayReadings(entity, engine.currentState().temperatureUnit).joinToString("\n") { "${it.label}: ${it.value} ${it.unit}" }
-                    val detail = "${c.name}\n${tile.title}\n${entity.id}\n${homeReadingStatus(entity, clock())}\n$readings\n${homeReadingAge(entity, clock())}"
+                    val detail = entity.outdoor?.let { outdoorWatchDetail(it, engine.currentState().temperatureUnit, clock()) }
+                        ?: "${c.name}\n${tile.title}\n${entity.id}\n${homeReadingStatus(entity, clock())}\n$readings\n${homeReadingAge(entity, clock())}"
                     reply(if (detail.toByteArray().size <= 900) "detail" else "handoff", if (detail.toByteArray().size <= 900) detail else "Open the full device details on the phone.") { tile.capabilityId?.let { put("action_id", it) } }
                 } else {
                     require(text("action_id") == tile.capabilityId)

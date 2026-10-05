@@ -1,4 +1,4 @@
-# Temperature, humidity and MQTT
+# Weather, temperature, humidity and MQTT
 
 Home readings work on the Android phone without a watch. Connect a supported
 system, review its devices, and add reading shortcuts to **Home → Favorites**.
@@ -9,6 +9,40 @@ original values, units and timestamps.
 Home Assistant, openHAB and Geepers remain supported. Temperature and humidity
 are identified from declared metrics or units, not a sensor's name or brand.
 Room groups are labels you assign. A thermostat target is not an ambient reading.
+
+## Public weather and environment
+
+Open **Home → Connections → Add weather & environment**. Search a city and
+country, select the place, then choose the sources. No source starts enabled.
+Search sends only the typed place query to Open-Meteo; this flow never requests
+the phone's location. Review the outgoing-data disclosure before previewing.
+
+The optional sources are current weather, six-hour forecasts, daily highs/lows,
+daylight, air quality, UV, seasonal European pollen, official alerts in NWS
+coverage, NOAA tide predictions and recent USGS earthquakes. Missing pollen is
+not zero pollen. Alerts outside NWS coverage are unsupported, not an all-clear.
+NOAA requires an explicit seven-digit station; its preview identifies the station,
+distance, UTC times and metres above MLLW. Tides are not navigation advice.
+Earthquake queries cover the past 24 hours within a chosen 10–500 km radius and
+return at most 20 reports; this is not an early-warning service.
+
+Preview shows each selected source's availability. Save only after checking the
+place and coverage. The complete catalog appears in **All devices**, where any
+reading can become a phone shortcut or watch favorite. Public readings have no
+controls. Hourly and daily favorites are rolling forecast slots; details retain
+the actual valid date and time. Temperature conversion changes display only.
+
+Cards distinguish model-valid, issued, event, prediction and fetch times. Open
+**Details & source** for exact timestamps, validity, provider text and source
+links. Cached or failed readings are not presented as fresh. These are on-demand
+views, not emergency notifications: consult official services in an emergency.
+
+Preview, refresh and capture stop when the phone leaves the foreground. Explicit
+watch reads and reviewed questions can request their selected sources without
+opening the phone. There is no new polling or background subscription. Saving a
+connection does not select it for captures or share it with a language model;
+those remain separate choices. Changing place or source configuration clears
+that connection's capture selections and question access, requiring review again.
 
 ## MQTT connection
 

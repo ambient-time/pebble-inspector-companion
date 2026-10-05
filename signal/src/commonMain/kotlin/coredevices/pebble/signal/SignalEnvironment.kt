@@ -124,6 +124,10 @@ private fun EnvironmentValue.display(preference: HomeTemperatureUnit): HomeDispl
 }
 
 fun homeDisplayReadings(entity: HomeEntity, unit: HomeTemperatureUnit): List<HomeDisplayReading> {
+    entity.outdoor?.let { reading -> return outdoorDisplayValues(reading, unit).map { value ->
+        HomeDisplayReading(value.key, value.label, value.value ?: "Unavailable", value.unit,
+            prominent = value.key == "temperature_2m")
+    } }
     val readings = homeReadings(entity).map { environmentalValue(entity, it) }
     val preferred = when (unit) {
         HomeTemperatureUnit.CELSIUS -> TemperatureScale.CELSIUS
@@ -147,6 +151,8 @@ fun homeEntityAvailable(entity: HomeEntity, now: Long): Boolean = entity.availab
     (entity.expiresAt == null || now < entity.expiresAt) && !(entity.retained && !entity.hasSourceTime())
 
 fun homeReadingStatus(entity: HomeEntity, now: Long): String = when {
+    entity.outdoor != null && !entity.available && entity.outdoor.status in setOf(OutdoorStatus.AVAILABLE, OutdoorStatus.EMPTY, OutdoorStatus.PARTIAL) -> "Unavailable · last provider result"
+    entity.outdoor != null -> outdoorStatusLabel(entity.outdoor, now)
     entity.observationBasis == "mqtt_waiting" -> "Waiting for a reading"
     entity.retained && !entity.hasSourceTime() -> "Retained value · age unknown"
     entity.expiresAt != null && now >= entity.expiresAt -> "Stale reading"
@@ -168,6 +174,7 @@ private fun environmentAge(time: Long, now: Long): String {
 }
 
 fun homeReadingAge(entity: HomeEntity, now: Long): String {
+    entity.outdoor?.let { return outdoorTimeLabel(it, now) }
     val readings = homeReadings(entity)
     val measured = readings.mapNotNull { it.measuredAt?.takeIf { time -> time > 0 } }
     if (measured.isNotEmpty()) {

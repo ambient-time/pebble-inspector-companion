@@ -60,7 +60,7 @@ class SignalOutdoorTest {
         val rows = SignalWeather.parse(data, setOf("weather.daily", "weather.daylight"), place.name, "chosen place", now).flatMap { outdoorWeatherReadings(it, place) }
         val daily = rows.first { it.sourceKey == "weather.daily" }
         assertEquals(OutdoorBasis.FORECAST, daily.basis); assertNull(daily.sourceAt)
-        assertTrue(daily.title.contains("2026-10-04")); assertEquals(listOf("21", "9"), daily.values.map { it.value })
+        assertEquals("High / low · forecast day 1", daily.title); assertTrue(daily.details.contains("2026-10-04")); assertEquals(listOf("21", "9"), daily.values.map { it.value })
         val daylight = rows.first { it.sourceKey == "weather.daylight" }
         assertEquals(OutdoorStatus.PARTIAL, daylight.status); assertNull(daylight.values.first().value)
     }
@@ -71,6 +71,10 @@ class SignalOutdoorTest {
         assertEquals(now + 3_600_000, row.validFrom); assertNull(row.sourceAt)
         assertEquals(OutdoorStatus.PARTIAL, row.status); assertNull(row.values[1].value)
         assertTrue(row.values.all { it.validAt == now + 3_600_000 })
+        val later = outdoorWeatherReadings(SignalObservation("weather.forecast", "Open-Meteo", collectedAt = now + 3_600_000,
+            status = "forecast", fields = mapOf("hour.0.time" to (now + 7_200_000).toString())), place).single()
+        assertEquals(row.id, later.id); assertEquals(row.title, later.title)
+        assertNotEquals(row.validFrom, later.validFrom)
     }
 
     @Test fun pollenRequestsOnlyEuropeanProviderAndReportsUnsupportedCoverage() = runBlocking {
@@ -255,5 +259,57 @@ class SignalOutdoorTest {
         val next = SignalOutdoorClient(http)
         try { assertEquals(OutdoorStatus.EMPTY, next.collect(config.copy(sources = setOf("environment.earthquakes")), now).single().status) }
         finally { next.close(); http.close() }
+    }
+
+    @Test fun oneProviderTimeoutPreservesSuccessfulWeather() = runBlocking {
+        val http = HttpClient(MockEngine { request ->
+            if (request.url.host == "api.open-meteo.com") respond("""{"current":{"time":${now / 1000},"temperature_2m":20},"current_units":{"temperature_2m":"°C"}}""")
+            else { delay(8_000); respond(quakes().toString()) }
+        }); val api = SignalOutdoorClient(http)
+        try {
+            val result = api.collect(config.copy(sources = setOf("weather.current", "environment.earthquakes")), now)
+            assertTrue(result.any { it.sourceKey == "weather.current" && it.status == OutdoorStatus.AVAILABLE })
+            assertEquals(OutdoorStatus.UNAVAILABLE, result.last().status)
+        } finally { api.close(); http.close() }
+    }
+
+    @Test fun alertQueriesUseProviderPrecisionAndExposeTheQueriedPoint(): Unit = runBlocking {
+        val chosen = place.copy(latitude = 45.52499, longitude = -122.68501)
+        val http = HttpClient(MockEngine { request ->
+            assertEquals("/points/45.525,-122.685", request.url.encodedPath)
+            respond("{}", HttpStatusCode.NotFound)
+        }); val api = SignalOutdoorClient(http)
+        try { api.collect(config.copy(place = chosen, sources = setOf("environment.alerts")), now) }
+        finally { api.close(); http.close() }
+        val row = SignalOutdoorClient.parseAlerts(alerts(), config.copy(place = chosen), now).single()
+        assertEquals(chosen.copy(latitude = 45.525, longitude = -122.685), row.queriedPlace)
+        assertTrue(row.details.contains("45.525,-122.685"))
+    }
+
+    @Test fun hazardEndAndMessageExpiryAreSeparate() {
+        val fixture = alert().replace("\"messageType\"", "\"ends\":\"${stamp(60_000)}\",\"messageType\"")
+        val row = SignalOutdoorClient.parseAlerts(alerts(fixture), config, now).last()
+        assertEquals(now + 60_000, row.validUntil); assertEquals(now + 3_600_000, row.messageExpiresAt)
+        assertEquals(now + 60_000, row.expiresAt)
+        assertNull(SignalOutdoorClient.parseAlerts(alerts(alert()), config, now).last().validUntil)
+    }
+
+    @Test fun aSingleCompleteForecastHourStillMarksCoveragePartial() {
+        val data = json("""{"hourly":{"time":[${now / 1000 + 3600}],"temperature_2m":[12],"precipitation_probability":[20],"precipitation":[0]},"hourly_units":{"temperature_2m":"°C","precipitation_probability":"%","precipitation":"mm"}}""")
+        val row = outdoorWeatherReadings(SignalWeather.parse(data, setOf("weather.forecast"), place.name, "chosen place", now).single(), place).single()
+        assertEquals(OutdoorStatus.PARTIAL, row.status); assertTrue(row.details.contains("1 of 6"))
+    }
+
+    @Test fun everyPhysicalMetricRejectsAbsentOrUnexpectedUnits() {
+        listOf("wind_speed_10m", "wind_gusts_10m", "visibility", "pressure_msl", "surface_pressure", "precipitation", "pm2_5", "grass_pollen").forEach { key ->
+            assertNull(outdoorWeatherValue(key, "2", "", now).value, key)
+            assertNull(outdoorWeatherValue(key, "2", "mystery", now).value, key)
+        }
+    }
+
+    @Test fun nestedWeatherBodiesFailWithinByteLimit() = runBlocking {
+        val http = HttpClient(MockEngine { respond("{\"x\":" + "[".repeat(34) + "0" + "]".repeat(34) + "}") }); val api = SignalOutdoorClient(http)
+        try { assertTrue(api.collect(config.copy(sources = setOf("weather.current")), now).all { it.status == OutdoorStatus.UNAVAILABLE }) }
+        finally { api.close(); http.close() }
     }
 }

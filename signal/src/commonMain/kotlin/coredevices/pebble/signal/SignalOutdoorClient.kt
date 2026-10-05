@@ -40,13 +40,13 @@ class SignalOutdoorClient(http: HttpClient) {
     catch (_: Exception) { listOf(unavailable(key, config, now, "Provider unavailable. No current conclusion can be drawn.")) }
 
     private suspend fun get(url: String, parameters: Map<String, String> = emptyMap(), allowNotFound: Boolean = false): JsonObject? =
-        withTimeout(7_000) {
+        (withTimeoutOrNull(7_000) {
             client.prepareGet(url) {
                 header("User-Agent", "SignalStation (https://dr.eamer.dev/downloads/apps/signal-station/)")
                 header("Accept", "application/geo+json, application/json")
                 parameters.forEach { (key, value) -> parameter(key, value) }
             }.execute { response ->
-                if (allowNotFound && response.status.value == 404) return@execute null
+                if (allowNotFound && response.status.value == 404) return@execute OutdoorResponse(null)
                 check(response.status.value in 200..299)
                 val bytes = ByteArray(512 * 1024 + 1)
                 val channel = response.bodyAsChannel()
@@ -59,14 +59,14 @@ class SignalOutdoorClient(http: HttpClient) {
                 check(count <= 512 * 1024)
                 val text = bytes.decodeToString(0, count)
                 check(outdoorJsonDepth(text) <= 32)
-                (Json.parseToJsonElement(text) as? JsonObject ?: error("Invalid public response")).also {
+                OutdoorResponse((Json.parseToJsonElement(text) as? JsonObject ?: error("Invalid public response")).also {
                     check("error" !in it && it.number("status")?.let { status -> status >= 400 } != true)
-                }
+                })
             }
-        }
+        } ?: error("Public provider timed out")).data
 
     private suspend fun alerts(config: OutdoorConfig, now: Long): List<OutdoorReading> {
-        val point = "${coordinate(config.place.latitude)},${coordinate(config.place.longitude)}"
+        val point = nwsPoint(config.place)
         val coverage = get("https://api.weather.gov/points/$point", allowNotFound = true)
             ?: return listOf(unavailable("environment.alerts", config, now, "NWS does not cover this location. Other regional alert providers are not configured.", OutdoorStatus.UNSUPPORTED))
         check(coverage["properties"] is JsonObject && coverage.obj("properties").text("gridId").isNotBlank())
@@ -95,7 +95,9 @@ class SignalOutdoorClient(http: HttpClient) {
     }
 
     companion object {
-        private fun coordinate(value: Double) = (round(value * 100) / 100).toString()
+        private fun coordinate(value: Double) = value.toString()
+        private fun nwsPlace(place: SignalPlace) = place.copy(latitude = round(place.latitude * 10_000) / 10_000, longitude = round(place.longitude * 10_000) / 10_000)
+        private fun nwsPoint(place: SignalPlace) = nwsPlace(place).let { "${it.latitude},${it.longitude}" }
         private fun stamp(time: Long) = Instant.fromEpochMilliseconds(time).toString()
         private fun date(time: Long) = stamp(time).take(10).replace("-", "")
         private fun JsonObject.number(key: String) = (this[key] as? JsonPrimitive)?.doubleOrNull?.takeIf { it.isFinite() }
@@ -129,12 +131,16 @@ class SignalOutdoorClient(http: HttpClient) {
                 if (id.isBlank() || title.isBlank() || issued == null || issued > now + 60_000 || expires == null || row.text("status") != "Actual") { invalid++; return@mapNotNull null }
                 if (expires <= now) return@mapNotNull null
                 val starts = homeTime(row.text("onset")) ?: homeTime(row.text("effective"))
+                val ends = homeTime(row.text("ends"))
+                if (ends != null && starts != null && ends < starts) { invalid++; return@mapNotNull null }
+                if (ends != null && ends <= now) return@mapNotNull null
                 base("environment.alerts", config, now, OutdoorStatus.AVAILABLE).copy(
-                    id = "environment.alerts:$id", title = clean(title, 120), sourceAt = issued, validFrom = starts, validUntil = expires,
-                    expiresAt = minOf(expires, now + 5 * 60_000), values = listOf(
+                    id = "environment.alerts:$id", title = clean(title, 120), sourceAt = issued, validFrom = starts, validUntil = ends, messageExpiresAt = expires,
+                    expiresAt = minOf(expires, ends ?: Long.MAX_VALUE, now + 5 * 60_000), values = listOf(
                         OutdoorValue("severity", "Severity", clean(row.text("severity"), 60).ifBlank { "Unknown" }),
                         OutdoorValue("area", "Affected area", clean(row.text("areaDesc"), 600).ifBlank { null }),
-                        OutdoorValue("expires", "Expires (UTC)", stamp(expires)),
+                        OutdoorValue("ends", "Hazard ends (UTC)", ends?.let(::stamp)),
+                        OutdoorValue("expires", "Message expires (UTC)", stamp(expires)),
                     ), details = listOf("Official issuer: ${clean(row.text("senderName"), 150)}", clean(row.text("headline"), 600), clean(row.text("description"), 10_000), clean(row.text("instruction"), 10_000),
                         if (row.text("description").length > 10_000 || row.text("instruction").length > 10_000) "Long alert text is abbreviated here. Consult the official service for the complete alert." else "").filter { it.isNotBlank() }.joinToString("\n\n"))
             }.distinctBy { it.id }
@@ -143,7 +149,8 @@ class SignalOutdoorClient(http: HttpClient) {
                 if (partial) "Partial alert results. Check the official service for complete information." else "On-demand official reports, not emergency notifications. Absence of a report is not an all-clear.")
                 .copy(sourceAt = updated, basis = OutdoorBasis.REPORT, values = listOf(OutdoorValue("reported", "Active reports returned", active.size.toString())),
                     title = if (partial) "Weather alerts · incomplete" else if (active.isEmpty()) "No active NWS alerts returned" else "${active.size} active NWS alerts")
-            return listOf(summary) + active
+            return (listOf(summary) + active).map { it.copy(queriedPlace = nwsPlace(config.place),
+                details = "NWS query: ${nwsPoint(config.place)} (provider precision, approximately 10 metres). Alerts apply to this point, not an entire city.\n\n${it.details}") }
         }
 
         internal fun parseTides(data: JsonObject, station: JsonObject, config: OutdoorConfig, now: Long): List<OutdoorReading> {
@@ -204,7 +211,9 @@ class SignalOutdoorClient(http: HttpClient) {
     }
 }
 
-private fun outdoorJsonDepth(text: String): Int {
+private data class OutdoorResponse(val data: JsonObject?)
+
+internal fun outdoorJsonDepth(text: String): Int {
     var depth = 0; var maximum = 0; var quoted = false; var escaped = false
     for (c in text) {
         if (quoted) { if (escaped) escaped = false else if (c == '\\') escaped = true else if (c == '"') quoted = false }

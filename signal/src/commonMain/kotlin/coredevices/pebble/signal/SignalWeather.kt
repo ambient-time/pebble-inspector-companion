@@ -83,7 +83,9 @@ class SignalWeather(http: HttpClient) {
                     count += read
                 }
                 check(count <= 64 * 1024)
-                Json.parseToJsonElement(bytes.decodeToString(0, count)).jsonObject.also {
+                val text = bytes.decodeToString(0, count)
+                check(outdoorJsonDepth(text) <= 32)
+                Json.parseToJsonElement(text).jsonObject.also {
                     if (parameters["domains"] == "cams_europe" && response.status.value == 400 && it["error"] == JsonPrimitive(true) && it["reason"] == JsonPrimitive("No data is available for this location")) throw WeatherCoverageException()
                     check(response.status.value in 200..299 && it["error"] != JsonPrimitive(true))
                 }
@@ -146,6 +148,7 @@ class SignalWeather(http: HttpClient) {
                 }.distinctBy { it.first }.sortedBy { it.first }.take(6)
                 if (rows.isEmpty()) output += missing(listOf("weather.forecast"), "unavailable", now)
                 else output += SignalObservation("weather.forecast", "Open-Meteo", "$label; forecast hours=${rows.size}/6; ${rows.joinToString(" | ") { it.second }}", collectedAt = now, status = "forecast", period = "next_6_hours", windowStart = rows.first().first, windowEnd = rows.last().first, fields = buildMap {
+                    put("expected_hours", "6"); put("returned_hours", rows.size.toString())
                     rows.forEachIndexed { n, row ->
                         val index = times.indexOfFirst { seconds(it) == row.first }
                         put("hour.$n.time", row.first.toString())

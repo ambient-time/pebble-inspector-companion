@@ -191,7 +191,7 @@ class SignalEnvironmentUiTest {
     }
 }
 
-private class EnvironmentUiStation : SignalStation {
+internal open class EnvironmentUiStation : SignalStation {
     override val available = true
     private val now = System.currentTimeMillis()
     private val entity = HomeEntity("fixture", "room-sensor", "Example room", domain = "sensor", state = "available",

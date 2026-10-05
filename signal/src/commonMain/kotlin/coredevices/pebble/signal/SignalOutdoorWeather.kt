@@ -18,7 +18,22 @@ internal val outdoorWeatherLabels = mapOf(
 
 internal fun outdoorWeatherValue(key: String, raw: String?, unit: String, at: Long?): OutdoorValue {
     val n = raw?.toDoubleOrNull()?.takeIf { it.isFinite() }
-    val valid = n?.takeIf { when (key) {
+    val expectedUnits = when (key) {
+        "temperature_2m", "apparent_temperature", "dew_point_2m", "temperature_2m_max", "temperature_2m_min" -> setOf("°C")
+        "relative_humidity_2m", "cloud_cover", "precipitation_probability" -> setOf("%")
+        "wind_direction_10m" -> setOf("°")
+        "wind_speed_10m", "wind_gusts_10m" -> setOf("km/h")
+        "pressure_msl", "surface_pressure" -> setOf("hPa")
+        "visibility" -> setOf("m")
+        "precipitation" -> setOf("mm")
+        "pm2_5", "pm10" -> setOf("μg/m³", "µg/m³")
+        "us_aqi" -> setOf("USAQI", "")
+        "weather_code" -> setOf("wmo code", "")
+        "uv_index" -> setOf("")
+        in SignalWeather.pollenFields -> setOf("grains/m³")
+        else -> emptySet()
+    }
+    val valid = n?.takeIf { unit in expectedUnits && when (key) {
         "relative_humidity_2m", "cloud_cover", "precipitation_probability" -> it in 0.0..100.0
         "wind_direction_10m" -> it in 0.0..360.0
         "temperature_2m", "apparent_temperature", "dew_point_2m", "temperature_2m_max", "temperature_2m_min" -> it in -150.0..100.0 && unit == "°C"
@@ -67,18 +82,20 @@ internal fun outdoorWeatherReadings(row: SignalObservation, place: SignalPlace):
         "weather.forecast" -> (0..5).mapNotNull { index ->
             val prefix = "hour.$index."
             val at = row.fields["${prefix}time"]?.toLongOrNull() ?: return@mapNotNull null
-            reading("${row.key}.$index", "Forecast · ${Instant.fromEpochMilliseconds(at)}", OutdoorBasis.FORECAST,
+            reading("${row.key}.$index", "Hourly forecast · slot ${index + 1}", OutdoorBasis.FORECAST,
                 listOf("temperature_2m", "precipitation_probability", "precipitation").map { field(it, prefix, at) },
-                at = null, from = at, until = at + 60 * 60_000)
+                at = null, from = at, until = at + 60 * 60_000,
+                details = "Forecast for ${Instant.fromEpochMilliseconds(at)}. Rolling slot ${index + 1}; coverage: ${row.fields["returned_hours"] ?: "unknown"} of 6 hours returned.")
+                .let { if (row.fields["returned_hours"]?.toIntOrNull() != 6 && it.status == OutdoorStatus.AVAILABLE) it.copy(status = OutdoorStatus.PARTIAL) else it }
         }.ifEmpty { listOf(reading(row.key, title, OutdoorBasis.FORECAST, emptyList())) }
         "weather.daily" -> (0..1).mapNotNull { index ->
             val prefix = "day.$index."
             val at = row.fields["${prefix}time"]?.toLongOrNull() ?: return@mapNotNull null
             val zone = runCatching { TimeZone.of(row.fields["timezone"].orEmpty()) }.getOrNull()
             val day = if (zone == null) "${Instant.fromEpochMilliseconds(at)}" else Instant.fromEpochMilliseconds(at).toLocalDateTime(zone).date.toString()
-            reading("${row.key}.$index", "High / low · $day", OutdoorBasis.FORECAST,
+            reading("${row.key}.$index", "High / low · forecast day ${index + 1}", OutdoorBasis.FORECAST,
                 listOf("temperature_2m_max", "temperature_2m_min").map { field(it, prefix, at) }, at = null,
-                from = at, details = "Local forecast day · ${row.fields["timezone"] ?: "timezone unavailable"}")
+                from = at, details = "Local forecast day $day · ${row.fields["timezone"] ?: "timezone unavailable"}. Rolling forecast day ${index + 1}.")
         }.ifEmpty { listOf(reading(row.key, title, OutdoorBasis.FORECAST, emptyList())) }
         "weather.daylight" -> {
             val values = listOf("sunrise" to "Sunrise (UTC)", "sunset" to "Sunset (UTC)").map { (key, name) ->

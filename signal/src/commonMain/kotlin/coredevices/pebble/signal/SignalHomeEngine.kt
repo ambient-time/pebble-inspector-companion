@@ -25,6 +25,7 @@ class SignalHomeEngine(private val persistence: HomePersistence, private val con
         val state = persistence.load()
         val current = state.connections.firstOrNull { it.id == connection.id } ?: throw HomeException("Connection was removed.")
         require(current == connection && current.enabled && entity.connectionId == current.id)
+        require(current.kind != HomeConnectorKind.PUBLIC_ENVIRONMENT) { "Public environmental data is read only." }
         val capability = entity.capabilities.firstOrNull { it.id == capabilityId } ?: throw HomeException("Action is not supported.")
         val normalized = normalizeHomeParameters(capability, parameters)
         val now = clock()

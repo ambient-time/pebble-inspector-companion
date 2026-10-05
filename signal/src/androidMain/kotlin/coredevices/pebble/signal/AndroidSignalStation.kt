@@ -22,7 +22,9 @@ internal const val ANSWER_INSTRUCTIONS = "You are Signal Station, a personal con
 /** Lab-only owner of collection, requests and durable history. PKJS never sees credentials. */
 open class AndroidSignalStation(private val context: Context, protected val watchLink: SignalWatchLink, private val providerClient: HttpClient? = null, private val storeNamespace: String = "signal", private val lookupClient: HttpClient? = null, private val liveAcquisition: (suspend (SignalSettings, Boolean) -> SignalAcquisition)? = null, private val homeClient: HttpClient? = null, private val clock: () -> Long = System::currentTimeMillis,
     private val localAnswer: (suspend (String, List<Pair<String, String>>) -> String)? = null,
-    private val localReadiness: StateFlow<Set<String>>? = null) : SignalStation {
+    private val localReadiness: StateFlow<Set<String>>? = null,
+    private val foregroundState: (() -> Boolean)? = null,
+    private val placeSearch: (suspend (String) -> List<SignalPlace>)? = null) : SignalStation {
     override val available = signalPackageEnabled(context.packageName)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate + CoroutineExceptionHandler { _, _ -> status("Signal Station could not complete this operation. Existing history was preserved.") })
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
@@ -208,6 +210,8 @@ open class AndroidSignalStation(private val context: Context, protected val watc
     override fun refreshHome() { if (mutable.value.initialized) home.refresh() }
     override fun setHomeTemperatureUnit(unit: HomeTemperatureUnit) { home.temperatureUnit(unit) }
     override fun testHomeConnection(connection: HomeConnection, token: String) { if (mutable.value.initialized) home.testConnection(connection, token) }
+    override fun previewOutdoorConnection(connection: HomeConnection, disclosureAccepted: Boolean) { if (mutable.value.initialized) home.testConnection(connection, "", disclosureAccepted) }
+    override fun cancelHomePreview() { home.cancelPreview(); cancelWeatherPlaceSearch() }
     override fun saveHomeConnection() { home.saveConnection() }
     override fun removeHomeConnection(id: String) { setHomeAccess(mutable.value.homeAccess - id); home.removeConnection(id) }
     override fun setHomeAccess(ids: Set<String>) {
@@ -1020,7 +1024,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
         mutable.update { it.copy(selectedRecordId = record.id, status = "Saved locally. Full report is available in History.") }
     }
     private fun ensureActiveToken(token: Long) { if (generation != token) throw CancellationException() }
-    private fun foreground(): Boolean = ActivityManager.RunningAppProcessInfo().let { ActivityManager.getMyMemoryState(it); it.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND }
+    private fun foreground(): Boolean = foregroundState?.invoke() ?: ActivityManager.RunningAppProcessInfo().let { ActivityManager.getMyMemoryState(it); it.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND }
     private fun boundedRecords(records: List<SignalRecord>, budget: Int): List<SignalRecord> {
         var remaining = budget
         return records.filter { record ->
@@ -1833,18 +1837,28 @@ open class AndroidSignalStation(private val context: Context, protected val watc
         }
     }
     override fun searchWeatherPlaces(query: String) {
-        if (!available || query.trim().length !in 2..100) return
+        if (!available || !foreground() || query.trim().length !in 2..100) return
         weatherSearch?.cancel()
         val token = ++weatherSearchGeneration
         mutable.update { it.copy(weatherSearching = true, weatherPlaces = emptyList(), weatherSearchStatus = "Searching Open-Meteo…") }
         weatherSearch = scope.launch {
+            val foregroundWatch = launch {
+                while (isActive) {
+                    if (!foreground()) { cancelWeatherPlaceSearch(); break }
+                    delay(100)
+                }
+            }
             try {
-                val places = collectors.searchWeatherPlaces(query)
+                val places = placeSearch?.invoke(query) ?: collectors.searchWeatherPlaces(query)
                 if (token == weatherSearchGeneration) mutable.update { it.copy(weatherPlaces = places, weatherSearchStatus = if (places.isEmpty()) "No matching places. Try a city and country." else "Choose the place to save.") }
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) { if (token == weatherSearchGeneration) mutable.update { it.copy(weatherSearchStatus = "Place search unavailable. Try again later.") } }
-            finally { if (token == weatherSearchGeneration) mutable.update { it.copy(weatherSearching = false) } }
+            finally { foregroundWatch.cancel(); if (token == weatherSearchGeneration) mutable.update { it.copy(weatherSearching = false) } }
         }
+    }
+    override fun cancelWeatherPlaceSearch() {
+        weatherSearchGeneration++; weatherSearch?.cancel(); weatherSearch = null
+        mutable.update { it.copy(weatherSearching = false, weatherPlaces = emptyList(), weatherSearchStatus = "") }
     }
     override fun requestPermissions() { context.startActivity(Intent(context, SignalPermissionActivity::class.java).putExtra("sources", mutable.value.settings.enabled.toTypedArray()).putExtra("weatherDeviceLocation", mutable.value.settings.weatherLocation == "device").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
     override fun recoverSource(key: String) {

@@ -10,6 +10,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -64,21 +65,30 @@ internal fun SignalHomePage(state: SignalState, station: SignalStation) {
                 item(span = { GridItemSpan(maxLineSpan) }) { Column {
                     Text("Connect Home Assistant, openHAB, Geepers or an MQTT broker. Readings work on this phone without a watch. Credentials stay encrypted here; server-side permissions still apply.")
                     Button({ connectionDraft = HomeConnection("", "", HomeConnectorKind.HOME_ASSISTANT, "") }) { Text("Add connection") }
+                    OutlinedButton({ connectionDraft = HomeConnection("", "Outdoors", HomeConnectorKind.PUBLIC_ENVIRONMENT, "") }) { Text("Add weather & environment") }
                 } }
                 items(state.home.connections, key = { "connection:${it.id}" }, span = { GridItemSpan(maxLineSpan) }) { c -> Card { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(c.name, style = MaterialTheme.typography.titleMedium); Text("${c.kind} · ${c.baseUrl}")
+                    Text(c.name, style = MaterialTheme.typography.titleMedium); Text(if (c.kind == HomeConnectorKind.PUBLIC_ENVIRONMENT) "Public environment · ${c.outdoor?.place?.name.orEmpty()}" else "${c.kind} · ${c.baseUrl}")
                     state.home.snapshot.errors[c.id]?.let { Text(it) }
-                    FlowRow { TextButton({ connectionDraft = c }) { Text("Replace credentials or connection") }; TextButton({ station.removeHomeConnection(c.id) }) { Text("Remove ${c.name}") } }
+                    FlowRow { TextButton({ connectionDraft = c }) { Text(if (c.kind == HomeConnectorKind.PUBLIC_ENVIRONMENT) "Change place or sources" else "Replace credentials or connection") }; TextButton({ station.removeHomeConnection(c.id) }) { Text("Remove ${c.name}") } }
                 } } }
                 state.homePreview?.let { preview -> item(span = { GridItemSpan(maxLineSpan) }) { Card { Column(Modifier.padding(16.dp)) {
                     Text("Catalog preview · ${preview.name}", style = MaterialTheme.typography.titleMedium)
-                    Text("${state.homePreviewEntities.size} devices; ${state.homePreviewEntities.count { it.capabilities.isNotEmpty() }} have supported controls.")
+                    Text(if (preview.kind == HomeConnectorKind.PUBLIC_ENVIRONMENT) "${state.homePreviewEntities.size} public readings; no controls."
+                        else "${state.homePreviewEntities.size} devices; ${state.homePreviewEntities.count { it.capabilities.isNotEmpty() }} have supported controls.")
+                    if (preview.kind == HomeConnectorKind.PUBLIC_ENVIRONMENT) {
+                        Text("${preview.outdoor?.place?.name}. Read only. Saving does not select captures or share data with a language model.")
+                        state.homePreviewEntities.mapNotNull { it.outdoor }.groupBy { it.sourceKey }.forEach { (key, rows) ->
+                            Text("${SignalOutdoorSources.sources.firstOrNull { it.key == key }?.name ?: key}: ${rows.count { it.status == OutdoorStatus.AVAILABLE || it.status == OutdoorStatus.EMPTY }} available, ${rows.count { it.status != OutdoorStatus.AVAILABLE && it.status != OutdoorStatus.EMPTY }} limited or unavailable")
+                        }
+                    }
                     state.homePreviewEntities.take(12).forEach { entity ->
                         Text(entity.name, style = MaterialTheme.typography.titleMedium)
                         HomeReading(entity, state.home.temperatureUnit, now)
                     }
                     if (state.homePreviewEntities.size > 12) Text("The complete catalog will be available in All devices after saving.")
                     Button(station::saveHomeConnection) { Text("Save connection") }
+                    TextButton(station::cancelHomePreview) { Text("Discard preview") }
                 } } } }
             }
             "catalog" -> {
@@ -144,7 +154,11 @@ internal fun SignalHomePage(state: SignalState, station: SignalStation) {
             }
         }
     }
-    connectionDraft?.let { c -> HomeConnectionDialog(c, state.homeBusy, state.homeStatus, { connectionDraft = null }) { value, token -> station.testHomeConnection(value,token) } }
+    connectionDraft?.let { c ->
+        val dismiss = { station.cancelHomePreview(); connectionDraft = null }
+        if (c.kind == HomeConnectorKind.PUBLIC_ENVIRONMENT) OutdoorConnectionDialog(c, state, station, dismiss)
+        else HomeConnectionDialog(c, state.homeBusy, state.homeStatus, dismiss) { value, token -> station.testHomeConnection(value,token) }
+    }
     editing?.let { tile -> HomeTileDialog(tile, state.home.snapshot.entities.firstOrNull { it.connectionId == tile.connectionId && it.id == tile.entityId }, { editing = null }, { station.removeHomeTile(tile.id); editing = null }) { station.saveHomeTile(it); editing = null } }
 }
 
@@ -158,6 +172,19 @@ private fun HomeReading(entity: HomeEntity, unit: HomeTemperatureUnit, now: Long
         }
     }
     Text(homeReadingAge(entity, now), style = MaterialTheme.typography.bodySmall)
+    entity.outdoor?.let { reading ->
+        val uri = LocalUriHandler.current
+        var expanded by remember(entity.id) { mutableStateOf(false) }
+        Text("${reading.provider} · ${reading.place}", style = MaterialTheme.typography.bodySmall)
+        TextButton({ expanded = !expanded }, modifier = Modifier.semantics { stateDescription = if (expanded) "Expanded" else "Collapsed" }) { Text(if (expanded) "Hide details" else "Details & source") }
+        if (expanded) {
+            Text(outdoorTimeLabel(reading))
+            if (reading.details.isNotBlank()) Text(reading.details)
+            reading.validFrom?.let { Text("Valid from ${kotlin.time.Instant.fromEpochMilliseconds(it)}") }
+            reading.validUntil?.let { Text("Valid until ${kotlin.time.Instant.fromEpochMilliseconds(it)}") }
+            TextButton({ uri.openUri(reading.attributionUrl) }) { Text("Open ${reading.provider} source") }
+        }
+    }
 }
 
 @Composable
@@ -176,7 +203,7 @@ private fun HomeConnectionDialog(initial: HomeConnection, busy: Boolean, status:
         } else {
         if (attempted) Text(status, Modifier.semantics { liveRegion = LiveRegionMode.Polite })
         OutlinedTextField(name,{ name = it.take(100) },label = { Text("Connection name") })
-        SignalChoice("System",kind.name,HomeConnectorKind.entries.map { it.name to when(it) { HomeConnectorKind.HOME_ASSISTANT -> "Home Assistant"; HomeConnectorKind.OPENHAB -> "openHAB"; HomeConnectorKind.GEEPERS -> "Geepers"; HomeConnectorKind.MQTT -> "MQTT over WebSockets" } }) { kind = HomeConnectorKind.valueOf(it) }
+        SignalChoice("System",kind.name,HomeConnectorKind.entries.filter { it != HomeConnectorKind.PUBLIC_ENVIRONMENT }.map { it.name to when(it) { HomeConnectorKind.HOME_ASSISTANT -> "Home Assistant"; HomeConnectorKind.OPENHAB -> "openHAB"; HomeConnectorKind.GEEPERS -> "Geepers"; HomeConnectorKind.MQTT -> "MQTT over WebSockets"; HomeConnectorKind.PUBLIC_ENVIRONMENT -> "Public environment" } }) { kind = HomeConnectorKind.valueOf(it) }
         OutlinedTextField(url,{ url = it.take(2048) },label = { Text(if (kind == HomeConnectorKind.MQTT) "Broker URL" else "Server URL") },singleLine = true)
         if (kind == HomeConnectorKind.MQTT) {
             Text("MQTT 5 · read only. Use a wss:// WebSocket listener. Raw mqtt:// ports are unsupported. Only the topics below are subscribed; no device commands are published.")
@@ -238,7 +265,8 @@ internal fun SignalHomeAccessSelector(state: SignalState, station: SignalStation
     }
     if (!supported) Text("Agent controls are disabled for this model. Ordinary chat and attached Home readings still work.")
     if (state.homeAccess.isNotEmpty()) state.home.connections.filter { it.enabled }.forEach { c -> SignalToggle(c.name,c.id in state.homeAccess) { enabled -> station.setHomeAccess(if (enabled) state.homeAccess + c.id else state.homeAccess - c.id) } }
-    if (state.homeAccess.isNotEmpty()) SignalToggle("Allow actions for this question", state.homeActionsAllowed, supported && state.homeReady, "Exact saved permissions may execute immediately, including locks and scenes. Other actions require review. This permission ends with this question; follow-ups start with Home off.", station::setHomeActionsAllowed)
+    if (state.homeAccess.isNotEmpty() && state.home.connections.any { it.id in state.homeAccess && it.kind != HomeConnectorKind.PUBLIC_ENVIRONMENT }) SignalToggle("Allow actions for this question", state.homeActionsAllowed, supported && state.homeReady, "Exact saved permissions may execute immediately, including locks and scenes. Other actions require review. This permission ends with this question; follow-ups start with Home off.", station::setHomeActionsAllowed)
+    else if (state.homeAccess.isNotEmpty()) Text("Selected environmental sources are read only.")
 }
 
 @Composable

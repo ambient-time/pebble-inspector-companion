@@ -166,6 +166,8 @@ interface SignalStation {
     fun refreshHome() {}
     fun setHomeTemperatureUnit(unit: HomeTemperatureUnit) {}
     fun testHomeConnection(connection: HomeConnection, token: String) {}
+    fun previewOutdoorConnection(connection: HomeConnection, disclosureAccepted: Boolean) {}
+    fun cancelHomePreview() {}
     fun saveHomeConnection() {}
     fun removeHomeConnection(id: String) {}
     fun setHomeAccess(ids: Set<String>) {}
@@ -224,6 +226,7 @@ interface SignalStation {
     fun requestPermissions()
     fun recoverSource(key: String) = openPermissionSettings()
     fun searchWeatherPlaces(query: String)
+    fun cancelWeatherPlaceSearch() {}
     fun startWakeListening()
     fun stopWakeListening()
     fun reviewWakeOnWatch()

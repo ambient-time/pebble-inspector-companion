@@ -33,6 +33,8 @@ data class OutdoorReading(
     val validFrom: Long? = null,
     val validUntil: Long? = null,
     val details: String = "",
+    val messageExpiresAt: Long? = null,
+    val queriedPlace: SignalPlace? = null,
 )
 
 object SignalOutdoorSources {

@@ -2,12 +2,12 @@ package coredevices.pebble.signal
 
 import kotlinx.serialization.Serializable
 
-@Serializable enum class HomeConnectorKind { HOME_ASSISTANT, OPENHAB, GEEPERS, MQTT }
-@Serializable data class HomeConnection(val id: String, val name: String, val kind: HomeConnectorKind, val baseUrl: String, val credentialKey: String = "home:$id", val allowPrivateHttp: Boolean = false, val enabled: Boolean = true, val revision: Long = 1, val mqtt: HomeMqttConfig? = null)
+@Serializable enum class HomeConnectorKind { HOME_ASSISTANT, OPENHAB, GEEPERS, MQTT, PUBLIC_ENVIRONMENT }
+@Serializable data class HomeConnection(val id: String, val name: String, val kind: HomeConnectorKind, val baseUrl: String, val credentialKey: String = "home:$id", val allowPrivateHttp: Boolean = false, val enabled: Boolean = true, val revision: Long = 1, val mqtt: HomeMqttConfig? = null, val outdoor: OutdoorConfig? = null)
 @Serializable data class HomeParameter(val name: String, val type: String = "string", val required: Boolean = true, val minimum: Double? = null, val maximum: Double? = null, val options: List<String> = emptyList())
 @Serializable data class HomeCapability(val id: String, val name: String = id, val parameters: List<HomeParameter> = emptyList(), val expectedValues: Map<String, String> = emptyMap())
 @Serializable data class HomeValue(val key: String, val value: String, val unit: String? = null, val measuredAt: Long? = null)
-@Serializable data class HomeEntity(val connectionId: String, val id: String, val name: String, val domain: String = "", val state: String = "unknown", val available: Boolean = false, val capabilities: List<HomeCapability> = emptyList(), val updatedAt: Long? = null, val observedAt: Long = 0, val attributes: Map<String, String> = emptyMap(), val identity: String = id, val values: List<HomeValue> = emptyList(), val expiresAt: Long? = null, val retained: Boolean = false, val observationBasis: String = "")
+@Serializable data class HomeEntity(val connectionId: String, val id: String, val name: String, val domain: String = "", val state: String = "unknown", val available: Boolean = false, val capabilities: List<HomeCapability> = emptyList(), val updatedAt: Long? = null, val observedAt: Long = 0, val attributes: Map<String, String> = emptyMap(), val identity: String = id, val values: List<HomeValue> = emptyList(), val expiresAt: Long? = null, val retained: Boolean = false, val observationBasis: String = "", val outdoor: OutdoorReading? = null)
 internal fun homeReadings(entity: HomeEntity): List<HomeValue> = entity.values.ifEmpty {
     val unit = listOf("unit", "unit_of_measurement", "unitSymbol").firstNotNullOfOrNull { key -> entity.attributes[key]?.takeIf { it.isNotBlank() } }
     val withoutUnit = unit?.takeIf { entity.state.endsWith(it) }?.let { entity.state.removeSuffix(it).trim() }
@@ -48,7 +48,12 @@ class HomeException(message: String) : Exception(message)
 fun homeCapabilityBinding(capability: HomeCapability): String = kotlinx.serialization.json.Json.encodeToString(capability.copy(parameters=capability.parameters.sortedBy { it.name }, expectedValues=capability.expectedValues.entries.sortedBy { it.key }.associate { it.toPair() }))
 fun homeConnectionBinding(c: HomeConnection): String {
     val fields = listOf(c.id, c.kind.name, c.baseUrl.trim().trimEnd('/'), c.credentialKey, c.allowPrivateHttp.toString(), c.revision.toString())
-    return kotlinx.serialization.json.Json.encodeToString(if (c.kind == HomeConnectorKind.MQTT) fields + kotlinx.serialization.json.Json.encodeToString(c.mqtt) else fields)
+    val extended = when (c.kind) {
+        HomeConnectorKind.MQTT -> fields + kotlinx.serialization.json.Json.encodeToString(c.mqtt)
+        HomeConnectorKind.PUBLIC_ENVIRONMENT -> fields + kotlinx.serialization.json.Json.encodeToString(c.outdoor?.copy(sources = c.outdoor.sources.sorted().toSet()))
+        else -> fields
+    }
+    return kotlinx.serialization.json.Json.encodeToString(extended)
 }
 fun normalizeHomeParameters(capability: HomeCapability, supplied: Map<String, String>): Map<String, String> {
     require(supplied.size <= 20 && capability.parameters.size <= 20) { "Too many parameters." }
