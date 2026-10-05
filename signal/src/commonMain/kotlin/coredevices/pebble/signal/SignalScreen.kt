@@ -82,8 +82,8 @@ private data class SignalConfirmation(val title: String, val message: String, va
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun SignalScreen(station: SignalStation, standalone: Boolean = false, onManageWatch: (() -> Unit)? = null,
-    uiSession: SignalUiSession = remember { SignalUiSession() }) {
-    androidx.compose.runtime.CompositionLocalProvider(LocalSignalUiSession provides uiSession) {
+    uiSession: SignalUiSession = remember { SignalUiSession() }, speech: SignalSpeech? = null) {
+    androidx.compose.runtime.CompositionLocalProvider(LocalSignalUiSession provides uiSession, LocalSignalSpeech provides speech) {
         if (standalone) SignalMaterialTheme { SignalScreenContent(station, true, onManageWatch) }
         else SignalScreenContent(station, false, onManageWatch)
     }
@@ -154,6 +154,11 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
     LaunchedEffect(detailId) { detailId?.let(station::selectRecord) }
     val keyboardOpen = WindowInsets.ime.getBottom(LocalDensity.current) > 0
     val selected = state.selectedRecord?.takeIf { it.id == detailId } ?: state.records.firstOrNull { it.id == detailId }
+    val speech = LocalSignalSpeech.current
+    DisposableEffect(speech, ui.route, state.threadId, state.questionReview, state.watchQuestionReview,
+        state.deletionPreview, state.wakePhase, confirmation, state.initialized, state.settings.onboardingComplete) {
+        onDispose { speech?.stop() }
+    }
 
     if (!state.initialized) {
         Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).statusBarsPadding().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -494,6 +499,7 @@ private fun SignalConversation(
                     SelectionContainer { Text(record.question, style = MaterialTheme.typography.titleMedium) }
                     Text("${providerLabel(record.provider)} · ${record.state.replace('_', ' ')}", style = MaterialTheme.typography.labelMedium)
                     SignalResponse(record.answer, record.summary.ifBlank { if (record.state == "working") "Waiting for reply…" else record.state })
+                    SignalSpeechControls(record)
                     SignalHomeConversationActivity(record, state)
                     if (record.state in setOf("error", "interrupted", "cancelled")) {
                         Text("Your question is saved. Review it before sending again.")
@@ -646,6 +652,7 @@ private fun SignalDetail(
             if (record.watchId.isNotBlank()) Text("Watch: ${state.watches.firstOrNull { it.id == record.watchId }?.name ?: record.watchId}")
         }
         item { SignalResponse(record.answer, record.summary.ifBlank { "No answer saved." }) }
+        item { SignalSpeechControls(record) }
         if (signalSupportsLocalChanges(record)) item { SignalLocalChangesAction(record, state, onChanges) }
         if (signalSupportsLocalChanges(record)) item { SignalTrendPanel(record, state, onReference) }
         item {

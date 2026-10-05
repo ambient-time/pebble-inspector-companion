@@ -13,7 +13,7 @@ below describes current source and dated evidence, not promised feature parity.
 | Area | Current state | Remaining boundary |
 | --- | --- | --- |
 | Reviewed conversation | Observed: phone and wrist questions, bounded context, one-use consent, saved replies and phone handoff | Dictation depends on watch and host; a transport acknowledgement is not wearer acceptance |
-| Speech | Observed: phone wake-listening and watch dictation input; replies are text-only | No Signal phone TTS, watch speech, voice selection or Auto-read implementation |
+| Speech | Implemented in source: explicit phone Listen/Stop on saved replies using an installed Android voice marked offline; wake-listening and watch dictation remain input features | Build 24 on the Pixels is text-only. See the [speech check](phone-speech-2026-10-05.md); no watch speech, hosted voices, voice picker or Auto-read |
 | Home and environment | Observed: Home Assistant, openHAB, Geepers, public feeds and read-only MQTT 5 over WebSockets | Exact topics; no raw MQTT TCP, MQTT 3, command publication, direct ESPHome client or firmware provisioning |
 | Local answers | Observed: Gemini Nano and Gemma adapters use the same review path | Nano needs the app on screen; Gemma full download/import/inference remains untested; local Home tool execution is disabled |
 | Private delivery | Measured in the [build 24 receipt](private-build24-2026-10-05.md): matching installed APKs on both Pixels; 381 shared tests and 15 local-model tests passed | No fresh phone UI acceptance from locked/dozing startup checks; physical 2 SE favorites and current TalkBack journey remain open |
@@ -55,8 +55,9 @@ rather than rewriting past results into current success claims.
 ## Reuse now
 
 Decision: reuse component behavior and tests inside Signal's existing consent and
-execution flow. Do not create a parallel conversation dispatcher. No source was
-ported as part of this review.
+execution flow. Do not create a parallel conversation dispatcher. The subsequent
+[phone-speech slice](phone-speech-2026-10-05.md) adapts offline selection and
+cancellation patterns into Signal's existing saved-reply UI.
 
 | Candidate, inspected October 5 | Fit and maintenance evidence | Limits |
 | --- | --- | --- |
@@ -91,9 +92,9 @@ inherited GPLv3 obligations; it is not an MIT-only application.
 These primary references were checked October 5. They demonstrate documented
 interfaces, not a tested ESP32-to-Signal installation. No new external client
 library was selected or licensed for copying; that check is not applicable to
-this documentation-only review. A maintained Kotlin native-API client remains
+the ESP32 exploration. A maintained Kotlin native-API client remains
 an unverified lead. Formal accessibility conformance is unverified: the existing
-TalkBack gate stays open, and future Listen/Stop/status controls need their own
+TalkBack gate stays open, and the new Listen/Stop/status controls need their own
 assistive-technology and audio-interruption checks. Android's
 [Compose semantics guidance](https://developer.android.com/develop/ui/compose/accessibility/semantics)
 provides the implementation reference for control roles and announced state;
@@ -122,8 +123,9 @@ hardware obligations. Neither should block text-only use.
 
 ## Gap and proposed build order
 
-Planned, not implemented: first add explicit phone Listen/Stop for saved answers
-using the reusable offline speech engine, without making another model request.
+Implemented in source: explicit phone Listen/Stop for saved answers using
+installed offline-voice selection, without making another model request. Private
+phone installation, acoustic acceptance and TalkBack validation are next.
 Then assess watch playback and optional hosted voices with separate destination
 and disclosure controls. Reuse exact reviewed snapshots and the existing action
 engine when considering richer tools; spoken prose never becomes a command.
@@ -155,11 +157,12 @@ gaps or authorize public release.
    much of the generic ESP32 route. A real retained/stale/missing-reading check
    can expose the actual gap before another protocol client is built.
 
-Next experiment: use Dick Tracy's existing offline phone Listen with one
+Next experiment: privately install Signal's phone-speech slice and use Listen with one
 synthetic saved answer containing a fresh outdoor reading, a stale room reading
 and missing humidity. Observe audibility, retained qualifications and Stop,
-without a model request, household read or configuration change. This is a
-proposed reuse probe, not Signal speech acceptance or an experiment run here.
+without a model request or household read. This is a proposed physical
+acceptance check, not a claim that the emulator establishes acoustic quality.
 
-Handoff: Discuss the bounded phone-speech plan and its privacy/lifecycle checks;
-then Compose the selected slice. This wrap changes documentation only.
+Handoff: validate the bounded phone-speech implementation on physical hardware
+before extending audio to watches or another service. Keep the saved text and
+existing consent boundaries intact.

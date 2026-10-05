@@ -105,7 +105,27 @@ class SignalSpeechTest {
         assertFalse(speech.state.value.status.contains("PRIVATE_ENGINE_DETAIL"))
     }
 
-    private class FakeEngine(private val ready: CompletableDeferred<Unit>? = null) : SignalSpeechEngine {
+    @Test fun utteranceTimeoutStopsEngineAndRejectsLateCallbacks() = runTest {
+        val engine = FakeEngine()
+        val speech = SignalSpeechController(backgroundScope) { engine }
+        speech.play(reply()); runCurrent(); advanceTimeBy(180_001); runCurrent()
+        assertFalse(speech.state.value.active)
+        assertTrue(speech.state.value.status.contains("timed out"))
+        assertEquals(1, engine.closes)
+        engine.onStart?.invoke(); engine.done.complete(Unit); runCurrent()
+        assertFalse(speech.state.value.active)
+    }
+
+    @Test fun synchronousShutdownCallbackCannotReactivateFailedOutput() = runTest {
+        val engine = FakeEngine(callbackOnClose = true)
+        val speech = SignalSpeechController(backgroundScope) { engine }
+        speech.play(reply()); runCurrent()
+        engine.done.completeExceptionally(SignalSpeechFailure("Voice unavailable.")); runCurrent()
+        assertFalse(speech.state.value.active)
+        assertEquals("Voice unavailable.", speech.state.value.status)
+    }
+
+    private class FakeEngine(private val ready: CompletableDeferred<Unit>? = null, private val callbackOnClose: Boolean = false) : SignalSpeechEngine {
         val spoken = mutableListOf<String>()
         val done = CompletableDeferred<Unit>()
         var onStart: (() -> Unit)? = null
@@ -115,6 +135,6 @@ class SignalSpeechTest {
         override suspend fun speak(text: String, onStart: () -> Unit) {
             spoken += text; this.onStart = onStart; onStart(); done.await()
         }
-        override fun close() { closes++ }
+        override fun close() { closes++; if (callbackOnClose) onStart?.invoke() }
     }
 }

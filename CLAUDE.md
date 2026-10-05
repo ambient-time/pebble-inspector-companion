@@ -20,9 +20,12 @@ was not publicly distributed. Physical 2 SE favorite-screen acceptance and the
 current TalkBack journey remain open. Keep dated release records distinct.
 
 The intended product combines conversation, speech, sensing and optional home
-tools. Do not constrain Signal to a sensing-only companion. Current replies are
-text-only; wake-listening does not provide reply audio. Dick Tracy speech and
-host/tool reuse remain proposed, not implemented Signal parity. Start from the
+tools. Do not constrain Signal to a sensing-only companion. Installed build 24
+is text-only. Current standalone Android source has explicit offline-voice
+Listen/Stop for saved replies, with an Activity-owned engine and optional shared
+UI injection; see the [phone-speech check](docs/signal-station/phone-speech-2026-10-05.md).
+No Pixel install or public release was made for speech. Watch speech, hosted
+voices, Auto-read and further host/tool reuse remain proposed. Start from the
 [product direction and reuse guide](docs/signal-station/product-direction.md),
 [environment guide](docs/signal-station/environmental-readings.md) and
 [local-model guide](docs/signal-station/local-models.md). Preserve the existing

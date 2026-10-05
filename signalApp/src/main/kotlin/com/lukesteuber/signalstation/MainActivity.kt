@@ -22,12 +22,26 @@ class SignalUiViewModel : androidx.lifecycle.ViewModel() {
 }
 
 class MainActivity : ComponentActivity() {
+    private val speechScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate)
+    private lateinit var speech: coredevices.pebble.signal.SignalSpeechController
+    override fun onPause() {
+        if (::speech.isInitialized) speech.stop()
+        super.onPause()
+    }
+    override fun onDestroy() {
+        if (::speech.isInitialized) speech.stop()
+        speechScope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
+        super.onDestroy()
+    }
     override fun onStop() {
         (application as SignalApplication).station.stopLiveSignals()
         super.onStop()
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        speech = coredevices.pebble.signal.SignalSpeechController(speechScope) {
+            AndroidSignalSpeechEngine(this) { speech.stop() }
+        }
         enableEdgeToEdge()
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         val app = application as SignalApplication
@@ -62,7 +76,8 @@ class MainActivity : ComponentActivity() {
                     } finally { selecting = false }
                 }
             }
-            SignalScreen(app.station, standalone = true, uiSession = ui, onManageWatch = { connectionError = ""; showWatch = true })
+            SignalScreen(app.station, standalone = true, uiSession = ui, speech = speech,
+                onManageWatch = { speech.stop(); connectionError = ""; showWatch = true })
             if (showWatch) AlertDialog(
                 onDismissRequest = { if (!selecting) showWatch = false },
                 title = { Text("Connect through Pebble") },

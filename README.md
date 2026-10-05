@@ -53,9 +53,12 @@ No new watch package or public release was made for this fix.
 ## Product direction
 
 Signal Station is intended to combine conversation, speech, sensing and optional
-home tools, including generic ESP32 integrations. The current app returns text;
-phone wake-listening is an input feature, not reply playback. Dick Tracy's phone
-speech, watch playback and Auto-read remain reuse candidates, not Signal features.
+home tools, including generic ESP32 integrations. The installed build 24 returns
+text. Current source adds explicit **Listen on phone / Stop reading** for saved
+replies using an installed Android voice marked offline; see the
+[phone-speech check](docs/signal-station/phone-speech-2026-10-05.md).
+This change is not installed on the Pixels or publicly released. Watch playback,
+hosted voices and Auto-read remain unimplemented.
 The [direction and reuse guide](docs/signal-station/product-direction.md) records
 the existing foundation, proposed next steps and acceptance gaps. Connections,
 capture selection, model sharing and action permissions remain separate choices.
