@@ -42,9 +42,23 @@ No device location, private conversation, real model key or model API was used i
 these checks. NWS normalizes points to four decimal places; the queried point is
 retained explicitly. European pollen outside coverage remains unsupported.
 
-## Open
+## Private phone delivery
 
-Physical phone upgrade, installed-byte verification and real watch favorite
-acceptance are separate delivery checks. TalkBack remains unverified. The Dick
+Build 22 was rebuilt from committed source `395d7b13` and upgraded in place on
+Pixel 9a and Pixel 10. Both report 0.9.0-public-data-dev (22), launch successfully,
+and their installed APK SHA-256 matches the local artifact:
+`3c6bfdcb3db0bdddec453c83a413c9b1745c12c2c124538e5362a8b8ab7272b1`.
+The signing certificate matched both previous installations. Pairing, stored
+settings, enabled sources and public downloads were not changed. No synthetic
+fixtures were installed on physical phones.
+
+The existing watch test suite also passed: 34 JavaScript protocol cases plus
+native C observation, bounds, Home/question UI, replay and transport checks.
+There is no watch binary change for this feature.
+
+## Remaining acceptance
+
+Real watch favorite acceptance remains separate from synthetic transport tests
+and phone installation. TalkBack remains unverified. The Dick
 Tracy Watch data port is tracked independently; this Signal milestone does not
 complete that work or authorize public release.
