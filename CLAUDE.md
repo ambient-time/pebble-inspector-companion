@@ -1,12 +1,12 @@
 # Signal Station and inherited CoreApp
 
-## Signal Station product boundary — September 15, 2026
+## Signal Station product boundary
 
 Signal Station ships as the separate `:signalApp` Android application
 (`com.lukesteuber.signalstation`); `:signal` holds shared UI/models, Home
 connectors, native provider tools and the exact-action permission engine.
 Android supplies collectors, encrypted persistence, lifecycle and coordination.
-Build 17 and the companion Pebble 1.7.1 package are published; see
+The September 15 release was build 17 with companion Pebble 1.7.1; see
 [release evidence](docs/signal-station/home-release-2026-09-15.md) and
 [Home setup](docs/signal-station/home-connections.md). Home is opt-in and no
 standing action permission is granted by setup or upgrade. Sent uncertain
@@ -18,6 +18,15 @@ installed in place on Pixel 9a and Pixel 10 with matching APK checksums. See
 The October 3 testing downloads remain Android build 20 / Pebble 1.8.1; build 24
 was not publicly distributed. Physical 2 SE favorite-screen acceptance and the
 current TalkBack journey remain open. Keep dated release records distinct.
+
+The intended product combines conversation, speech, sensing and optional home
+tools. Do not constrain Signal to a sensing-only companion. Current replies are
+text-only; wake-listening does not provide reply audio. Dick Tracy speech and
+host/tool reuse remain proposed, not implemented Signal parity. Start from the
+[product direction and reuse guide](docs/signal-station/product-direction.md),
+[environment guide](docs/signal-station/environmental-readings.md) and
+[local-model guide](docs/signal-station/local-models.md). Preserve the existing
+review/consent/action engine when considering shared capabilities.
 
 The inherited Android/iOS CoreApp targets below are separate products.
 Signal declares iOS compilation targets but has no iOS station registration,

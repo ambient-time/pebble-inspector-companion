@@ -53,3 +53,23 @@ and diagnostic captures remain outside Git on Galactus.
 
 Physical 2 SE favorites, current TalkBack acceptance, real-broker interoperability,
 Gemma inference and longer-running battery/background checks remain separate.
+
+## Subsequent watch checks — October 5
+
+Observed: the Pixel 9a developer route returned the 2 SE's firmware
+`v4.4.3-rbl`, board `silk21` and hardware platform 14. Its current app was not
+Signal Station. The captured screen showed **Fully Charged**, so neither Signal's
+home screen nor its favorites were visually accepted in that check. No Ping,
+watch launch, install, pairing change or firmware change was sent. The temporary
+USB forward used for the check was removed; developer mode was left as requested.
+
+Next physical check: press Back (single left button) to dismiss the overlay,
+open Signal Station, hold Down (bottom-right), then open a selected reading.
+Check its value, units, source and age against the phone. A developer response
+or active UUID alone cannot establish screen fit or button behavior.
+
+Separate evidence: Dick Tracy 1.9.0 installation, active UUID and visible
+**AGENT COMMAND** home screen were verified on the Pixel 10 / Time 2 pair after
+the overlay was dismissed. Its [dated receipt](https://github.com/lukeslp/gadget-watch/blob/9de9a6f/docs/live-acceptance-2026-10-05.md)
+belongs to that product. It establishes neither Signal rendering nor Signal
+speech support. Private physical screenshots remain outside Git.

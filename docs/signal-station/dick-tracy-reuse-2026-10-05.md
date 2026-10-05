@@ -33,14 +33,17 @@ source-parity check against Signal revision `395d7b13`; the public-data client
 originated in Signal. All five manifest hashes also match current Signal source.
 Neither module was copied or changed here.
 
-## Keep separate
+## Scope of this port
 
-Dick Tracy's imported skills, MCP/OAuth, host tasks, schedules and notification
-delivery form a separate execution system. Importing that stack is not needed
-for Signal's sensing, provenance and per-question context selection. The
-Outside brief's source coverage, freshness and empty-report tests are useful
-reference cases for a future reviewed context-snapshot exchange; no automatic
-sharing or new data collection was enabled.
+This safety port did not import Dick Tracy's speech, skills, MCP/OAuth, host
+tasks, schedules or notification delivery. That is a limit of this change, not a
+permanent sensing-only boundary for Signal. Luke subsequently clarified that
+Signal should combine conversation, speech, sensing and home/device tools.
+The [product direction](product-direction.md) supersedes the earlier narrow reuse
+recommendation. Future ports should reuse tested components within Signal's
+existing review and permission flow, without a second independent dispatcher.
+The Outside brief's source coverage, freshness and empty-report tests remain
+useful references. No automatic sharing or new data collection was enabled.
 
 ## Verification boundary
 

@@ -50,6 +50,16 @@ separate automated checks, phone installation and watch evidence. Physical
 2 SE favorite-screen acceptance and the current TalkBack journey remain open.
 No new watch package or public release was made for this fix.
 
+## Product direction
+
+Signal Station is intended to combine conversation, speech, sensing and optional
+home tools, including generic ESP32 integrations. The current app returns text;
+phone wake-listening is an input feature, not reply playback. Dick Tracy's phone
+speech, watch playback and Auto-read remain reuse candidates, not Signal features.
+The [direction and reuse guide](docs/signal-station/product-direction.md) records
+the existing foundation, proposed next steps and acceptance gaps. Connections,
+capture selection, model sharing and action permissions remain separate choices.
+
 ## What you can do
 
 **Explore around you.** See nearby wireless signals, repeated sightings and broad
