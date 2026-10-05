@@ -206,6 +206,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
     override fun updateSettings(settings: SignalSettings) = persistSettings(settings)
     override fun setHomeVisible(visible: Boolean) { if (mutable.value.initialized) home.setVisible(visible) }
     override fun refreshHome() { if (mutable.value.initialized) home.refresh() }
+    override fun setHomeTemperatureUnit(unit: HomeTemperatureUnit) { home.temperatureUnit(unit) }
     override fun testHomeConnection(connection: HomeConnection, token: String) { if (mutable.value.initialized) home.testConnection(connection, token) }
     override fun saveHomeConnection() { home.saveConnection() }
     override fun removeHomeConnection(id: String) { setHomeAccess(mutable.value.homeAccess - id); home.removeConnection(id) }

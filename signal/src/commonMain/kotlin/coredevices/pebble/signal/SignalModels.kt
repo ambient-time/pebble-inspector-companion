@@ -164,6 +164,7 @@ interface SignalStation {
     fun updateSettings(settings: SignalSettings)
     fun setHomeVisible(visible: Boolean) {}
     fun refreshHome() {}
+    fun setHomeTemperatureUnit(unit: HomeTemperatureUnit) {}
     fun testHomeConnection(connection: HomeConnection, token: String) {}
     fun saveHomeConnection() {}
     fun removeHomeConnection(id: String) {}

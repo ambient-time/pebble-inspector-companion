@@ -98,7 +98,15 @@ internal class AndroidHomeCoordinator(
                     try { while (isActive && visible && foreground()) {
                         try { connector.foregroundEvents().collect { entity ->
                             if (foreground() && engine.currentState().connections.any { homeConnectionBinding(it) == homeConnectionBinding(connection) }) remember(entity)
-                        } } catch (e: CancellationException) { throw e } catch (_: Exception) { update { it.copy(homeStatus = "Live updates disconnected. Reconnecting while Home is visible.") } }
+                        } } catch (e: CancellationException) { throw e } catch (_: Exception) {
+                            if (connection.kind == HomeConnectorKind.MQTT) mutate { current ->
+                                if (current.connections.none { homeConnectionBinding(it) == homeConnectionBinding(connection) }) current
+                                else current.copy(snapshot = current.snapshot.copy(entities = current.snapshot.entities.map { entity ->
+                                    if (entity.connectionId == connection.id) entity.copy(available = false, state = "Connection offline") else entity
+                                }))
+                            }
+                            update { it.copy(homeStatus = "Live updates disconnected. Reconnecting while Home is visible.") }
+                        }
                         delay(5_000)
                     } } finally { connector.close() }
                 } }
@@ -107,6 +115,7 @@ internal class AndroidHomeCoordinator(
         }
     }
     fun refresh() { refreshJob?.cancel(); refreshJob = launch { refreshAll() } }
+    fun temperatureUnit(unit: HomeTemperatureUnit) = launch { mutate { it.copy(temperatureUnit = unit) } }
     private suspend fun refreshAll() {
         update { it.copy(homeBusy = true, homeStatus = "Reading connected systems…") }
         val current = engine.currentState()
@@ -201,7 +210,7 @@ internal class AndroidHomeCoordinator(
         return collected
     }
     private fun observations(entity: HomeEntity): List<SignalObservation> = homeReadings(entity).map { value ->
-        SignalObservation("home.readings", "home:${entity.connectionId}", value = value.value, unit = value.unit.orEmpty(), collectedAt = clock(), measuredAt = value.measuredAt, status = if (entity.available) "available" else "unavailable", identity = homeTargetKey(entity.connectionId,entity.id) + ":" + value.key, number = value.value.toDoubleOrNull(), metric = value.key, fields = mapOf("connection_id" to entity.connectionId,"entity_id" to entity.id,"name" to entity.name,"source_received_at" to entity.observedAt.takeIf { it > 0 }?.toString().orEmpty(),"reported_update_at" to entity.updatedAt?.toString().orEmpty()))
+        SignalObservation("home.readings", "home:${entity.connectionId}", value = value.value, unit = value.unit.orEmpty(), collectedAt = clock(), measuredAt = value.measuredAt, status = if (homeEntityAvailable(entity, clock())) "available" else "unavailable", identity = homeTargetKey(entity.connectionId,entity.id) + ":" + value.key, number = value.value.toDoubleOrNull(), metric = value.key, fields = mapOf("connection_id" to entity.connectionId,"entity_id" to entity.id,"name" to entity.name,"source_received_at" to entity.observedAt.takeIf { it > 0 }?.toString().orEmpty(),"reported_update_at" to entity.updatedAt?.toString().orEmpty(), "observation_basis" to entity.observationBasis, "retained" to entity.retained.toString()))
     }
 
     private suspend fun prepare(connectionId: String, entityId: String, actionId: String, parameters: Map<String, String>): HomeLedgerEntry {
@@ -384,9 +393,8 @@ internal class AndroidHomeCoordinator(
                 val tile = favorites.firstOrNull { it.id == favoriteId } ?: throw HomeException("Favorite unavailable.")
                 val c = connection(tile.connectionId); val entity = read(c.id, tile.entityId); require(valid()); remember(entity)
                 if (kind == "home-open") {
-                    val readings = observations(entity).joinToString("\n") { "${it.metric}: ${it.value} ${it.unit}. Measured ${it.measuredAt?.let(::signalDateTime) ?: "unknown"}." }
-                    val received = entity.observedAt.takeIf { it > 0 }?.let(::signalDateTime) ?: "unknown"
-                    val detail = "${c.name}\n${tile.title}\n${entity.id}\n${if (entity.available) "Available" else "Unavailable"}\n$readings\nSource receipt time $received."
+                    val readings = homeDisplayReadings(entity, engine.currentState().temperatureUnit).joinToString("\n") { "${it.label}: ${it.value} ${it.unit}" }
+                    val detail = "${c.name}\n${tile.title}\n${entity.id}\n${homeReadingStatus(entity, clock())}\n$readings\n${homeReadingAge(entity, clock())}"
                     reply(if (detail.toByteArray().size <= 900) "detail" else "handoff", if (detail.toByteArray().size <= 900) detail else "Open the full device details on the phone.") { tile.capabilityId?.let { put("action_id", it) } }
                 } else {
                     require(text("action_id") == tile.capabilityId)

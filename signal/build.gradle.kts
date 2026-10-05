@@ -34,6 +34,9 @@ kotlin {
             implementation(libs.kotlinx.datetime)
             implementation(libs.ktor.client.core)
             implementation(libs.ktor.websockets)
+            implementation(libs.kermit)
+            implementation("de.kempmobil.ktor.mqtt:mqtt-core:1.2.0")
+            implementation("de.kempmobil.ktor.mqtt:mqtt-client:1.2.0")
             implementation("com.mikepenz:multiplatform-markdown-renderer-m3:0.43.0")
         }
         androidMain.dependencies {
@@ -42,8 +45,10 @@ kotlin {
             implementation(libs.room.runtime)
             implementation("androidx.health.connect:connect-client:1.1.0")
             implementation(libs.ktor.client.okhttp)
+            implementation(libs.ktor.cio)
             implementation("com.alphacephei:vosk-android:0.3.75")
         }
+        iosMain.dependencies { implementation(libs.ktor.client.darwin) }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
             implementation(libs.coroutines.test)
