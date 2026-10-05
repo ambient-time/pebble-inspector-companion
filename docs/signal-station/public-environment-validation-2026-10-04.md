@@ -31,6 +31,13 @@ and keyboard handling into the dialog fixed it; the revised disclosure and
 Preview/Cancel controls were visible. Card timestamps are compact by default,
 with exact times retained in expanded details.
 
+The final fixture was tightened again after discovering that a Compose-only
+density override did not enlarge Android's separate dialog window. The test now
+uses an Android configuration context so both page and dialog scale. All four
+Outdoor UI tests passed again, and the genuinely doubled dialog, consent switch,
+Preview and Cancel controls were inspected. This test-only correction does not
+change the installed build 22 application bytes.
+
 Two independent read-only source reviews found issues with timeout isolation,
 location precision, hazard-end semantics, partial forecast coverage, unit/depth
 validation, capture consent after place changes, rolling favorite labels, search
@@ -59,6 +66,8 @@ There is no watch binary change for this feature.
 ## Remaining acceptance
 
 Real watch favorite acceptance remains separate from synthetic transport tests
-and phone installation. TalkBack remains unverified. The Dick
-Tracy Watch data port is tracked independently; this Signal milestone does not
-complete that work or authorize public release.
+and phone installation. TalkBack remains unverified. Dick Tracy Watch's portable
+data module and Outside brief are now implemented on its main branch and privately
+installed as build 12 on both Pixels. Its own validation record reports 209 host
+tests, five synthetic render checks and unchanged watch builds; it does not imply
+Signal/Dick Tracy physical acceptance or authorize public release.

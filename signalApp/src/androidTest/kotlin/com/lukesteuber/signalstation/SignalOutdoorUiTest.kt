@@ -1,12 +1,11 @@
 package com.lukesteuber.signalstation
 
 import android.graphics.Bitmap
-import androidx.compose.runtime.CompositionLocalProvider
+import android.content.res.Configuration
+import android.view.ContextThemeWrapper
 import androidx.compose.ui.platform.ComposeView
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.unit.Density
 import androidx.test.platform.app.InstrumentationRegistry
 import coredevices.pebble.signal.*
 import java.io.File
@@ -88,8 +87,14 @@ class SignalOutdoorUiTest {
 
     private fun show(station: OutdoorUiStation, scale: Float = 1f) {
         compose.activityRule.scenario.onActivity { activity ->
-            activity.setContentView(ComposeView(activity).apply { setContent {
-                CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, scale)) { SignalScreen(station, standalone = true) }
+            // Dialogs own a separate Compose view. Scale the Android context so
+            // both the page and modal use the requested font size.
+            val context = ContextThemeWrapper(activity, 0).apply {
+                applyOverrideConfiguration(Configuration().apply { fontScale = scale })
+            }
+            assertEquals(scale, context.resources.configuration.fontScale)
+            activity.setContentView(ComposeView(context).apply { setContent {
+                SignalScreen(station, standalone = true)
             } })
         }
         compose.onNodeWithText("Home").performClick()

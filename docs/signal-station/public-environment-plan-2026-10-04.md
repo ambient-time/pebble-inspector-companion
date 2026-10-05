@@ -37,26 +37,32 @@ release owns its checkout and device tests. No public release is authorized here
 
 ## Acceptance checklist
 
-- [ ] Existing persisted Home documents and HTTP/MQTT bindings remain compatible.
-- [ ] Public connectors never read/send credentials or expose executable actions.
-- [ ] Only selected categories are requested; no automatic source migration,
+- [x] Existing persisted Home documents and HTTP/MQTT bindings pass compatibility tests.
+- [x] Public connectors never read/send credentials or expose executable actions.
+- [x] Only selected categories are requested; no automatic source migration,
       polling service, model sharing, or device-location lookup is added.
-- [ ] All listed weather fields, forecasts, daylight, AQI, UV and pollen work.
-- [ ] NWS coverage/empty/expired/partial/failure cases are distinct and tested.
-- [ ] NOAA station identity, prediction time, metric units and MLLW datum are shown.
-- [ ] USGS results retain event times, magnitude type, depth, distance, radius,
+- [x] Listed weather fields, forecasts, daylight, AQI, UV and pollen pass parser fixtures.
+- [x] NWS coverage/empty/expired/partial/failure cases are distinct and tested.
+- [x] NOAA station identity, prediction time, metric units and MLLW datum are shown.
+- [x] USGS results retain event times, magnitude type, depth, distance, radius,
       lookback and source; truncated or failed results never imply an all-clear.
-- [ ] Timeouts, response limits, redirects, cancellation and partial failures
+- [x] Timeouts, response limits, redirects, cancellation and partial failures
       are bounded and tested without model API calls.
-- [ ] Phone setup, correction, preview/save, favorites, unit choice, refresh,
-      stale/offline states and removal have observable success evidence.
-- [ ] Watch favorites deliver readable source/age/unit summaries; full hazard
-      instructions remain accessible on the phone without silent truncation.
-- [ ] Captures preserve original typed evidence; no modeled time is relabeled
+- [x] Phone setup, correction, preview/save, favorites and unit choice pass rendered
+      checks; stale/offline and removal pass synthetic station/model checks.
+- [x] Watch source/age/unit summaries pass native request and byte-bound tests;
+      full hazard instructions remain on the phone. Physical acceptance is separate.
+- [x] Captures preserve original typed evidence; no modeled time is relabeled
       as a sensor measurement and no old value becomes fresh on retrieval.
-- [ ] Gadget integration is implemented and verified after ownership coordination,
-      or explicitly remains open; a plan alone is not completion.
-- [ ] Tests/builds/rendered checks/install evidence are recorded separately.
+- [x] Gadget/Dick Tracy integration is implemented, tested and privately installed
+      after ownership coordination; its source is on the canonical main branch.
+- [x] Tests/builds/rendered checks/install evidence are recorded separately.
+
+The [validation record](public-environment-validation-2026-10-04.md) identifies
+measured coverage and installed hashes. Physical wearable acceptance, real
+selected-place/model answers and TalkBack remain unverified; no public release
+or iOS runtime parity is claimed. This closes implementation/private delivery,
+not those separate acceptance stages.
 
 ## Assumptions and risks
 
