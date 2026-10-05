@@ -65,6 +65,54 @@ class SignalOutdoorHomeTest {
         assertFailsWith<IllegalArgumentException> { engine.prepare(connection, forged, "switch") }
     }
 
+    @Test fun catalogReportsFailedSourcesWithoutDiscardingSuccessfulReadings(): Unit = runBlocking {
+        val http = HttpClient(MockEngine { request ->
+            if (request.url.host == "air-quality-api.open-meteo.com")
+                respond("""{"current":{"time":${now / 1000},"uv_index":2},"current_units":{"uv_index":""}}""")
+            else respond("{}", HttpStatusCode.ServiceUnavailable)
+        })
+        val connector = SignalOutdoorConnector(http, connection) { now }
+        try {
+            val rows = connector.catalog()
+            assertTrue(rows.any { it.id == "weather.uv.uv_index" && it.available })
+            assertTrue(rows.filter { it.id.startsWith("weather.current.") }.all { !it.available })
+            val warning = connector.warnings.single()
+            assertTrue(warning.contains("Unavailable"), warning)
+            assertTrue(warning.contains(SignalOutdoorSources.sources.first { it.key == "weather.current" }.name), warning)
+        } finally { connector.close(); http.close() }
+    }
+
+    @Test fun catalogClearsWarningsAfterProviderRecovery(): Unit = runBlocking {
+        var fail = true
+        val http = HttpClient(MockEngine {
+            if (fail) respond("{}", HttpStatusCode.ServiceUnavailable)
+            else respond("""{"current":{"time":${now / 1000},"uv_index":0},"current_units":{"uv_index":""}}""")
+        })
+        val connector = SignalOutdoorConnector(http, connection.copy(outdoor = config.copy(sources = setOf("weather.uv")))) { now }
+        try {
+            assertFalse(connector.catalog().single().available)
+            assertEquals(1, connector.warnings.size)
+            fail = false
+            assertTrue(connector.catalog().single().available)
+            assertTrue(connector.warnings.isEmpty())
+        } finally { connector.close(); http.close() }
+    }
+
+    @Test fun catalogWarnsForUnsupportedCoverageButNotEmptyEventReports(): Unit = runBlocking {
+        val http = HttpClient(MockEngine {
+            respond("""{"type":"FeatureCollection","metadata":{"generated":$now},"features":[]}""")
+        })
+        val connector = SignalOutdoorConnector(http, connection.copy(outdoor = config.copy(sources = setOf("environment.earthquakes", "environment.tides")))) { now }
+        try {
+            val rows = connector.catalog()
+            assertEquals(OutdoorStatus.EMPTY, rows.first { it.id == "environment.earthquakes" }.outdoor!!.status)
+            assertEquals(OutdoorStatus.UNSUPPORTED, rows.first { it.id == "environment.tides" }.outdoor!!.status)
+            val warning = connector.warnings.single()
+            assertTrue(warning.contains("Not supported here"), warning)
+            assertTrue(warning.contains("Tide"), warning)
+        } finally { connector.close(); http.close() }
+    }
+
     @Test fun homeConversionPreservesOriginalTypedProvenanceAndUnits() {
         val entity = reading.homeEntity(connection)
         assertNull(entity.values.single().measuredAt); assertNull(entity.updatedAt)
