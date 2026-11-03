@@ -1,0 +1,6 @@
+# Simulator review build: phone replies are pasted into Simulation > Phone App Message.
+# Never sideload or package this build.
+project.manifest = manifest.xml
+base.sourcePath = source
+base.resourcePath = resources
+base.excludeAnnotations = phonereplies

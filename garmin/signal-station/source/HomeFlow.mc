@@ -48,7 +48,7 @@ class HomeFlow {
         }
         if (!replyValue(data, "mode").equals("list")) {
             _favorite = "";
-            show(:handoff, "HOME FAVORITES", replyText(data, "Continue on the phone."), "Select: phone | Back");
+            show(:handoff, "HOME FAVORITES", replyText(data, "Continue on the phone."), "Select: open phone");
             return;
         }
         var items = data.get("items");
@@ -57,7 +57,7 @@ class HomeFlow {
         _pages = pages instanceof Number && pages > 0 ? pages : 1;
         if (_items.size() == 0) {
             _favorite = "";
-            show(:empty, "HOME FAVORITES", "Choose Home favorites on your phone.", "Select: phone | Back");
+            show(:empty, "HOME FAVORITES", "Choose Home favorites on your phone.", "Select: open phone");
             return;
         }
         saveGlance();
@@ -86,9 +86,9 @@ class HomeFlow {
         var mode = replyValue(data, "mode");
         if (mode.equals("detail")) {
             _action = replyValue(data, "action_id");
-            show(:detail, _label, replyText(data, "No reading."), _action.length() > 0 ? "Select: review | Back" : "Back: favorites");
+            show(:detail, _label, replyText(data, "No reading."), _action.length() > 0 ? "Select: review" : "Back: favorites");
         } else if (mode.equals("handoff")) {
-            show(:handoff, _label, replyText(data, "Continue on the phone."), "Select: phone | Back");
+            show(:handoff, _label, replyText(data, "Continue on the phone."), "Select: open phone");
         } else {
             show(:result, _label, replyText(data, "Unavailable."), "Back: favorites");
         }
@@ -110,9 +110,9 @@ class HomeFlow {
         _intent = replyValue(data, "intent_id");
         if (mode.equals("review") && _intent.length() > 0 && replyValue(data, "action_id").equals(_action)) {
             _reviewUntil = System.getTimer() + REVIEW_MS;
-            show(:review, "REVIEW ACTION", replyText(data, ""), "Select: confirm | Back: cancel");
+            show(:review, "REVIEW ACTION", replyText(data, ""), "Select: confirm");
         } else if (mode.equals("handoff")) {
-            show(:handoff, "REVIEW ACTION", replyText(data, "Review the complete action on the phone."), "Select: phone | Back");
+            show(:handoff, "REVIEW ACTION", replyText(data, "Review the complete action on the phone."), "Select: open phone");
         } else {
             cancelIntent();
             show(:result, "REVIEW ACTION", replyText(data, "Home message could not be reviewed safely. Continue on the phone."), "Back: favorites");

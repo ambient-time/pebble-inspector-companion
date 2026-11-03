@@ -115,6 +115,7 @@ class SignalLink {
 
     function onPhone(message as Communications.PhoneAppMessage) as Void {
         var data = message.data;
+        trace({"in" => data});
         if (!(data instanceof Dictionary) || data.get("s") != session) {
             return;
         }
@@ -142,6 +143,9 @@ class SignalLink {
     }
 
     function transmitFailed(id as Number) as Void {
+        if (simulatedReplies()) {
+            return;
+        }
         var callback = _pending.get(id);
         if (callback != null) {
             _pending.remove(id);
@@ -171,14 +175,37 @@ class SignalLink {
 
     private function dispatch(id as Number, route as String, body as Dictionary, callback as Method) as Void {
         _pending[id] = callback;
-        _deadlines[id] = System.getTimer() + TIMEOUT_MS;
+        _deadlines[id] = System.getTimer() + (simulatedReplies() ? 10 * TIMEOUT_MS : TIMEOUT_MS);
         send({"t" => "req", "id" => id, "route" => route, "body" => body}, id);
     }
 
     private function send(message as Dictionary, id as Number) as Void {
         message["v"] = 1;
         message["s"] = session;
+        trace(message);
         Communications.transmit(message, null, new SignalTransmit(self, id));
+    }
+
+    // Debug builds print outgoing messages to the simulator console.
+    (:debug)
+    private function trace(message as Dictionary) as Void {
+        System.println(message);
+    }
+
+    (:release)
+    private function trace(message as Dictionary) as Void {
+    }
+
+    // simulator-replies.jungle only: replies are typed into the simulator's
+    // Phone App Message tool, so a missing phone is not reported.
+    (:simreplies)
+    private function simulatedReplies() as Boolean {
+        return true;
+    }
+
+    (:phonereplies)
+    private function simulatedReplies() as Boolean {
+        return false;
     }
 
     private function nextId() as Number {

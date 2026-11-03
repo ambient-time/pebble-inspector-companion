@@ -6,7 +6,7 @@ class MainMenu extends WatchUi.Menu2 {
         Menu2.initialize({:title => "Signal Station"});
         addItem(new WatchUi.MenuItem("Home favorites", "Read and review", :home, null));
         addItem(new WatchUi.MenuItem("Recent replies", "Saved on your phone", :history, null));
-        addItem(new WatchUi.MenuItem("Open Home on phone", null, :phone, null));
+        addItem(new WatchUi.MenuItem("Home on phone", "Open the Home view", :phone, null));
         addItem(new WatchUi.MenuItem("Check connection", null, :check, null));
     }
 }
@@ -60,7 +60,7 @@ class NoticeFlow {
         } else {
             text = replyText(data, "Nothing saved yet.");
         }
-        _screen.set(_title, text, "Up/Down: read | Back");
+        _screen.set(_title, text, "Up/Down: read");
     }
 
     function close() as Void {

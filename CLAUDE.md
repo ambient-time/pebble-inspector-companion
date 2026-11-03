@@ -35,7 +35,7 @@ The inherited Android/iOS CoreApp targets below are separate products.
 Signal declares iOS compilation targets but has no iOS station registration,
 collector/coordinator/storage adapters or validated product shell yet.
 The cross-platform rule below is a development requirement, not evidence of
-existing Signal parity. Garmin faces likewise have no Signal transport yet.
+existing Signal parity. A Garmin watch app with a Garmin Connect link (Home favorites only) is on branch `garmin-signal`; see [its record](docs/signal-station/garmin-watch-app-2026-11-02.md). It is untested on a real watch.
 Read the [capability matrix](docs/signal-station/platform-capabilities.md)
 before promising sensor, microphone/speaker, permission or background parity.
 
