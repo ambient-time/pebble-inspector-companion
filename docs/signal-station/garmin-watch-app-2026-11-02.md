@@ -31,3 +31,15 @@ Screens are in `garmin-evidence/`. The review screenshot predates a shorter hint
 - **Real watch.** Needs the Venu 2S on a phone with Garmin Connect, the PRG sideloaded, and a Signal Station build with the Garmin link on that phone. Installing a debug build over the private build 24 on either Pixel would need Luke's go-ahead.
 - **Background delivery.** The Garmin SDK delivers messages to the running app. Whether Garmin Connect wakes Signal Station when it is not running is untested.
 - Small and monochrome screens (Instinct) compile but were not looked at.
+
+## Private build 25 on Pixel 10
+
+Luke approved a real-watch test. Android **0.9.3-garmin-dev (25)** was built from `2391366b` with `-PsignalGarminTethered=false` and installed in place on the Pixel 10 over build 24.
+
+- APK SHA-256 `8fbfadd516c88f1505e3be37a9506d76cc51ae555a570ecd3d8d7d2a1a16c1f6`; the installed file matches. Signer `e1faa235…` is the same as builds 23 and 24. Copy kept outside Git on Galactus.
+- Permissions are unchanged from build 24. Garmin's SDK adds a query for Garmin Connect, its exported binding service and its install-prompt activity.
+- Data kept: first install time (October 2, 08:51:33) and both data-folder inode numbers (71663, 71666) are unchanged. No uninstall or data clear.
+- The app launched and stayed running, with no crash entries.
+- Build 25 also carries the offline Listen/Stop for saved replies that was already on `codex/signal-consent`.
+
+Neither Pixel has Garmin Connect installed, and the Venu 2S was not connected to either Mac, so the watch side has not started. Pixel 9a has no Signal Station app installed.
