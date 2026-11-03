@@ -277,6 +277,70 @@ class SignalHomeIntegrationTest {
         }
     }
 
+    /** The Garmin app's own message sequence, through GarminAppLink into the real station. */
+    @Test fun garminWatchMessagesUseTheSameHomeReviewAndConfirmation() = runBlocking {
+        val sent = CopyOnWriteArrayList<Map<String, Any>>()
+        val garmin = object : GarminConnection {
+            override val devices = MutableStateFlow(listOf(GarminDevice(7, "Venu 2S", true)))
+            override val status = MutableStateFlow("Garmin Connect ready.")
+            override fun start(onMessage: (Long, Any?) -> Unit) {}
+            override suspend fun send(deviceId: Long, message: Map<String, Any>): Boolean { sent += message; return true }
+            override suspend fun open(deviceId: Long) = GarminOpenResult.ALREADY_RUNNING
+        }
+        val link = GarminAppLink(garmin)
+        fixture(link) { f ->
+            link.request = f.station::handleWatchRequest
+            f.main { updateSettings(state.value.settings.copy(watchId = "garmin:7")) }
+            until { f.station.state.value.settings.watchId == "garmin:7" && f.station.state.value.watches.any { it.id == "garmin:7" } }
+            val c = f.connect()
+            f.main { saveHomeTile(HomeTile("favorite", c.id, "switch.lamp", "Lamp", "switch.turn_on", watchFavorite = true)) }
+            until { f.station.state.value.home.tiles.size == 1 }
+            var message = 0
+            suspend fun deliver(value: Map<String, Any>) = withContext(Dispatchers.Main) { link.handle(7, value) }
+            suspend fun watch(route: String, body: Map<String, Any>, run: Int = 41, status: Int = 200): Map<*, *> {
+                val id = ++message
+                val before = sent.size
+                deliver(mapOf("v" to 1, "s" to run, "t" to "req", "id" to id, "route" to route, "body" to (mapOf<String, Any>("request_id" to id) + body)))
+                val reply = sent.drop(before).single()
+                assertEquals(listOf(run, "res", id, status), listOf(reply["s"], reply["t"], reply["id"], reply["status"]), reply.toString())
+                return reply["data"] as Map<*, *>
+            }
+            fun home(kind: String, vararg fields: Pair<String, Any>) = mapOf("kind" to kind, "favorite_id" to "favorite", "action_id" to "switch.turn_on") + fields
+
+            deliver(mapOf("v" to 1, "s" to 41, "t" to "hello"))
+            assertEquals(1, watch("capabilities", emptyMap())["home_version"])
+            val list = watch("home", mapOf("kind" to "home-list", "page" to 0))
+            assertEquals("list", list["mode"])
+            assertEquals(mapOf("id" to "favorite", "label" to "Lamp"), (list["items"] as List<*>).single())
+            val detail = watch("home", home("home-open"))
+            assertEquals("detail", detail["mode"]); assertEquals("switch.turn_on", detail["action_id"])
+            assertTrue((detail["text"] as String).contains("Lamp"))
+
+            val review = watch("home", home("home-review"))
+            assertEquals("review", review["mode"])
+            val intent = review["intent_id"] as String
+            assertEquals(HomeActionStatus.AWAITING_CONFIRMATION, f.entry(intent).status)
+            assertTrue(f.posts.isEmpty(), "a review never sends")
+            watch("home", home("home-confirm", "intent_id" to intent))
+            until { f.posts.size == 1 }
+            watch("home", home("home-confirm", "intent_id" to intent))
+            assertEquals(1, f.posts.size, "a repeated confirmation is not dispatched again")
+
+            val lost = watch("home", home("home-review"))["intent_id"] as String
+            watch("home", home("home-cancel", "request_id" to message))
+            assertEquals(HomeActionStatus.CANCELLED, f.entry(lost).status)
+
+            val pending = watch("home", home("home-review"))["intent_id"] as String
+            watch("home", home("home-confirm", "intent_id" to pending), run = 40, status = 403)
+            deliver(mapOf("v" to 1, "s" to 42, "t" to "hello"))
+            watch("capabilities", emptyMap(), run = 42)
+            val replaced = watch("home", home("home-confirm", "intent_id" to pending), run = 42)
+            assertEquals("result", replaced["mode"])
+            assertEquals(HomeActionStatus.AWAITING_CONFIRMATION, f.entry(pending).status, "a new app run cannot confirm an earlier run's review")
+            assertEquals(1, f.posts.size)
+        }
+    }
+
     private inner class Fixture(val watchLink:SignalWatchLink=noWatch) {
         val name = "home-integration-${UUID.randomUUID()}"
         val store = SignalStore(context, name)

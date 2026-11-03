@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<iq:manifest version="3" xmlns:iq="http://www.garmin.com/xml/connectiq">
+    <iq:application id="884dd269-c882-420a-81fc-a54ee9889300"
+        type="watch-app" name="@Strings.AppName" entry="SignalApp"
+        launcherIcon="@Drawables.LauncherIcon" minSdkVersion="3.2.0">
+        <iq:products>
+            <iq:product id="venu2s"/>
+        </iq:products>
+        <iq:permissions>
+            <iq:uses-permission id="Communications"/>
+        </iq:permissions>
+        <iq:languages>
+            <iq:language>eng</iq:language>
+        </iq:languages>
+        <iq:barrels/>
+    </iq:application>
+</iq:manifest>

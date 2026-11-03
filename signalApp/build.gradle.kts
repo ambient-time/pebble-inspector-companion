@@ -32,9 +32,11 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         versionCode = signalRelease.getProperty("versionCode").toInt()
         versionName = signalRelease.getProperty("versionName")
+        // -PsignalGarminTethered=true talks to the Connect IQ simulator over adb instead of Garmin Connect.
+        buildConfigField("boolean", "GARMIN_TETHERED", (providers.gradleProperty("signalGarminTethered").orNull == "true").toString())
     }
     sourceSets.getByName("main").assets.srcDir(identityDirectory.get().asFile)
-    buildFeatures { compose = true }
+    buildFeatures { compose = true; buildConfig = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -48,6 +50,7 @@ dependencies {
     implementation(libs.compose.material3)
     implementation(libs.serialization)
     implementation("io.rebble.pebblekit2:client:1.1.0")
+    implementation("com.garmin.connectiq:ciq-companion-app-sdk:2.4.0@aar")
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.kotlin.test)
@@ -57,6 +60,7 @@ dependencies {
     androidTestImplementation("androidx.compose.ui:ui-test-junit4:1.11.3")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
     testImplementation(libs.kotlin.test)
+    testImplementation(libs.kotlin.test.junit)
     testImplementation(libs.coroutines.test)
 }
 tasks.matching { it.name.contains("Assets") || it.name.contains("Lint") || it.name.startsWith("lint") }.configureEach { dependsOn(":androidApp:prepareSignalWakeModel") }
