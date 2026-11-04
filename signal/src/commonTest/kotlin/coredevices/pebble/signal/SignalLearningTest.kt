@@ -67,4 +67,62 @@ class SignalLearningTest {
         assertFalse(SignalLearning.fresh(imported.copy(windowEnd = now + 1)))
         assertFalse(SignalLearning.fresh(imported.copy(windowStart = now)))
     }
+
+    @Test fun scalarBaselinesRejectAngularReadingsAndInvalidMeasurementQuality() {
+        val angles = baselineRecords().mapIndexed { i, record -> record.copy(observations = record.observations.map {
+            it.copy(number = if (i % 2 == 0) 359.0 else 1.0, identity = "android.sensor.orientation")
+        }) }
+        assertTrue(SignalLearning.proposals(angles, settings, now).isEmpty())
+        for (invalid in listOf<(SignalObservation) -> SignalObservation>(
+            { it.copy(number = Double.POSITIVE_INFINITY) }, { it.copy(accuracy = 0) }, { it.copy(sampleCount = 0) },
+            { it.copy(identity = "android.sensor.rotation_vector") }, { it.copy(period = "since_reboot") },
+        )) assertTrue(SignalLearning.proposals(baselineRecords().map { it.copy(observations = it.observations.map(invalid)) }, settings, now).isEmpty())
+    }
+
+    @Test fun durationBootDeviceAndRecordingMethodSeparateBaselinePopulations() {
+        fun intervals(change: (Int, SignalObservation) -> SignalObservation) = baselineRecords().mapIndexed { index, record ->
+            record.copy(observations = record.observations.map { observation -> change(index,
+                observation.copy(period = "endpoint_interval", windowStart = observation.measuredAt!! - 60_000,
+                    windowEnd = observation.measuredAt, fields = mapOf("bootScope" to "boot-a"))) })
+        }
+        assertEquals(1, SignalLearning.proposals(intervals { _, row -> row }, settings, now).size)
+        for (dimension in listOf("duration", "bootScope", "deviceId", "recordingMethod")) {
+            val rows = intervals { i, row -> if (i % 2 == 0) row else when (dimension) {
+                "duration" -> row.copy(windowStart = row.measuredAt!! - 3_600_000)
+                else -> row.copy(fields = row.fields + (dimension to "other"))
+            } }
+            assertTrue(SignalLearning.proposals(rows, settings, now).isEmpty(), dimension)
+        }
+        assertTrue(SignalLearning.proposals(intervals { _, row -> row.copy(fields = emptyMap()) }, settings, now).isEmpty())
+    }
+
+    @Test fun duplicatesConflictsAndOverlapsDoNotInflateBaselineEvidence() {
+        val originals = baselineRecords()
+        val duplicate = originals.first().copy(id = "copy")
+        val proposal = SignalLearning.proposals(originals + duplicate, settings, now).single()
+        assertEquals(10, proposal.evidence.size)
+        assertContains(proposal.coverage, "1 copies deduplicated")
+        val conflicting = duplicate.copy(observations = duplicate.observations.map { it.copy(number = 20.0) })
+        assertTrue(SignalLearning.proposals(originals + conflicting, settings, now).isEmpty())
+        val overlapping = originals.map { record -> record.copy(observations = record.observations.map {
+            it.copy(period = "interval", windowStart = it.measuredAt!! - 8 * 3_600_000, windowEnd = it.measuredAt)
+        }) }
+        assertTrue(SignalLearning.proposals(overlapping, settings, now).isEmpty())
+    }
+
+    @Test fun legacyConfirmedBaselinesRemainIneligibleUntilRecomputedAndReviewed() {
+        val current = SignalLearning.proposals(baselineRecords(), settings, now).single()
+        assertEquals(SignalLearning.BASELINE_VERSION, current.derivationVersion)
+        assertTrue(current.fingerprintAliases.isNotEmpty())
+        val legacy = current.copy(state = "confirmed", derivationVersion = 0)
+        assertFalse(SignalLearning.eligible(legacy, settings))
+        assertFalse(SignalLearning.canConfirm(legacy))
+        assertFalse(SignalLearning.canConfirm(legacy.copy(proposedDerivationVersion = SignalLearning.BASELINE_VERSION)))
+        val recomputed = legacy.copy(needsReview = true, proposedDerivationVersion = SignalLearning.BASELINE_VERSION,
+            proposedText = current.text, proposedEvidence = current.evidence)
+        assertTrue(SignalLearning.canConfirm(recomputed))
+        assertFalse(SignalLearning.eligible(recomputed, settings))
+        assertTrue(SignalLearning.eligible(current.copy(state = "confirmed"), settings))
+        assertTrue(SignalLearning.eligible(legacy.copy(kind = "note", state = "note"), settings))
+    }
 }

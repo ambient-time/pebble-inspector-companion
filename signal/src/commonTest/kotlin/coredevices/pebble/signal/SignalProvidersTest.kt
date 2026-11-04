@@ -161,6 +161,21 @@ class SignalProvidersTest {
         assertFalse(error.message.orEmpty().contains("private"))
     }
 
+    @Test fun errorTerminatedAndUnsupportedToolResponsesCannotBecomeOrdinaryAnswers() {
+        val fixtures = buildList {
+            for (provider in listOf("openrouter", "custom")) for (finish in listOf("error", "ERROR", "error_limit", "ERROR_LIMIT"))
+                add(provider to """{"choices":[{"finish_reason":"$finish","message":{"content":"private unfinished answer"}}]}""")
+            for (provider in listOf("openai", "xai")) for (type in listOf("computer_call", "mcp_approval_request", "shell_call"))
+                add(provider to """{"status":"completed","output":[{"type":"$type","command":"private fixture"},{"type":"message","content":[{"type":"output_text","text":"private unfinished answer"}]}]}""")
+        }
+        fixtures.forEach { (provider, body) ->
+            val error = assertFailsWith<SignalProviderException>(provider) {
+                SignalProviders.parseAnswer(provider, Json.parseToJsonElement(body).jsonObject)
+            }
+            assertFalse(error.message.orEmpty().contains("private"))
+        }
+    }
+
     @Test fun httpDiagnosticsIncludeOnlyStatusAndAllowlistedCodesWithoutRetry() = runBlocking {
         for ((status, code) in listOf(400 to "context_length_exceeded", 429 to "insufficient_quota", 404 to "model_not_found", 422 to "private-key-and-prompt")) {
             var calls = 0

@@ -15,6 +15,66 @@ import kotlin.test.*
 /** Uses the real station/store on an emulator with synthetic readings only. */
 class SignalMemoryLifecycleIntegrationTest {
     private suspend fun until(test: () -> Boolean) = withTimeout(35_000) { while (!test()) delay(100) }
+    @Test fun legacyBaselinePreservesWordingButRequiresCompatibleRecomputationAndReview() = runBlocking {
+        assumeTrue(Build.MODEL.contains("sdk") || Build.FINGERPRINT.contains("generic") || Build.HARDWARE.contains("ranchu"))
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val prefix = "baseline-upgrade-${UUID.randomUUID()}"
+        val store = SignalStore(context, prefix)
+        val noWatch = object : SignalWatchLink {
+            override val watches = MutableStateFlow(emptyList<SignalWatch>())
+            override val capabilities = SignalWatchCapabilities()
+            override fun initialize(scope: CoroutineScope) {}
+            override suspend fun isTrusted(session: SignalWatchSession) = false
+            override suspend fun launch(watchId: String) { error("No watch operation") }
+            override suspend fun install(watchId: String) { error("No watch installation") }
+        }
+        val station = AndroidSignalStation(context, noWatch, storeNamespace = prefix)
+        val now = System.currentTimeMillis()
+        val settings = SignalSettings(onboardingComplete = true, enabled = setOf("device.battery", "watch.compass"), learningEnabled = true)
+        val rows = (0..9).map { n ->
+            val at = now - n / 2 * 86_400_000L - n % 2 * 7_200_000L
+            SignalRecord("$prefix-$n", prefix, at, "Synthetic reading", provider = "local", model = "", state = "ready", kind = "capture",
+                sourceKeys = settings.enabled, observations = listOf(
+                    SignalObservation("device.battery", "phone", "80", "%", at, at, "fresh"),
+                    SignalObservation("watch.compass", "watch", "359", "degrees", at, at, "fresh")))
+        }
+        try {
+            rows.forEach { store.save(it) }
+            val current = SignalLearning.proposals(rows, settings, now).single()
+            val legacy = current.copy(id = "legacy", fingerprint = current.fingerprintAliases.single(), fingerprintAliases = emptySet(),
+                state = "confirmed", text = "My accepted wording.", acceptedPatternText = current.text, derivationVersion = 0)
+            val angular = legacy.copy(id = "angular", fingerprint = "legacy-angular", text = "Old angular summary.", sourceKeys = setOf("watch.compass"))
+            store.saveMemory(legacy); store.saveMemory(angular)
+            store.settings(settings.copy(learningEnabled = false))
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                scenario.onActivity { station.initialize() }
+                until { station.state.value.historyReady && !station.state.value.busy }
+                scenario.onActivity { station.enableLearning(true) }
+                until { station.state.value.memories.any { it.id == legacy.id && it.proposedDerivationVersion == SignalLearning.BASELINE_VERSION } }
+                val pending = station.state.value.memories.single { it.id == legacy.id }
+                assertEquals(legacy.text, pending.text)
+                assertTrue(pending.needsReview)
+                assertEquals(0, pending.derivationVersion)
+                assertFalse(SignalLearning.eligible(pending, settings))
+                val unavailable = station.state.value.memories.single { it.id == angular.id }
+                assertEquals(angular.text, unavailable.text)
+                assertFalse(SignalLearning.canConfirm(unavailable))
+                scenario.onActivity { station.reviewMemory(angular.id, "confirm") }
+                delay(300)
+                assertEquals(0, store.memory().single { it.id == angular.id }.derivationVersion)
+                scenario.onActivity { station.reviewMemory(legacy.id, "correct", legacy.text) }
+                until { station.state.value.memories.any { it.id == legacy.id && it.derivationVersion == SignalLearning.BASELINE_VERSION } }
+                val accepted = station.state.value.memories.single { it.id == legacy.id }
+                assertEquals(legacy.text, accepted.text)
+                assertTrue(SignalLearning.eligible(accepted, settings))
+                assertEquals(0, accepted.proposedDerivationVersion)
+            }
+        } finally {
+            withContext(Dispatchers.Main) { station.close() }
+            store.close(); context.deleteDatabase("$prefix-history.db"); context.deleteSharedPreferences("${prefix}_private")
+            KeyStore.getInstance("AndroidKeyStore").apply { load(null); deleteEntry("$prefix-station-v1") }
+        }
+    }
     @Test fun correctionStaysAcceptedAndDeletionCanKeepOnlyExplicitPersonalNote() = runBlocking {
         assumeTrue(Build.MODEL.contains("sdk") || Build.FINGERPRINT.contains("generic") || Build.HARDWARE.contains("ranchu"))
         val context = InstrumentationRegistry.getInstrumentation().targetContext

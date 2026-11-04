@@ -192,6 +192,41 @@ class SignalLearningUiTest {
         }
     }
 
+    @Test fun watchQuestionHandoffAtLargeTextKeepsPhoneDraftAndExposesExactScope() {
+        val station = LearningUiStation(baseState().copy(settings = readySettings(), configuredProviders = setOf("openai")))
+        show(station, 2f)
+        compose.onNode(hasText("Ask") and hasClickAction()).performClick()
+        compose.onNodeWithText("Your question").performTextInput("Preserve this phone draft")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        val systems = listOf("Downstairs lamps", "Garden controller", "Garage sensors", "Workshop switches")
+        compose.runOnIdle { station.state.value = station.state.value.copy(watchQuestionReview = SignalQuestionReview(
+            "Explain the selected wrist capture", listOf("user" to "EXACT_SELECTED_CAPTURE_ONLY"), 1, 0, 0,
+            captureCount = 1, observationCount = 4, homeConnections = systems, reviewId = "watch-review",
+            expiresAt = System.currentTimeMillis() + 120_000, provider = "custom", model = "fixture-model",
+            endpoint = "https://fixture.invalid/v1/chat/completions", contextDescription = "capture-id · 2026-10-03T10:00:00Z · capture")) }
+        fun reveal(label: String) {
+            compose.onNode(hasScrollAction()).performScrollToNode(hasText(label))
+            compose.onNodeWithText(label).performScrollTo().assertIsDisplayed()
+        }
+        reveal("Your existing phone question and its evidence are unchanged.")
+        reveal("Endpoint: https://fixture.invalid/v1/chat/completions")
+        reveal("Home: ${systems.joinToString()}.")
+        reveal("Read only. All Home actions are blocked for this question.")
+        reveal("Inspect exact messages")
+        compose.onNodeWithText("Inspect exact messages").performScrollTo().performClick()
+        compose.onNode(hasScrollAction()).performScrollToNode(hasText("user\nEXACT_SELECTED_CAPTURE_ONLY"))
+        compose.onNodeWithText("user\nEXACT_SELECTED_CAPTURE_ONLY").performScrollTo()
+        captureFixtureScreenshot("watch-question-exact-before-assert-font-200.png")
+        Log.i("SignalQuestionReview", compose.onRoot().printToString())
+        compose.onNodeWithText("user\nEXACT_SELECTED_CAPTURE_ONLY").assertIsDisplayed()
+        captureFixtureScreenshot("watch-question-handoff-font-200.png")
+        compose.runOnIdle { assertEquals(0, station.providerRequests) }
+        reveal("Send watch question once")
+        compose.onNodeWithText("Send watch question once").performScrollTo().performClick()
+        compose.onNodeWithText("Preserve this phone draft").assertExists()
+        compose.runOnIdle { assertEquals(1, station.providerRequests) }
+    }
+
     @Test fun latestObservationPreparesAttachedQuestionAndOnlySendContactsProvider() = captureReview(1f)
     @Test fun latestObservationReviewAtLargeText() = captureReview(2f)
 
@@ -210,7 +245,7 @@ class SignalLearningUiTest {
         compose.onNodeWithText("Review before sending").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("1 capture · 1 reading · 0 earlier turns").performScrollTo().assertIsDisplayed()
         compose.runOnIdle { assertEquals(0, station.providerRequests) }
-        compose.onNodeWithText("Send question").performScrollTo().performClick()
+        compose.onNodeWithText("Send question once").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(1, station.providerRequests) }
         captureFixtureScreenshot("capture-review-${fontScale.toInt()}.png")
         compose.onNode(hasText("History") and hasClickAction()).performClick()
@@ -366,7 +401,7 @@ class SignalLearningUiTest {
         compose.onNodeWithText("Review before sending").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Show exact message text").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(0, station.providerRequests); assertEquals(0, station.captures); assertEquals(0, station.permissionRequests) }
-        compose.onNodeWithText("Send question").performScrollTo().performClick()
+        compose.onNodeWithText("Send question once").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(1, station.providerRequests) }
     }
 
@@ -529,6 +564,7 @@ class SignalLearningUiTest {
         id = id, fingerprint = id, kind = "baseline", text = text, state = "confirmed",
         createdAt = NOW, evaluatedAt = NOW, confirmedAt = NOW, sourceKeys = setOf(BATTERY),
         coverage = "Ten separate measurements across five observed days.",
+        derivationVersion = SignalLearning.BASELINE_VERSION,
     )
 
     companion object {
@@ -604,9 +640,13 @@ private class LearningUiStation(initial: SignalState) : SignalStation {
             "\nCapture ${record.id}: " + record.observations.joinToString { "${it.key} ${it.value} ${it.unit}" }
         }
         state.value = state.value.copy(questionReview = SignalQuestionReview(text, listOf("user" to message), records.size, 0, 0,
-            captureCount = records.count { it.kind == "capture" }, observationCount = records.sumOf { it.observations.size }))
+            captureCount = records.count { it.kind == "capture" }, observationCount = records.sumOf { it.observations.size },
+            reviewId = "ui-review", expiresAt = System.currentTimeMillis() + 120_000,
+            provider = state.value.settings.provider, model = state.value.settings.model))
     }
     override fun sendReviewedQuestion() { providerRequests++ }
+    override fun sendWatchQuestionReview() { providerRequests++; state.value = state.value.copy(watchQuestionReview = null) }
+    override fun dismissWatchQuestionReview() { state.value = state.value.copy(watchQuestionReview = null) }
     override fun dismissQuestionReview() { state.value = state.value.copy(questionReview = null) }
     override fun openSavedQuestion(id: String) { state.value = state.value.copy(savedQuestionDraft = state.value.savedQuestions.first { it.id == id }, savedQuestionOpenToken = "opened", threadId = "saved-draft") }
     override fun analyzeRecord(id: String) {

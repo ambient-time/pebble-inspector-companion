@@ -124,6 +124,33 @@ class SignalAgentToolsTest {
         }
     }
 
+    @Test fun errorTerminatedChatCompletionNeverDispatchesHomeCalls() = runBlocking {
+        for (provider in listOf("openrouter", "custom")) for (finish in listOf("error", "ERROR", "error_limit", "ERROR_LIMIT")) {
+            val session = Session()
+            val complete = response(provider, listOf(call(provider, "valid")))
+            val choice = complete["choices"]!!.jsonArray.single().jsonObject
+            val failed = JsonObject(complete + ("choices" to JsonArray(listOf(JsonObject(choice + ("finish_reason" to JsonPrimitive(finish)))))))
+            assertFailsWith<SignalProviderException>("$provider $finish") {
+                dialogue(provider, session, listOf(failed, response(provider)))
+            }
+            assertTrue(session.executed.isEmpty(), "$provider $finish must reject before dispatch")
+        }
+    }
+
+    @Test fun unsupportedResponsesToolsRejectWholeBatchBeforeHomeDispatch() = runBlocking {
+        for (provider in listOf("openai", "xai")) for (type in listOf("computer_call", "mcp_approval_request", "shell_call")) {
+            val unsupported = buildJsonObject { put("type", type); put("id", "unsupported"); put("command", "private fixture") }
+            for (batch in listOf(listOf(call(provider, "valid"), unsupported), listOf(unsupported, call(provider, "valid")))) {
+                val session = Session()
+                val error = assertFailsWith<SignalProviderException>("$provider $type") {
+                    dialogue(provider, session, listOf(response(provider, batch), response(provider)))
+                }
+                assertTrue(session.executed.isEmpty(), "$provider $type must reject the entire batch")
+                assertFalse(error.message.orEmpty().contains("private"))
+            }
+        }
+    }
+
     @Test fun sameCallIdentifierReusesResultButChangedArgumentsRejectBeforeAnyNewCall() = runBlocking {
         val session = Session()
         dialogue("openai", session, listOf(response("openai", listOf(call("openai", "same"))),

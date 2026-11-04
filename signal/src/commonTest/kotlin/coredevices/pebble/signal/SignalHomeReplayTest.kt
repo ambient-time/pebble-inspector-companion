@@ -108,4 +108,79 @@ class SignalHomeReplayTest {
         assertEquals("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",signalHomeReplayDigest("abc"))
         assertEquals("248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1",signalHomeReplayDigest("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"))
     }
+
+    @Test fun retirementIsAtomicPreservesLegacyEvidenceAndOldParserFailsClosed() = runTest {
+        val store=Store();val helper=store.helper(1)
+        helper.run("watch",1,"home-review",request()){success}
+        val before=store.values.values.single()
+        helper.retireLegacyJournal()
+        val retired=Json.parseToJsonElement(store.values.values.single()).jsonObject
+        assertEquals(2,retired["version"]?.jsonPrimitive?.int)
+        assertEquals(Json.parseToJsonElement(before),retired["legacy"])
+        assertEquals("unknown",outcome(store.helper().run("watch",2,"home-confirm",request(2,"home-confirm")){error("old parser must reject retirement marker")}))
+        val writes=store.writes;store.helper().retireLegacyJournal();assertEquals(writes,store.writes)
+    }
+
+    @Test fun interruptedOrCorruptRetirementCannotEraseOrResetLegacyJournal() = runTest {
+        val store=Store();store.helper().run("watch",1,"home-review",request()){success}
+        val before=store.values.toMap();store.rejectWrite=store.writes+1
+        assertFailsWith<IllegalStateException> { store.helper().retireLegacyJournal() }
+        assertEquals(before,store.values)
+        store.rejectWrite=null;store.helper().retireLegacyJournal()
+        val key=store.values.keys.single();store.values[key]="{broken"
+        assertFailsWith<IllegalArgumentException> { store.helper().retireLegacyJournal() }
+        assertEquals("{broken",store.values[key])
+    }
+
+    @Test fun completelyFullLegacyJournalRetiresWithoutDiscardingReservations() = runTest {
+        val store=Store()
+        val old=buildJsonObject { put("version",1);putJsonObject("entries") {
+            repeat(4096) { n -> put(n.toString(16).padStart(64,'0'),buildJsonObject { put("hash","f".repeat(64));put("state","reserved") }) }
+        } }
+        store.values["signal-home-watch-replay-v1"]=old.toString()
+        store.helper().retireLegacyJournal()
+        val retired=Json.parseToJsonElement(store.values.values.single()).jsonObject
+        assertEquals(old,retired["legacy"])
+        assertEquals(1,store.writes)
+    }
+
+    @Test fun tenThousandReadsReviewsAndConfirmRepliesNeverFillSessionCache() = runTest {
+        var now=1000L;val cache=SignalHomeRequestCache({now});var calls=0
+        repeat(10_001) { n ->
+            for(kind in listOf("home-list","home-review","home-confirm")) {
+                val value=cache.run("session",n+1,kind,request(n+1,kind)){active->assertTrue(active());calls++;success}
+                assertEquals(success,value)
+            }
+            now+=1
+        }
+        assertEquals(30_003,calls)
+    }
+
+    @Test fun inFlightEntriesStayPinnedAndCancellationCanPassBlockedWork() = runTest {
+        val cache=SignalHomeRequestCache({1000},capacity=1)
+        val entered=CompletableDeferred<Unit>();val release=CompletableDeferred<Unit>()
+        val first=async { cache.run("session",1,"home-review",request()){active->entered.complete(Unit);release.await();assertFalse(active());success} }
+        entered.await()
+        val duplicate=async { cache.run("session",1,"home-review",request()){error("duplicate")} }
+        yield();assertFalse(duplicate.isCompleted)
+        assertFailsWith<IllegalArgumentException> { cache.run("session",2,"home-list",request(2,"home-list")){error("must not evict in flight")} }
+        cache.cancel("session",1);release.complete(Unit)
+        assertEquals(success,first.await());assertEquals(success,duplicate.await())
+        assertEquals(success,cache.run("session",2,"home-list",request(2,"home-list")){success})
+    }
+
+    @Test fun cacheExpiryAndNewSessionMayRepeatReadButCannotAuthorizeMutation() = runTest {
+        var now=1000L;val cache=SignalHomeRequestCache({now});var reads=0
+        cache.run("old",1,"home-review",request()){reads++;success}
+        cache.run("old",1,"home-review",request()){error("cached")}
+        now+=120_000
+        cache.run("old",1,"home-review",request()){reads++;success}
+        cache.run("new",1,"home-review",request()){reads++;success}
+        assertEquals(3,reads)
+        cache.cancel("new",2)
+        assertFailsWith<IllegalArgumentException> { cache.run("new",2,"home-review",request(2)){error("cancelled")} }
+        now+=120_000
+        cache.run("new",2,"home-review",request(2)){reads++;success}
+        assertEquals(4,reads)
+    }
 }

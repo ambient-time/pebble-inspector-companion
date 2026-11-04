@@ -1,0 +1,10 @@
+{
+  "version": "1.8.0",
+  "uuid": "e2fd86ec-dfb8-460c-afc1-ebe4d071657a",
+  "sourceCommit": "428c09fd42531765cf37009a553ae683370c3e59",
+  "targets": ["basalt", "chalk", "diorite", "emery", "flint", "gabbro"],
+  "androidPackage": "com.lukesteuber.signalstation",
+  "embeddedPkjs": false,
+  "distribution": "unlisted-draft",
+  "installationHold": true
+}

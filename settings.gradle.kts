@@ -42,3 +42,4 @@ include(":krisp-stubs")
 
 include(":signal")
 include(":signalApp")
+include(":localmodels")

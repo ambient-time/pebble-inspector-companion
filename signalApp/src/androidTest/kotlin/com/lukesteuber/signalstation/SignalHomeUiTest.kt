@@ -62,10 +62,10 @@ class SignalHomeUiTest {
         gridNode(hasContentDescription("Turn on Living lamp")).performClick()
         compose.onNodeWithText("Confirm Home action").assertIsDisplayed()
         compose.onNode(hasText("System: Test home", substring = true) and hasText("Device: light.living", substring = true) and hasText("Action: turn_on", substring = true)).assertIsDisplayed()
-        compose.onNodeWithContentDescription("Allow this exact action without future confirmation").assertIsOff()
+        compose.onNodeWithContentDescription("Save permission for this exact action").performScrollTo().assertIsOff()
         screenshot("exact-review-double-text")
         verifyBound("review")
-        compose.onNodeWithText("Send once").assertHasClickAction().performClick()
+        compose.onNodeWithText("Send once").performScrollTo().assertHasClickAction().performClick()
         compose.runOnIdle { assertEquals(listOf("intent-1" to false), station.confirmed) }
         verifyBound("after")
     }
@@ -124,9 +124,9 @@ class SignalHomeUiTest {
         compose.onNodeWithText("Confirm Home action").assertIsDisplayed()
         compose.onNode(hasText("System: Test home", substring = true) and hasText("Device: light.living", substring = true)
             and hasText("Action: turn_on", substring = true)).assertIsDisplayed()
-        compose.onNodeWithContentDescription("Allow this exact action without future confirmation").assertIsOff()
+        compose.onNodeWithContentDescription("Save permission for this exact action").performScrollTo().assertIsOff()
         compose.runOnIdle { assertEquals(1, station.requested.size); assertTrue(station.confirmed.isEmpty()) }
-        compose.onNodeWithText("Send once").assertHasClickAction().performClick()
+        compose.onNodeWithText("Send once").performScrollTo().assertHasClickAction().performClick()
         compose.runOnIdle { assertEquals(listOf("intent-1" to false), station.confirmed) }
         compose.onNodeWithText("Confirm Home action").assertDoesNotExist()
     }
@@ -135,11 +135,11 @@ class SignalHomeUiTest {
         val station = HomeUiStation()
         show(station)
         gridNode(hasContentDescription("Turn on Living lamp")).performClick()
-        compose.onNodeWithContentDescription("Allow this exact action without future confirmation").assertIsOff().performClick()
-        compose.onNodeWithText("Allow & send").assertHasClickAction().performClick()
+        compose.onNodeWithContentDescription("Save permission for this exact action").performScrollTo().assertIsOff().performClick()
+        compose.onNodeWithText("Save permission & send once").performScrollTo().assertHasClickAction().performClick()
         compose.runOnIdle { assertEquals(listOf("intent-1" to true), station.confirmed) }
         gridNode(hasContentDescription("Turn on Living lamp")).performClick()
-        compose.onNodeWithContentDescription("Allow this exact action without future confirmation").assertIsOff()
+        compose.onNodeWithContentDescription("Save permission for this exact action").performScrollTo().assertIsOff()
         compose.onNodeWithText("Cancel").performClick()
         compose.runOnIdle { assertEquals(listOf("intent-2"), station.cancelled); assertEquals(1, station.confirmed.size) }
     }
@@ -161,14 +161,62 @@ class SignalHomeUiTest {
 
     @Test fun expiredConfirmationCannotOfferSend() {
         val station = HomeUiStation()
-        station.requestHomeAction("home", "light.living", "turn_on", emptyMap())
-        station.state.value = station.state.value.copy(home = station.state.value.home.let { home ->
-            home.copy(ledger = home.ledger.map { it.copy(confirmationExpiresAt = System.currentTimeMillis() - 1) })
-        })
         show(station)
-        compose.onNodeWithText("Confirm Home action").assertDoesNotExist()
+        compose.runOnIdle {
+            station.requestHomeAction("home", "light.living", "turn_on", emptyMap())
+            station.state.value = station.state.value.copy(home = station.state.value.home.let { home ->
+                home.copy(ledger = home.ledger.map { it.copy(confirmationExpiresAt = System.currentTimeMillis() - 1) })
+            })
+        }
+        compose.onNodeWithText("Confirm Home action").assertIsDisplayed()
         compose.onNodeWithText("Send once").assertDoesNotExist()
         compose.runOnIdle { assertTrue(station.confirmed.isEmpty()) }
+        compose.onNodeWithText("Review again").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(listOf("intent-1"),station.cancelled);assertEquals(2,station.requested.size);assertTrue(station.confirmed.isEmpty()) }
+        compose.onNodeWithText("Send once").performScrollTo().assertIsEnabled()
+    }
+
+    @Test fun longParametersPrecedeConfirmationAtDoubleText() {
+        val station=HomeUiStation()
+        show(station,2f)
+        val parameters=(1..7).associate { "parameter-$it" to "Synthetic value $it ".repeat(10) } + ("parameter-8" to "Final reviewed value")
+        compose.runOnIdle {
+            station.requestHomeAction("home","light.living","turn_on",parameters)
+            station.requestHomeAction("home","light.desk","turn_on",parameters)
+        }
+        compose.onNodeWithText("Confirm Home action").assertIsDisplayed()
+        compose.onNodeWithText("Send once").assertIsNotDisplayed()
+        for ((name,value) in parameters) compose.onNodeWithText("$name: $value").assertExists()
+        compose.onNodeWithText("parameter-8: Final reviewed value").performScrollTo().assertIsDisplayed()
+        screenshot("long-parameters-double-text")
+        compose.runOnIdle { assertTrue(station.confirmed.isEmpty()) }
+        compose.onNodeWithText("Send once").performScrollTo().assertIsDisplayed()
+        screenshot("confirmation-after-parameters-double-text")
+        compose.onNodeWithText("Send once").performClick()
+        compose.runOnIdle { assertEquals(listOf("intent-1" to false),station.confirmed) }
+        // A queued review starts at its own target, never at the prior Send button.
+        compose.onNode(hasText("Device: light.desk",substring=true)).assertIsDisplayed()
+        compose.onNodeWithText("Send once").assertIsNotDisplayed()
+    }
+
+    @Test fun completeHomeAuditExportHasItsOwnExplicitControl() {
+        val station=HomeUiStation()
+        station.state.value=station.state.value.copy(home=station.state.value.home.copy(archivedIntents=123))
+        show(station)
+        gridNode(hasText("Activity & permissions")).performClick()
+        gridNode(hasText("123 older actions",substring=true)).assertIsDisplayed()
+        compose.runOnIdle { assertEquals(0,station.exports) }
+        gridNode(hasText("Export action history")).performClick()
+        compose.runOnIdle { assertEquals(1,station.exports);assertTrue(station.requested.isEmpty());assertTrue(station.confirmed.isEmpty()) }
+    }
+
+    private fun screenshot(name:String) {
+        compose.waitForIdle()
+        val instrumentation=InstrumentationRegistry.getInstrumentation()
+        val output=File(instrumentation.targetContext.getExternalFilesDir(null),"home-consent").apply { mkdirs() }
+        val bitmap=checkNotNull(instrumentation.uiAutomation.takeScreenshot())
+        File(output,"$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG,100,it) }
+        bitmap.recycle()
     }
 }
 
@@ -180,7 +228,7 @@ private class HomeUiStation : SignalStation {
         HomeEntity("home", "light.living", "Living lamp", available = true, state = "off", observedAt = now, capabilities = listOf(cap)),
         HomeEntity("home", "light.desk", "Desk lamp", available = true, state = "off", observedAt = now, capabilities = listOf(cap))
     )
-    override val state = MutableStateFlow(SignalState(initialized = true,
+    override val state = MutableStateFlow(SignalState(initialized = true, homeReady = true,
         settings = SignalSettings(onboardingComplete = true), homeStatus = "Synthetic fixtures; nothing connected.",
         home = HomeState(connections = listOf(HomeConnection("home", "Test home", HomeConnectorKind.HOME_ASSISTANT, "https://example.test")),
             tiles = listOf(HomeTile("living", "home", "light.living", "Living lamp", "turn_on", position = 0),
@@ -192,6 +240,8 @@ private class HomeUiStation : SignalStation {
     val cancelled = mutableListOf<String>()
     val saved = mutableListOf<HomeTile>()
     val captureSelections = mutableListOf<Triple<String, String, Boolean>>()
+    var exports=0
+    override fun exportHomeActivity() { exports++ }
     override fun moveHomeTile(id: String, offset: Int) {
         moves += id to offset
         val tiles = state.value.home.tiles.sortedBy { it.position }.toMutableList()

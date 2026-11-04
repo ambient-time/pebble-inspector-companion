@@ -1,22 +1,41 @@
 # Signal Station and inherited CoreApp
 
-## Signal Station product boundary — September 15, 2026
+## Signal Station product boundary
 
 Signal Station ships as the separate `:signalApp` Android application
 (`com.lukesteuber.signalstation`); `:signal` holds shared UI/models, Home
 connectors, native provider tools and the exact-action permission engine.
 Android supplies collectors, encrypted persistence, lifecycle and coordination.
-Build 17 and the companion Pebble 1.7.1 package are published; see
+The September 15 release was build 17 with companion Pebble 1.7.1; see
 [release evidence](docs/signal-station/home-release-2026-09-15.md) and
 [Home setup](docs/signal-station/home-connections.md). Home is opt-in and no
 standing action permission is granted by setup or upgrade. Sent uncertain
 mutations must never inherit generic networking retry behavior.
 
+The latest private installation checkpoint is Android **0.9.2-public-data-dev (24)**,
+installed in place on Pixel 9a and Pixel 10 with matching APK checksums. See
+[build 24 evidence](docs/signal-station/private-build24-2026-10-05.md).
+The October 3 testing downloads remain Android build 20 / Pebble 1.8.1; build 24
+was not publicly distributed. Physical 2 SE favorite-screen acceptance and the
+current TalkBack journey remain open. Keep dated release records distinct.
+
+The intended product combines conversation, speech, sensing and optional home
+tools. Do not constrain Signal to a sensing-only companion. Installed build 24
+is text-only. Current standalone Android source has explicit offline-voice
+Listen/Stop for saved replies, with an Activity-owned engine and optional shared
+UI injection; see the [phone-speech check](docs/signal-station/phone-speech-2026-10-05.md).
+No Pixel install or public release was made for speech. Watch speech, hosted
+voices, Auto-read and further host/tool reuse remain proposed. Start from the
+[product direction and reuse guide](docs/signal-station/product-direction.md),
+[environment guide](docs/signal-station/environmental-readings.md) and
+[local-model guide](docs/signal-station/local-models.md). Preserve the existing
+review/consent/action engine when considering shared capabilities.
+
 The inherited Android/iOS CoreApp targets below are separate products.
 Signal declares iOS compilation targets but has no iOS station registration,
 collector/coordinator/storage adapters or validated product shell yet.
 The cross-platform rule below is a development requirement, not evidence of
-existing Signal parity. Garmin faces likewise have no Signal transport yet.
+existing Signal parity. A Garmin watch app with a Garmin Connect link (Home favorites only) is on branch `garmin-signal`; see [its record](docs/signal-station/garmin-watch-app-2026-11-02.md). It is untested on a real watch.
 Read the [capability matrix](docs/signal-station/platform-capabilities.md)
 before promising sensor, microphone/speaker, permission or background parity.
 
@@ -166,4 +185,3 @@ When asked to make a release build and install it on a local device, follow the 
     - wait long enough for `PebbleService` / Ring BLE scanning to start, then check for `FATAL EXCEPTION`, `ClassNotFoundException`, `Room cannot verify`, and `Process: coredevices.coreapp`.
 
 Release builds are minified. If a release-only crash appears in Haversine/native BLE code, check R8 keep rules before changing app logic. In particular, the Haversine native library resolves `com.wtlp.haversinesatellitelibrary.logging.HaversineLog` by exact JVM class name, so the app proguard rules must keep that class.
-

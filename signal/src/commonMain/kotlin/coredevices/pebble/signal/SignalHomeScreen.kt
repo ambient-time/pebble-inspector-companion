@@ -10,10 +10,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
+import kotlinx.serialization.json.Json
 import kotlin.time.Clock
 
 fun homeStatusLabel(status: HomeActionStatus): String = when (status) {
@@ -30,39 +32,63 @@ fun homeStatusLabel(status: HomeActionStatus): String = when (status) {
 
 @Composable
 internal fun SignalHomePage(state: SignalState, station: SignalStation) {
+    if (!state.homeReady) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Home", style = MaterialTheme.typography.headlineMedium)
+            Text(state.homeStatus.ifBlank { "Opening Home safety records…" }, Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+        }
+        return
+    }
     var section by signalUiState("home.section") { "grid" }
     var query by remember { mutableStateOf("") }
     var room by remember { mutableStateOf("") }
     var editing by remember { mutableStateOf<HomeTile?>(null) }
     var connectionDraft by remember { mutableStateOf<HomeConnection?>(null) }
+    LaunchedEffect(state.homePreview) { if (state.homePreview != null) connectionDraft = null }
+    var now by remember { mutableLongStateOf(Clock.System.now().toEpochMilliseconds()) }
+    LaunchedEffect(Unit) { while (true) { now = Clock.System.now().toEpochMilliseconds(); delay(30_000) } }
     val columns = GridCells.Adaptive((168 * LocalDensity.current.fontScale.coerceAtLeast(1f)).dp)
     LazyVerticalGrid(columns, Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item(span = { GridItemSpan(maxLineSpan) }) { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Home", style = MaterialTheme.typography.headlineMedium)
             Text(state.homeStatus, Modifier.semantics { liveRegion = LiveRegionMode.Polite })
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("grid" to "Controls", "catalog" to "All devices", "connections" to "Connections", "activity" to "Activity & permissions").forEach { (key,label) -> FilterChip(section == key, { section = key }, label = { Text(label) }) }
+                listOf("grid" to "Favorites", "catalog" to "All devices", "connections" to "Connections", "activity" to "Activity & permissions").forEach { (key,label) -> FilterChip(section == key, { section = key }, label = { Text(label) }) }
                 TextButton(station::refreshHome, enabled = !state.homeBusy) { Text("Refresh") }
             }
             if (state.homeBusy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (section == "grid" || section == "catalog") SignalChoice("Temperature units", state.home.temperatureUnit.name,
+                listOf(HomeTemperatureUnit.SOURCE.name to "Source units", HomeTemperatureUnit.CELSIUS.name to "°C", HomeTemperatureUnit.FAHRENHEIT.name to "°F")) { station.setHomeTemperatureUnit(HomeTemperatureUnit.valueOf(it)) }
         } }
         when (section) {
             "connections" -> {
                 item(span = { GridItemSpan(maxLineSpan) }) { Column {
-                    Text("Connect directly to Home Assistant, openHAB or Geepers. Credentials stay encrypted on this phone. Server token permissions still apply; selections here do not scope the token on the server.")
-                    Button({ connectionDraft = HomeConnection("", "", HomeConnectorKind.GEEPERS, "") }) { Text("Add connection") }
+                    Text("Connect Home Assistant, openHAB, Geepers or an MQTT broker. Readings work on this phone without a watch. Credentials stay encrypted here; server-side permissions still apply.")
+                    Button({ connectionDraft = HomeConnection("", "", HomeConnectorKind.HOME_ASSISTANT, "") }) { Text("Add connection") }
+                    OutlinedButton({ connectionDraft = HomeConnection("", "Outdoors", HomeConnectorKind.PUBLIC_ENVIRONMENT, "") }) { Text("Add weather & environment") }
                 } }
                 items(state.home.connections, key = { "connection:${it.id}" }, span = { GridItemSpan(maxLineSpan) }) { c -> Card { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(c.name, style = MaterialTheme.typography.titleMedium); Text("${c.kind} · ${c.baseUrl}")
+                    Text(c.name, style = MaterialTheme.typography.titleMedium); Text(if (c.kind == HomeConnectorKind.PUBLIC_ENVIRONMENT) "Public environment · ${c.outdoor?.place?.name.orEmpty()}" else "${c.kind} · ${c.baseUrl}")
                     state.home.snapshot.errors[c.id]?.let { Text(it) }
-                    FlowRow { TextButton({ connectionDraft = c }) { Text("Replace credentials or connection") }; TextButton({ station.removeHomeConnection(c.id) }) { Text("Remove ${c.name}") } }
+                    FlowRow { TextButton({ connectionDraft = c }) { Text(if (c.kind == HomeConnectorKind.PUBLIC_ENVIRONMENT) "Change place or sources" else "Replace credentials or connection") }; TextButton({ station.removeHomeConnection(c.id) }) { Text("Remove ${c.name}") } }
                 } } }
                 state.homePreview?.let { preview -> item(span = { GridItemSpan(maxLineSpan) }) { Card { Column(Modifier.padding(16.dp)) {
                     Text("Catalog preview · ${preview.name}", style = MaterialTheme.typography.titleMedium)
-                    Text("${state.homePreviewEntities.size} devices; ${state.homePreviewEntities.count { it.capabilities.isNotEmpty() }} have supported controls.")
-                    state.homePreviewEntities.take(12).forEach { Text("${it.name} · ${it.id} · ${if(it.available) it.state else "unavailable"}") }
+                    Text(if (preview.kind == HomeConnectorKind.PUBLIC_ENVIRONMENT) "${state.homePreviewEntities.size} public readings; no controls."
+                        else "${state.homePreviewEntities.size} devices; ${state.homePreviewEntities.count { it.capabilities.isNotEmpty() }} have supported controls.")
+                    if (preview.kind == HomeConnectorKind.PUBLIC_ENVIRONMENT) {
+                        Text("${preview.outdoor?.place?.name}. Read only. Saving does not select captures or share data with a language model.")
+                        state.homePreviewEntities.mapNotNull { it.outdoor }.groupBy { it.sourceKey }.forEach { (key, rows) ->
+                            Text("${SignalOutdoorSources.sources.firstOrNull { it.key == key }?.name ?: key}: ${rows.count { it.status == OutdoorStatus.AVAILABLE || it.status == OutdoorStatus.EMPTY }} available, ${rows.count { it.status != OutdoorStatus.AVAILABLE && it.status != OutdoorStatus.EMPTY }} limited or unavailable")
+                        }
+                    }
+                    state.homePreviewEntities.take(12).forEach { entity ->
+                        Text(entity.name, style = MaterialTheme.typography.titleMedium)
+                        HomeReading(entity, state.home.temperatureUnit, now)
+                    }
                     if (state.homePreviewEntities.size > 12) Text("The complete catalog will be available in All devices after saving.")
                     Button(station::saveHomeConnection) { Text("Save connection") }
+                    TextButton(station::cancelHomePreview) { Text("Discard preview") }
                 } } } }
             }
             "catalog" -> {
@@ -74,7 +100,7 @@ internal fun SignalHomePage(state: SignalState, station: SignalStation) {
                     Card { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(entity.name, style = MaterialTheme.typography.titleMedium)
                         Text("${state.home.connections.firstOrNull { it.id == entity.connectionId }?.name} · ${entity.id}")
-                        HomeReading(entity)
+                        HomeReading(entity, state.home.temperatureUnit, now)
                         if (entity.capabilities.isEmpty()) Text("Read only · controls unsupported or not declared by this system.")
                         SignalToggle("Include ${entity.name} in captures", state.home.captureTargets.any { it.connectionId == entity.connectionId && it.entityId == entity.id }) { station.selectHomeCapture(entity.connectionId, entity.id, it) }
                         Button({ editing = HomeTile("",entity.connectionId,entity.id,entity.name.take(100),position = state.home.tiles.size) }) { Text("Add shortcut") }
@@ -82,9 +108,13 @@ internal fun SignalHomePage(state: SignalState, station: SignalStation) {
                 }
             }
             "activity" -> {
-                item(span = { GridItemSpan(maxLineSpan) }) { Text("Permissions name an exact connection, device, action and parameters. Revoking a grant prevents further dispatch; it does not undo a sent action.") }
+                item(span = { GridItemSpan(maxLineSpan) }) { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Permissions name an exact connection, device, action and parameters. Revoking a grant prevents further dispatch; it does not undo a sent action.")
+                    Text("Up to 128 recent actions and active reviews are shown. ${state.home.archivedIntents} older actions are retained in the encrypted archive. Export includes complete action history, targets and parameters, but not saved connection or provider credentials.")
+                    TextButton(station::exportHomeActivity, enabled = !state.homeBusy) { Text("Export action history") }
+                } }
                 items(state.home.grants, key = { "grant:${it.id}" }, span = { GridItemSpan(maxLineSpan) }) { g -> Card { Column(Modifier.padding(16.dp)) {
-                    Text("Allowed without confirmation", style = MaterialTheme.typography.titleMedium)
+                    Text("Allowed in action-enabled questions", style = MaterialTheme.typography.titleMedium)
                     Text("${state.home.connections.firstOrNull { it.id == g.connectionId }?.name}\n${g.entityId}\n${g.capabilityId}\n${g.constraints}")
                     TextButton({ station.revokeHomeGrant(g.id) }) { Text("Revoke permission") }
                 } } }
@@ -106,11 +136,11 @@ internal fun SignalHomePage(state: SignalState, station: SignalStation) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(tile.title, style = MaterialTheme.typography.titleMedium)
                             Text(listOf(tile.room, state.home.connections.firstOrNull { it.id == tile.connectionId }?.name.orEmpty()).filter { it.isNotBlank() }.joinToString(" · "), style = MaterialTheme.typography.bodySmall)
-                            if (entity != null) HomeReading(entity) else Text("Not currently available")
+                            if (entity != null) HomeReading(entity, state.home.temperatureUnit, now) else Text("Not currently available")
                             if (tile.watchFavorite) Text("Watch favorite", style = MaterialTheme.typography.labelMedium)
                             if (tile.capabilityId != null) {
                                 val cap = entity?.capabilities?.firstOrNull { it.id == tile.capabilityId }
-                                Button({ station.requestHomeAction(tile.connectionId,tile.entityId,tile.capabilityId,tile.parameters) }, enabled = entity?.available == true && cap != null, modifier = Modifier.fillMaxWidth().sizeIn(minHeight = 48.dp).semantics { contentDescription = "${cap?.name ?: "Unavailable control"} ${tile.title}" }) { Text(cap?.name ?: "Control unavailable") }
+                                Button({ station.requestHomeAction(tile.connectionId,tile.entityId,tile.capabilityId,tile.parameters) }, enabled = entity?.let { homeEntityAvailable(it, now) } == true && cap != null, modifier = Modifier.fillMaxWidth().sizeIn(minHeight = 48.dp).semantics { contentDescription = "${cap?.name ?: "Unavailable control"} ${tile.title}" }) { Text(cap?.name ?: "Control unavailable") }
                                 if (tile.parameters.isNotEmpty()) Text(tile.parameters.entries.joinToString { "${it.key}: ${it.value}" })
                             }
                             TextButton({ editing = tile }) { Text("Edit ${tile.title}") }
@@ -124,30 +154,77 @@ internal fun SignalHomePage(state: SignalState, station: SignalStation) {
             }
         }
     }
-    connectionDraft?.let { c -> HomeConnectionDialog(c, state.homeBusy, { connectionDraft = null }) { value, token -> station.testHomeConnection(value,token); connectionDraft = null } }
+    connectionDraft?.let { c ->
+        val dismiss = { station.cancelHomePreview(); connectionDraft = null }
+        if (c.kind == HomeConnectorKind.PUBLIC_ENVIRONMENT) OutdoorConnectionDialog(c, state, station, dismiss)
+        else HomeConnectionDialog(c, state.homeBusy, state.homeStatus, dismiss) { value, token -> station.testHomeConnection(value,token) }
+    }
     editing?.let { tile -> HomeTileDialog(tile, state.home.snapshot.entities.firstOrNull { it.connectionId == tile.connectionId && it.id == tile.entityId }, { editing = null }, { station.removeHomeTile(tile.id); editing = null }) { station.saveHomeTile(it); editing = null } }
 }
 
 @Composable
-private fun HomeReading(entity: HomeEntity) {
-    Text(if (entity.available) entity.state else "Unavailable · last reported ${entity.state}")
-    homeReadings(entity).take(8).forEach { value -> Text("${value.key}: ${value.value} ${value.unit.orEmpty()}", style = MaterialTheme.typography.bodySmall) }
-    Text(if (entity.observedAt > 0) "Received by source ${signalDateTime(entity.observedAt)}" else "Source receipt time unknown", style = MaterialTheme.typography.bodySmall)
-    val times = entity.values.mapNotNull { it.measuredAt }.distinct()
-    Text(if (times.isEmpty()) "Measurement time unknown" else "Measurement times ${times.joinToString { signalDateTime(it) }}", style = MaterialTheme.typography.bodySmall)
+private fun HomeReading(entity: HomeEntity, unit: HomeTemperatureUnit, now: Long) {
+    Text(homeReadingStatus(entity, now), style = MaterialTheme.typography.labelLarge)
+    homeDisplayReadings(entity, unit).take(8).forEach { value ->
+        Column(Modifier.semantics(mergeDescendants = true) {}) {
+            Text(value.label, style = MaterialTheme.typography.labelMedium)
+            Text("${value.value} ${value.unit}".trim(), style = if (value.prominent) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.bodyLarge)
+        }
+    }
+    Text(homeReadingAge(entity, now), style = MaterialTheme.typography.bodySmall)
+    entity.outdoor?.let { reading ->
+        val uri = LocalUriHandler.current
+        var expanded by remember(entity.id) { mutableStateOf(false) }
+        Text("${reading.provider} · ${reading.place}", style = MaterialTheme.typography.bodySmall)
+        TextButton({ expanded = !expanded }, modifier = Modifier.semantics { stateDescription = if (expanded) "Expanded" else "Collapsed" }) { Text(if (expanded) "Hide details" else "Details & source") }
+        if (expanded) {
+            Text(outdoorTimeLabel(reading))
+            if (reading.details.isNotBlank()) Text(reading.details)
+            reading.validFrom?.let { Text("Valid from ${kotlin.time.Instant.fromEpochMilliseconds(it)}") }
+            reading.validUntil?.let { Text("Valid until ${kotlin.time.Instant.fromEpochMilliseconds(it)}") }
+            TextButton({ uri.openUri(reading.attributionUrl) }) { Text("Open ${reading.provider} source") }
+        }
+    }
 }
 
 @Composable
-private fun HomeConnectionDialog(initial: HomeConnection, busy: Boolean, dismiss: () -> Unit, test: (HomeConnection,String) -> Unit) {
+private fun HomeConnectionDialog(initial: HomeConnection, busy: Boolean, status: String, dismiss: () -> Unit, test: (HomeConnection,String) -> Unit) {
     var name by remember { mutableStateOf(initial.name) }; var url by remember { mutableStateOf(initial.baseUrl) }
     var kind by remember { mutableStateOf(initial.kind) }; var token by remember { mutableStateOf("") }; var local by remember { mutableStateOf(initial.allowPrivateHttp) }
+    var mqtt by remember { mutableStateOf(initial.mqtt ?: HomeMqttConfig(listOf(HomeMqttTopic()))) }
+    var username by remember { mutableStateOf("") }; var password by remember { mutableStateOf("") }; var anonymous by remember { mutableStateOf(true) }
+    var attempted by remember { mutableStateOf(false) }
+    val candidate = initial.copy(name = name.trim(), baseUrl = url.trim(), kind = kind, allowPrivateHttp = local, mqtt = if (kind == HomeConnectorKind.MQTT) mqtt else null)
+    val mqttError = if (kind == HomeConnectorKind.MQTT) runCatching { validateMqttConnection(candidate) }.exceptionOrNull()?.message else null
     AlertDialog(onDismissRequest = dismiss, title = { Text("Home connection") }, text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (busy) {
+            Text("Testing connection and reading selected topics…")
+            LinearProgressIndicator(Modifier.fillMaxWidth())
+        } else {
+        if (attempted) Text(status, Modifier.semantics { liveRegion = LiveRegionMode.Polite })
         OutlinedTextField(name,{ name = it.take(100) },label = { Text("Connection name") })
-        SignalChoice("System",kind.name,HomeConnectorKind.entries.map { it.name to when(it) { HomeConnectorKind.HOME_ASSISTANT -> "Home Assistant"; HomeConnectorKind.OPENHAB -> "openHAB"; else -> "Geepers" } }) { kind = HomeConnectorKind.valueOf(it) }
-        OutlinedTextField(url,{ url = it },label = { Text("Server URL") },singleLine = true)
-        OutlinedTextField(token,{ token = it },label = { Text(if (kind == HomeConnectorKind.HOME_ASSISTANT) "Long-lived access token" else "API / phone token") },visualTransformation = PasswordVisualTransformation(),singleLine = true)
-        SignalToggle("Trust local HTTP for this connection",local,description = "Use only a trusted private address. HTTPS and VPN connections are supported without this option.") { local = it }
-    } }, confirmButton = { TextButton({ test(initial.copy(name = name.trim(),baseUrl = url.trim(),kind = kind,allowPrivateHttp = local),token.trim()) }, enabled = !busy && name.isNotBlank() && url.isNotBlank() && token.isNotBlank()) { Text("Test & preview") } }, dismissButton = { TextButton(dismiss) { Text("Cancel") } })
+        SignalChoice("System",kind.name,HomeConnectorKind.entries.filter { it != HomeConnectorKind.PUBLIC_ENVIRONMENT }.map { it.name to when(it) { HomeConnectorKind.HOME_ASSISTANT -> "Home Assistant"; HomeConnectorKind.OPENHAB -> "openHAB"; HomeConnectorKind.GEEPERS -> "Geepers"; HomeConnectorKind.MQTT -> "MQTT over WebSockets"; HomeConnectorKind.PUBLIC_ENVIRONMENT -> "Public environment" } }) { kind = HomeConnectorKind.valueOf(it) }
+        OutlinedTextField(url,{ url = it.take(2048) },label = { Text(if (kind == HomeConnectorKind.MQTT) "Broker URL" else "Server URL") },singleLine = true)
+        if (kind == HomeConnectorKind.MQTT) {
+            Text("MQTT 5 · read only. Use a wss:// WebSocket listener. Raw mqtt:// ports are unsupported. Only the topics below are subscribed; no device commands are published.")
+            SignalToggle("Anonymous broker", anonymous, description = "Turn off to enter broker credentials. Use a read-only broker account limited to your selected topics.") { anonymous = it }
+            if (!anonymous) {
+                OutlinedTextField(username, { username = it.take(256) }, label = { Text("Username") }, singleLine = true)
+                OutlinedTextField(password, { password = it.take(1024) }, label = { Text("Password") }, visualTransformation = PasswordVisualTransformation(), singleLine = true)
+            }
+            SignalToggle("Trust private unencrypted connection", local, description = "Allows ws:// only on a trusted private address. WSS keeps certificate validation enabled.") { local = it }
+            HomeMqttFields(mqtt) { mqtt = it }
+            if (url.isNotBlank() && mqttError != null) Text(mqttError, style = MaterialTheme.typography.bodySmall)
+        } else {
+            OutlinedTextField(token,{ token = it.take(8192) },label = { Text(if (kind == HomeConnectorKind.HOME_ASSISTANT) "Long-lived access token" else "API / phone token") },visualTransformation = PasswordVisualTransformation(),singleLine = true)
+            SignalToggle("Trust local HTTP for this connection",local,description = "Use only a trusted private address. HTTPS and VPN connections are supported without this option.") { local = it }
+        }
+        }
+    } }, confirmButton = { TextButton({
+        val credential = if (kind == HomeConnectorKind.MQTT) Json.encodeToString(if (anonymous) HomeMqttCredentials() else HomeMqttCredentials(username, password)) else token.trim()
+        attempted = true
+        test(candidate, credential)
+    }, enabled = !busy && name.isNotBlank() && url.isNotBlank() && if (kind == HomeConnectorKind.MQTT) mqttError == null && (anonymous || username.isNotBlank()) else token.isNotBlank()) { Text("Test & preview") } }, dismissButton = { TextButton(dismiss) { Text("Cancel") } })
 }
 
 @Composable
@@ -183,27 +260,44 @@ private fun HomeTileDialog(initial: HomeTile, entity: HomeEntity?, dismiss: () -
 @Composable
 internal fun SignalHomeAccessSelector(state: SignalState, station: SignalStation) {
     val supported = signalSupportsHomeTools(state.settings)
-    SignalToggle("Home access",state.homeAccess.isNotEmpty(),supported && state.home.connections.any { it.enabled },"During this question, query the full catalog of selected systems and request supported actions. Retrieved data goes to ${providerLabel(state.settings.provider)}. Actions use your saved permissions or require confirmation.") {
+    SignalToggle("Read Home for this question",state.homeAccess.isNotEmpty(),supported && state.homeReady && state.home.connections.any { it.enabled },"Read the full catalog of selected systems for this question only. Retrieved data goes to ${providerLabel(state.settings.provider)}. Reading does not allow actions.") {
         station.setHomeAccess(if (it) state.home.connections.filter { c -> c.enabled }.map { c -> c.id }.toSet() else emptySet())
     }
     if (!supported) Text("Agent controls are disabled for this model. Ordinary chat and attached Home readings still work.")
     if (state.homeAccess.isNotEmpty()) state.home.connections.filter { it.enabled }.forEach { c -> SignalToggle(c.name,c.id in state.homeAccess) { enabled -> station.setHomeAccess(if (enabled) state.homeAccess + c.id else state.homeAccess - c.id) } }
+    if (state.homeAccess.isNotEmpty() && state.home.connections.any { it.id in state.homeAccess && it.kind != HomeConnectorKind.PUBLIC_ENVIRONMENT }) SignalToggle("Allow actions for this question", state.homeActionsAllowed, supported && state.homeReady, "Exact saved permissions may execute immediately, including locks and scenes. Other actions require review. This permission ends with this question; follow-ups start with Home off.", station::setHomeActionsAllowed)
+    else if (state.homeAccess.isNotEmpty()) Text("Selected environmental sources are read only.")
 }
 
 @Composable
 internal fun SignalHomeConfirmationDialog(state: SignalState, station: SignalStation) {
+    if (!state.homeReady) return
     var now by remember { mutableLongStateOf(Clock.System.now().toEpochMilliseconds()) }
     LaunchedEffect(state.home.ledger) { while (true) { now = Clock.System.now().toEpochMilliseconds(); delay(500) } }
-    val entry = state.home.ledger.firstOrNull { it.status == HomeActionStatus.AWAITING_CONFIRMATION && it.confirmationExpiresAt > now } ?: return
+    val entry = state.home.ledger.firstOrNull { it.status == HomeActionStatus.AWAITING_CONFIRMATION } ?: return
     var allow by remember(entry.action.id) { mutableStateOf(false) }
+    val reviewScroll = key(entry.action.id) { rememberScrollState() }
     val connection = state.home.connections.firstOrNull { it.id == entry.action.connectionId }?.name ?: entry.action.connectionId
     val target = state.home.snapshot.entities.firstOrNull { it.connectionId == entry.action.connectionId && it.id == entry.action.entityId }?.name ?: entry.action.entityId
-    AlertDialog(onDismissRequest = { station.cancelHomeAction(entry.action.id) }, title = { Text("Confirm Home action") }, text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("System: $connection\nTarget: $target\nDevice: ${entry.action.entityId}\nAction: ${entry.action.capabilityId}\nParameters: ${entry.action.parameters.ifEmpty { mapOf("none" to "") }}")
+    AlertDialog(onDismissRequest = { station.cancelHomeAction(entry.action.id) }, title = { Text("Confirm Home action") }, text = { Column(Modifier.verticalScroll(reviewScroll), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("System: $connection\nTarget: $target\nDevice: ${entry.action.entityId}\nAction: ${entry.action.capabilityId}")
+        Text("Parameters", style = MaterialTheme.typography.titleSmall)
+        if (entry.action.parameters.isEmpty()) Text("None")
+        else entry.action.parameters.entries.sortedBy { it.key }.forEach { (name,value) -> Text("$name: $value") }
         Text("Expires in ${((entry.confirmationExpiresAt-now)/1000).coerceAtLeast(0)} seconds. Confirmation can be used once.")
-        SignalToggle("Allow this exact action without future confirmation",allow,description = "Applies to this system, device, action and these parameter values, including locks and scenes if selected. You can revoke it in Home permissions.") { allow = it }
+        SignalToggle("Save permission for this exact action",allow,description = "Allows this system, device, action and these parameter values during future questions where you explicitly allow actions. Direct phone and watch controls still require confirmation. You can revoke it in Home permissions.") { allow = it }
         if (entry.action.capabilityId.contains("scene") || entry.action.entityId.startsWith("scene.") || entry.action.entityId.startsWith("script.")) Text("A scene invokes the server's current definition. Detectable identity or definition changes revoke permission; hidden server edits may not be detectable.")
-    } },confirmButton = { TextButton({ station.confirmHomeAction(entry.action.id,allow) },enabled = now < entry.confirmationExpiresAt) { Text(if(allow) "Allow & send" else "Send once") } },dismissButton = { TextButton({ station.cancelHomeAction(entry.action.id) }) { Text("Cancel") } })
+        // Confirmation is in the reading/scroll order after every parameter, not
+        // in an always-visible footer or gated on visual scrolling (TalkBack).
+        if (now < entry.confirmationExpiresAt) Button({ station.confirmHomeAction(entry.action.id,allow) }, modifier = Modifier.fillMaxWidth().sizeIn(minHeight = 48.dp)) { Text(if(allow) "Save permission & send once" else "Send once") }
+        else {
+            Text("This review expired. Nothing was sent. Review again to read current action details; this does not send the action.")
+            TextButton({
+                station.cancelHomeAction(entry.action.id)
+                station.requestHomeAction(entry.action.connectionId, entry.action.entityId, entry.action.capabilityId, entry.action.parameters)
+            }) { Text("Review again") }
+        }
+    } },confirmButton = {},dismissButton = { TextButton({ station.cancelHomeAction(entry.action.id) }) { Text("Cancel") } })
 }
 
 @Composable

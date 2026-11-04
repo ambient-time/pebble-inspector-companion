@@ -1,0 +1,17 @@
+{
+  "verifiedAt": "2026-10-04T06:17:06.445597+00:00",
+  "appId": "37360ca4d9764881bd1d6f4d",
+  "uuid": "e2fd86ec-dfb8-460c-afc1-ebe4d071657a",
+  "version": "1.8.1",
+  "releaseId": "ae1e506e1bcf485c8555a549",
+  "published": false,
+  "visible": true,
+  "unlisted": false,
+  "pbwSHA256": "e5a65e155ad66ae21ab8fce230bac1e9dfaebd81442eaf7733e80d2094ee1024",
+  "pbwSize": 233450,
+  "pbwDownloadUrl": "https://appstore-api.repebble.com/api/assets/pbw/37360ca4d9764881bd1d6f4d/1.8.1/31c29abf-0c39-4353-b5e3-65f615a1b867.pbw",
+  "storedPBWSHA256Matches": true,
+  "downloadHTTPStatus": 200,
+  "media": [],
+  "previousReleasesPreserved": true
+}

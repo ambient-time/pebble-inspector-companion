@@ -58,6 +58,14 @@ internal class SignalLearningRepository(private val store: SignalStore) {
 
     suspend fun evaluate(settings: SignalSettings, now: Long): List<SignalMemory> {
         val known = store.memory().toMutableList()
+        for (index in known.indices) {
+            val memory = known[index]
+            if (memory.kind == "baseline" && memory.derivationVersion != SignalLearning.BASELINE_VERSION &&
+                memory.state !in setOf("rejected", "forgotten") && !memory.needsReview) {
+                known[index] = memory.copy(needsReview = true)
+                store.saveMemory(known[index])
+            }
+        }
         if (!settings.learningEnabled) return known
         val frames = store.documents("frame").map { json.decodeFromString<SignalRecord>(it) }
         // Stale summaries are disposable; original history has no retention expiry.
@@ -67,19 +75,36 @@ internal class SignalLearningRepository(private val store: SignalStore) {
             live.forEach { ingest(it, now) }
         }
         val candidates = SignalLearning.proposals(live, settings, now)
+        // A legacy proposal cannot outlive the compatible evidence that rebuilt it.
+        for (index in known.indices) {
+            val memory = known[index]
+            if (memory.kind == "baseline" && memory.derivationVersion != SignalLearning.BASELINE_VERSION &&
+                memory.proposedDerivationVersion != 0 && candidates.none { it.fingerprint == memory.fingerprint }) {
+                known[index] = memory.copy(needsReview = true, proposedText = "", proposedEvidence = emptyList(), proposedDerivationVersion = 0)
+                store.saveMemory(known[index])
+            }
+        }
         val today = Instant.fromEpochMilliseconds(now).toLocalDateTime(TimeZone.currentSystemDefault()).date
         var surfaced = known.count { Instant.fromEpochMilliseconds(it.createdAt).toLocalDateTime(TimeZone.currentSystemDefault()).date == today && it.kind != "note" }
         for (candidate in candidates.sortedBy { it.fingerprint }) {
-            if (store.document("forgot:${store.opaqueIndex(candidate.fingerprint)}") != null) continue
+            val fingerprints = candidate.fingerprintAliases + candidate.fingerprint
+            if (fingerprints.any { store.document("forgot:${store.opaqueIndex(it)}") != null }) continue
+            if (known.any { it.fingerprint in fingerprints && it.state in setOf("rejected", "forgotten") }) continue
             val previous = known.firstOrNull { it.fingerprint == candidate.fingerprint }
+                ?: known.firstOrNull { it.derivationVersion != SignalLearning.BASELINE_VERSION && it.fingerprint in candidate.fingerprintAliases }
+            val changed = previous != null && (candidate.text != previous.acceptedPatternText.ifBlank { previous.text } ||
+                candidate.derivationVersion != previous.derivationVersion)
             val next = when {
                 previous == null && surfaced < 3 -> candidate.copy(id = UUID.randomUUID().toString(), coverage = candidate.coverage + " Learning uses at most one original capture per source group per hour.").also { surfaced++ }
                 previous == null -> continue
                 previous.state in setOf("rejected", "forgotten", "note") -> continue
                 previous.state == "proposed" -> candidate.copy(id = previous.id, createdAt = previous.createdAt, revision = if (candidate.text == previous.text && candidate.evidence == previous.evidence) previous.revision else previous.revision + 1)
-                else -> previous.copy(evaluatedAt = now, needsReview = candidate.text != previous.acceptedPatternText.ifBlank { previous.text },
-                    proposedText = if (candidate.text != previous.acceptedPatternText.ifBlank { previous.text }) candidate.text else "",
-                    proposedEvidence = if (candidate.text != previous.acceptedPatternText.ifBlank { previous.text }) candidate.evidence else emptyList())
+                else -> previous.copy(fingerprint = candidate.fingerprint,
+                    fingerprintAliases = previous.fingerprintAliases + candidate.fingerprintAliases + previous.fingerprint,
+                    evaluatedAt = now, needsReview = changed, coverage = candidate.coverage,
+                    proposedText = if (changed) candidate.text else "",
+                    proposedEvidence = if (changed) candidate.evidence else emptyList(),
+                    proposedDerivationVersion = if (changed) candidate.derivationVersion else 0)
             }
             store.saveMemory(next); known.removeAll { it.id == next.id }; known += next
         }

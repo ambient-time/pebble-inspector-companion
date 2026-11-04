@@ -461,6 +461,7 @@ internal fun SignalMemoryPage(state: SignalState, station: SignalStation, onEvid
             HorizontalDivider()
             Text(if (memory.needsReview) "New evidence to review" else memory.kind.replaceFirstChar { it.uppercase() }, style = MaterialTheme.typography.labelLarge)
             Text(memory.text, style = MaterialTheme.typography.titleMedium)
+            if (!SignalLearning.canConfirm(memory)) Text("This older baseline needs a new comparable calculation before it can be confirmed or used in a question. Its original wording and evidence remain saved.", style = MaterialTheme.typography.bodySmall)
             if (memory.needsReview && memory.proposedText.isNotBlank()) Text("Updated observation: ${memory.proposedText}")
             if (memory.coverage.isNotBlank()) Text(memory.coverage, style = MaterialTheme.typography.bodySmall)
             if (memory.state in setOf("confirmed", "note") && !SignalLearning.eligible(memory, state.settings)) {
@@ -470,12 +471,12 @@ internal fun SignalMemoryPage(state: SignalState, station: SignalStation, onEvid
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = { detail = memory.id }) { Text("Why this?") }
                 if (memory.state == "proposed" || memory.needsReview) {
-                    Button(onClick = { station.reviewMemory(memory.id, "confirm") }, enabled = !state.busy && state.settings.learningEnabled) { Text(if (memory.needsReview) "Use updated pattern" else "Confirm memory") }
-                    if (memory.needsReview) TextButton(onClick = { station.reviewMemory(memory.id, "correct", memory.text) }, enabled = !state.busy) { Text("Keep current wording") }
+                    Button(onClick = { station.reviewMemory(memory.id, "confirm") }, enabled = !state.busy && state.settings.learningEnabled && SignalLearning.canConfirm(memory)) { Text(if (memory.needsReview) "Use updated pattern" else "Confirm memory") }
+                    if (memory.needsReview) TextButton(onClick = { station.reviewMemory(memory.id, "correct", memory.text) }, enabled = !state.busy && SignalLearning.canConfirm(memory)) { Text("Keep current wording") }
                     else TextButton(onClick = { station.reviewMemory(memory.id, "reject") }, enabled = !state.busy) { Text("Dismiss suggestion") }
                 }
                 if (memory.state == "rejected") TextButton(onClick = { station.reviewMemory(memory.id, "restore") }, enabled = !state.busy) { Text("Restore to review") }
-                else TextButton(onClick = { edit = memory; text = memory.text; noteOpen = true }, enabled = !state.busy) { Text("Edit wording") }
+                else TextButton(onClick = { edit = memory; text = memory.text; noteOpen = true }, enabled = !state.busy && SignalLearning.canConfirm(memory)) { Text("Edit wording") }
                 TextButton(onClick = { station.previewForgetMemory(memory.id) }, enabled = !state.busy && state.historyReady) { Text("Forget…") }
             }
         }

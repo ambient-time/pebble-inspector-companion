@@ -2,12 +2,12 @@ package coredevices.pebble.signal
 
 import kotlinx.serialization.Serializable
 
-@Serializable enum class HomeConnectorKind { HOME_ASSISTANT, OPENHAB, GEEPERS }
-@Serializable data class HomeConnection(val id: String, val name: String, val kind: HomeConnectorKind, val baseUrl: String, val credentialKey: String = "home:$id", val allowPrivateHttp: Boolean = false, val enabled: Boolean = true, val revision: Long = 1)
+@Serializable enum class HomeConnectorKind { HOME_ASSISTANT, OPENHAB, GEEPERS, MQTT, PUBLIC_ENVIRONMENT }
+@Serializable data class HomeConnection(val id: String, val name: String, val kind: HomeConnectorKind, val baseUrl: String, val credentialKey: String = "home:$id", val allowPrivateHttp: Boolean = false, val enabled: Boolean = true, val revision: Long = 1, val mqtt: HomeMqttConfig? = null, val outdoor: OutdoorConfig? = null)
 @Serializable data class HomeParameter(val name: String, val type: String = "string", val required: Boolean = true, val minimum: Double? = null, val maximum: Double? = null, val options: List<String> = emptyList())
 @Serializable data class HomeCapability(val id: String, val name: String = id, val parameters: List<HomeParameter> = emptyList(), val expectedValues: Map<String, String> = emptyMap())
 @Serializable data class HomeValue(val key: String, val value: String, val unit: String? = null, val measuredAt: Long? = null)
-@Serializable data class HomeEntity(val connectionId: String, val id: String, val name: String, val domain: String = "", val state: String = "unknown", val available: Boolean = false, val capabilities: List<HomeCapability> = emptyList(), val updatedAt: Long? = null, val observedAt: Long = 0, val attributes: Map<String, String> = emptyMap(), val identity: String = id, val values: List<HomeValue> = emptyList())
+@Serializable data class HomeEntity(val connectionId: String, val id: String, val name: String, val domain: String = "", val state: String = "unknown", val available: Boolean = false, val capabilities: List<HomeCapability> = emptyList(), val updatedAt: Long? = null, val observedAt: Long = 0, val attributes: Map<String, String> = emptyMap(), val identity: String = id, val values: List<HomeValue> = emptyList(), val expiresAt: Long? = null, val retained: Boolean = false, val observationBasis: String = "", val outdoor: OutdoorReading? = null)
 internal fun homeReadings(entity: HomeEntity): List<HomeValue> = entity.values.ifEmpty {
     val unit = listOf("unit", "unit_of_measurement", "unitSymbol").firstNotNullOfOrNull { key -> entity.attributes[key]?.takeIf { it.isNotBlank() } }
     val withoutUnit = unit?.takeIf { entity.state.endsWith(it) }?.let { entity.state.removeSuffix(it).trim() }
@@ -19,14 +19,21 @@ internal fun homeReadings(entity: HomeEntity): List<HomeValue> = entity.values.i
 @Serializable data class HomeTile(val id: String, val connectionId: String, val entityId: String, val title: String, val capabilityId: String? = null, val parameters: Map<String, String> = emptyMap(), val position: Int = 0, val room: String = "", val watchFavorite: Boolean = false)
 @Serializable data class HomeGrant(val id: String, val connectionId: String, val entityId: String, val capabilityId: String, val constraints: Map<String, String> = emptyMap(), val createdAt: Long, val expiresAt: Long? = null, val enabled: Boolean = true, val identity: String = entityId, val connectionBinding: String = "", val capabilityBinding: String = "")
 @Serializable enum class HomeActionStatus { AWAITING_CONFIRMATION, READY, SENDING, ACCEPTED, OBSERVED, FAILED, UNKNOWN, CANCELLED, EXPIRED }
-@Serializable data class HomeLedgerEntry(val action: HomeAction, val status: HomeActionStatus, val updatedAt: Long, val confirmationExpiresAt: Long, val confirmedAt: Long? = null, val grantId: String? = null, val sentAt: Long? = null, val receiptId: String? = null, val message: String = "", val cancelRequested: Boolean = false)
+@Serializable enum class HomeAuthorizationMode { EXPLICIT_CONFIRMATION, MODEL_TURN }
+@Serializable data class HomeLedgerEntry(val action: HomeAction, val status: HomeActionStatus, val updatedAt: Long, val confirmationExpiresAt: Long, val confirmedAt: Long? = null, val grantId: String? = null, val sentAt: Long? = null, val receiptId: String? = null, val message: String = "", val cancelRequested: Boolean = false, val authorizationMode: HomeAuthorizationMode = HomeAuthorizationMode.EXPLICIT_CONFIRMATION, val authorizationOwner: String = "", val favoriteId: String = "", val watchRequestId: Int = 0)
 @Serializable data class HomeSnapshot(val entities: List<HomeEntity> = emptyList(), val collectedAt: Long = 0, val errors: Map<String, String> = emptyMap())
 @Serializable data class HomeTarget(val connectionId: String, val entityId: String)
 fun homeTargetKey(connectionId: String, entityId: String): String = "${connectionId.length}:$connectionId$entityId"
-@Serializable data class HomeState(val connections: List<HomeConnection> = emptyList(), val tiles: List<HomeTile> = emptyList(), val grants: List<HomeGrant> = emptyList(), val ledger: List<HomeLedgerEntry> = emptyList(), val snapshot: HomeSnapshot = HomeSnapshot(), val captureTargets: List<HomeTarget> = emptyList())
+@Serializable data class HomeState(val connections: List<HomeConnection> = emptyList(), val tiles: List<HomeTile> = emptyList(), val grants: List<HomeGrant> = emptyList(), val ledger: List<HomeLedgerEntry> = emptyList(), val snapshot: HomeSnapshot = HomeSnapshot(), val captureTargets: List<HomeTarget> = emptyList(), val archivedIntents: Long = 0, val temperatureUnit: HomeTemperatureUnit = HomeTemperatureUnit.SOURCE)
 data class HomeDispatchResult(val status: HomeActionStatus = HomeActionStatus.ACCEPTED, val receiptId: String? = null, val message: String = "Controller accepted the request; physical outcome is unverified.")
 /** Implement with atomic encrypted persistence. A successful save must be durable before returning. */
-interface HomePersistence { suspend fun load(): HomeState; suspend fun save(state: HomeState) }
+interface HomePersistence {
+    suspend fun load(): HomeState
+    suspend fun save(state: HomeState)
+    suspend fun archived(actionId: String): HomeLedgerEntry? = null
+    fun pin(actionId: String) {}
+    fun unpin(actionId: String) {}
+}
 interface HomeConnector {
     val warnings: List<String> get() = emptyList()
     /** Collect only while the Home UI is foreground; cancellation closes the live transport. */
@@ -39,7 +46,15 @@ interface HomeConnector {
 }
 class HomeException(message: String) : Exception(message)
 fun homeCapabilityBinding(capability: HomeCapability): String = kotlinx.serialization.json.Json.encodeToString(capability.copy(parameters=capability.parameters.sortedBy { it.name }, expectedValues=capability.expectedValues.entries.sortedBy { it.key }.associate { it.toPair() }))
-fun homeConnectionBinding(c: HomeConnection): String = kotlinx.serialization.json.Json.encodeToString(listOf(c.id, c.kind.name, c.baseUrl.trim().trimEnd('/'), c.credentialKey, c.allowPrivateHttp.toString(), c.revision.toString()))
+fun homeConnectionBinding(c: HomeConnection): String {
+    val fields = listOf(c.id, c.kind.name, c.baseUrl.trim().trimEnd('/'), c.credentialKey, c.allowPrivateHttp.toString(), c.revision.toString())
+    val extended = when (c.kind) {
+        HomeConnectorKind.MQTT -> fields + kotlinx.serialization.json.Json.encodeToString(c.mqtt)
+        HomeConnectorKind.PUBLIC_ENVIRONMENT -> fields + kotlinx.serialization.json.Json.encodeToString(c.outdoor?.copy(sources = c.outdoor.sources.sorted().toSet()))
+        else -> fields
+    }
+    return kotlinx.serialization.json.Json.encodeToString(extended)
+}
 fun normalizeHomeParameters(capability: HomeCapability, supplied: Map<String, String>): Map<String, String> {
     require(supplied.size <= 20 && capability.parameters.size <= 20) { "Too many parameters." }
     require(supplied.keys.all { key -> capability.parameters.any { it.name == key } }) { "Unsupported parameter." }

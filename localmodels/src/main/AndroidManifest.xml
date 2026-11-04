@@ -1,0 +1,12 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.RUN_USER_INITIATED_JOBS" />
+    <queries><package android:name="com.google.android.aicore" /></queries>
+    <application>
+        <uses-native-library android:name="libOpenCL.so" android:required="false" />
+        <uses-native-library android:name="libvndksupport.so" android:required="false" />
+        <service android:name="com.lukesteuber.localmodels.ModelInferenceService" android:exported="false" android:process=":local_model" />
+        <service android:name="com.lukesteuber.localmodels.ModelDownloadJobService" android:exported="true" android:permission="android.permission.BIND_JOB_SERVICE" />
+    </application>
+</manifest>

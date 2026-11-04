@@ -1,5 +1,9 @@
 # Home connections
 
+The October development work adds [generic environmental readings and read-only
+MQTT over WebSockets](environmental-readings.md), including phone/watch temperature
+units. The September release evidence below describes the earlier published build.
+
 Home is available in Android 0.5.0-home-dev (build 17), with optional favorites in
 watch package 1.7.1. Both were published on September 15, 2026:
 [downloads](https://dr.eamer.dev/downloads/apps/signal-station/) and

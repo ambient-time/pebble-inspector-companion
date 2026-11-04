@@ -24,17 +24,44 @@ there; Signal Station uses that connection. Install the watch package, then open
 **Check connection**. Up captures, the middle button asks, and Down opens history.
 Hold the middle button on a reply to open its full text on your phone.
 
-The September 15, 2026 downloads contain Android build **17**
-(`0.5.0-home-dev`) and Pebble **1.7.1**, also published in the Pebble Store.
+The October 3, 2026 testing downloads contain Android build **20**
+(`0.7.0-local-dev`) and Pebble **1.8.1**. Pebble 1.8.1 is staged as a draft;
+1.7.1 remains the published Store release.
 These remain experimental builds. [Home connections](docs/signal-station/home-connections.md)
 add optional Home Assistant, openHAB and Geepers readings, configurable controls,
 and Home access in the existing chat package. Connections and action permissions
 start empty. Hold Down at the watch home screen for phone-selected favorites.
 
-See the [release evidence](docs/signal-station/home-release-2026-09-15.md) for
+See the [current release evidence](docs/signal-station/download-preview-2026-10-03.md) for
 source/package identities and the remaining physical phone/watch acceptance.
 The [platform capability audit](docs/signal-station/platform-capabilities.md)
 records iOS and Garmin possibilities and limits; those ports are not implemented.
+
+## Private validation checkpoint — October 5, 2026
+
+Android **0.9.2-public-data-dev (24)** is installed on Pixel 9a and Pixel 10;
+both installed APK hashes match the tested artifact. It adds provider-response
+safety guards to the environmental readings and connection-attention fixes.
+It does not replace the testing downloads described above.
+
+The [build 24 install receipt](docs/signal-station/private-build24-2026-10-05.md)
+and [earlier validation record](docs/signal-station/attention-watch-validation-2026-10-04.md)
+separate automated checks, phone installation and watch evidence. Physical
+2 SE favorite-screen acceptance and the current TalkBack journey remain open.
+No new watch package or public release was made for this fix.
+
+## Product direction
+
+Signal Station is intended to combine conversation, speech, sensing and optional
+home tools, including generic ESP32 integrations. The installed build 24 returns
+text. Current source adds explicit **Listen on phone / Stop reading** for saved
+replies using an installed Android voice marked offline; see the
+[phone-speech check](docs/signal-station/phone-speech-2026-10-05.md).
+This change is not installed on the Pixels or publicly released. Watch playback,
+hosted voices and Auto-read remain unimplemented.
+The [direction and reuse guide](docs/signal-station/product-direction.md) records
+the existing foundation, proposed next steps and acceptance gaps. Connections,
+capture selection, model sharing and action permissions remain separate choices.
 
 ## What you can do
 
