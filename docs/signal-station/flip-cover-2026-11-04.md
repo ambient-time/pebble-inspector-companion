@@ -149,12 +149,15 @@ Neither keyboard checks in other apps nor the incomplete observer log establish
 Signal screen-reader acceptance.
 
 Signal's installed build 27 was reread and still matches the `c22fc5b5` artifact
-above. No runtime source or binary changed in this follow-up. The actual closed
-cover now has an unsent synthetic `Flip fold test 1104` draft ready for an
-unfold/refold check. No source/provider was enabled; the draft was not saved,
-reviewed or sent. The phone remains CLOSED0 pending the owner opening it.
-The full two-direction draft roundtrip remains unverified. Do not infer it from
-the earlier one-way proof or from adb setup/resume commands.
+above. No runtime source or binary changed in this follow-up. An unsent synthetic
+`Flip fold test 1104` draft was prepared on the closed cover. On November 5,
+Android reported OPENED3 and the exact draft remained on inner resume in task171.
+The phone had been used between preparation and observation, so this pass proves
+retained draft state on resume, rather than uninterrupted foreground transfer.
+No source/provider was enabled; the draft was not saved, reviewed or sent.
+The phone still reports OPENED3 and cover OFF after the requested close, so the
+controlled return-to-cover gate remains open. The full two-direction draft
+roundtrip is unverified. Do not infer it from earlier one-way proof or adb setup.
 
 The [quiet cross-app receipt](https://github.com/ambient-time/clocks-app/blob/49088b8f742c960d9533ec99d68ad425c94d0000/docs/reviews/flip-quiet-checks-20261104.md)
 retains the new artifact/state boundaries and keyboard evidence for Hexsweeper
@@ -162,6 +165,10 @@ and Attractive. Continue with Signal in the foreground, then check background
 apps on resume separately. Clear only the synthetic draft afterward. Keep
 TalkBack off; no collection, microphone, model execution or sensitive permission
 is needed for the layout/continuity test.
+
+The [November 5 inner-screen receipt](https://github.com/ambient-time/clocks-app/blob/b1038d7bbc162ada910fa5d61ba0f3ac13132970/docs/reviews/flip-quiet-checks-20261104.md)
+retains the current draft screenshot and physical-state gate. The synthetic
+draft remains ready for that return check and should be cleared only afterward.
 
 ## Rollback
 
