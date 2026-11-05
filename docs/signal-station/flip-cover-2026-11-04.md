@@ -132,10 +132,16 @@ or synthetic draft on screen. Android and iOS CI passed
 No new public release was made. The coordinating Ambient Time record is
 `docs/reviews/flip-apps-20261104.md` in `ambient-time/clocks-app`.
 
+Durable evidence is retained in the [coordinating handoff](https://github.com/ambient-time/clocks-app/blob/7466a6dd8fbb0cdaef20292289b22f82bf8f655f/docs/reviews/flip-apps-20261104.md),
+[UI execution receipt](https://github.com/ambient-time/clocks-app/blob/7466a6dd8fbb0cdaef20292289b22f82bf8f655f/docs/reviews/signal-cover-ui-tests-20261104.log)
+and [final full-frame screenshot](https://github.com/ambient-time/clocks-app/blob/7466a6dd8fbb0cdaef20292289b22f82bf8f655f/docs/reviews/assets/flip-apps-20261104/signal-full.png).
+Local `/tmp` captures are transient; a source rollback preserves these records.
+
 ## Rollback
 
 Reverse only this branch's cover-layout patch, including the compact-navigation
-helper, dialog wrapper/call-site changes, Android boundary/inset helper, tests and
-this dated record. Existing storage and permission schemas are unchanged. Never
+helper, dialog wrapper/call-site changes, Android boundary/inset helper and tests.
+Preserve this dated record and its evidence when reverting the implementation.
+Existing storage and permission schemas are unchanged. Never
 uninstall the production package to roll back an upgrade without a separate
 owner decision: uninstalling removes its app data.

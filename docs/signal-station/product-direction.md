@@ -24,6 +24,15 @@ home-screen check is not Signal acceptance. Text and favorites remain useful
 without a speaker; any future audio targeting must be capability- and
 firmware-checked, not inferred from a product family's name.
 
+## Flip cover follow-up — November 4, 2026
+
+The local Android 0.9.5-flip-dev (27) candidate adds compact navigation and a
+scrolling composer while preserving existing review and action callbacks.
+Closed-cover App Tray launch, keyboard dismissal, camera clearance and
+cover-to-inner draft retention are verified. This does not change the dated
+Pixel or public download checkpoints above. See the [cover build and device
+evidence](flip-cover-2026-11-04.md) for exact artifacts, tests and remaining gates.
+
 ## Architecture and navigation
 
 The Android shell in `signalApp/` uses shared Compose screens, provider adapters,
