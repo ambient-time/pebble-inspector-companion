@@ -1,6 +1,8 @@
 # Flip cover layout — November 4, 2026
 
-Status: **built and installed; cover launch validation pending normal unlock**. Source is the isolated Napoleon
+Status: **installed; cold cover launch, keyboard, dialog and physical unfolding checks passed**.
+Corrected six-case UI rerun: **6 passed**. Physical refold, final black-strip
+confirmation and TalkBack remain pending. Source is the isolated Napoleon
 worktree `/Users/luke/workspace/signal-station-flip-cover`, branch
 `codex/flip-cover-20261104`, based on `a20a1e89`. The original checkout under
 `/Users/luke/workspace/android-builds/appcat-20261103/pebble-inspector-companion`
@@ -63,13 +65,31 @@ redispatch and lost the synthetic cutout; the actual inner-screen IME measured
 fixture uses `dispatchApplyWindowInsets`, verifies cutout forwarding, and
 intercepts platform text input only in fixed-size fixtures. Review controls
 still require visible, enabled, 48 dp targets and an actual touch. The corrected
-six-case rerun remains pending; this does not establish real keyboard safety.
+six-case rerun passed all six tests in 8.64 seconds. The coordinating session's
+receipt is `/tmp/signal-cover-corrected-ui-tests-20261104.log` on Napoleon.
+Fixed-size fixtures isolate the viewport from the
+inner-screen IME; actual keyboard evidence is recorded separately below.
 AOSP documents the inset dispatch flow in [View.java](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/core/java/android/view/View.java);
 Compose’s [text test actions](https://github.com/androidx/androidx/blob/androidx-main/compose/ui/ui-test/src/commonMain/kotlin/androidx/compose/ui/test/TextActions.kt)
-explicitly focus the field before replacing text. TalkBack, keyboard presentation, physical unfolding and
-dialog placement against the real cameras still require runtime evidence.
-Until full-panel dialogs are checked, the wide frame is the conservative setup.
-Status remains built rather than device-tested.
+explicitly focus the field before replacing text.
+
+### Physical cover and unfolding evidence
+
+The coordinating session cold-launched Signal Station from its real SystemUI
+App Tray icon on the closed Flip's display 1. Compact routes worked. In the real
+cover keyboard, touching `s` appended to the synthetic, unsent draft
+`Cover screen test drafts`; Back dismissed the keyboard. The draft survived
+wide → tall → full resizing and app switches. In the full frame, the Save
+question dialog's Cancel control remained above the cameras and dismissed the
+dialog. Nothing was saved or sent.
+
+Luke then physically opened the phone. The device reported state 3; the same
+Activity task, 133, automatically continued on the inner display. The identical
+draft remained visible and normal phone navigation returned. The temporary
+screenshot is `/tmp/signal-unfold-final.png` on Napoleon. Physical refold
+continuity and TalkBack remain pending. The final black camera-strip background
+will also be confirmed during refold; the earlier camera reserve and full-frame
+dialog placement were already exercised on the physical cover.
 
 Artifacts:
 
@@ -82,13 +102,21 @@ Artifacts:
 The Android Debug certificate SHA-256 is
 `e1faa235dbdd132ac86856639b60b12ad9f9b658fc921fd8160db84ed8dfa28d`.
 Reverify both artifact checksum and installed signer before any in-place upgrade.
-The local version-27 APK was installed in place on the Flip after verifying
+The initial version-27 APK was installed in place on the Flip after verifying
 continuity with its existing debug-preview certificate. Its SHA-256 is
 `8f751d4489cfc217b77847a9fd62a337285cc14b6284997a239354b2a6c81586`;
 the embedded production revision is `e24c8f03`. Signal Station is selected in
 MultiStar’s cover App Tray, preserving prior selections. Source integration is
 `codex/signal-station`; GitHub Android and iOS CI passed
 [run 41960975280](https://github.com/ambient-time/pebble-inspector-companion/actions/runs/41960975280).
+The final installed `323074cf` source candidate has APK SHA-256
+`c22fc5b5810752f8dfbd66ecb50a7cd968a0991b8f2c5056efa3fd5f93ee7e46`.
+Installation succeeded before the corrected six-case native UI run, which passed.
+Afterwards, the coordinating session removed only the instrumentation package
+`com.lukesteuber.signalstation.test` and launched the normal production app on
+the inner display. Its Now screen showed 0 sources, without a fixture overlay
+or synthetic draft on screen. Android and iOS CI passed
+[run 41967479199](https://github.com/ambient-time/pebble-inspector-companion/actions/runs/41967479199).
 No new public release was made. The coordinating Ambient Time record is
 `docs/reviews/flip-apps-20261104.md` in `ambient-time/clocks-app`.
 
