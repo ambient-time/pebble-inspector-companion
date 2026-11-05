@@ -101,7 +101,8 @@ Final cover evidence is retained in Ambient Time at
 
 This establishes final-build refold/relaunch and camera clearance. The earlier
 draft test establishes cover-to-inner retention; a draft roundtrip through both
-physical fold directions and TalkBack remain separate, unverified checks.
+physical fold directions remains a separate, unverified check. TalkBack was
+subsequently skipped at Luke's request; see the quiet follow-up below.
 
 Artifacts:
 
@@ -136,6 +137,31 @@ Durable evidence is retained in the [coordinating handoff](https://github.com/am
 [UI execution receipt](https://github.com/ambient-time/clocks-app/blob/7466a6dd8fbb0cdaef20292289b22f82bf8f655f/docs/reviews/signal-cover-ui-tests-20261104.log)
 and [final full-frame screenshot](https://github.com/ambient-time/clocks-app/blob/7466a6dd8fbb0cdaef20292289b22f82bf8f655f/docs/reviews/assets/flip-apps-20261104/signal-full.png).
 Local `/tmp` captures are transient; a source rollback preserves these records.
+
+## Quiet follow-up and current gate
+
+The November 4 session continued past midnight on November 5 (Pacific).
+TalkBack testing was canceled at the owner's request and was not resumed.
+The USB connection dropped before the temporary observer established a passing
+runtime result. Its uncommitted source and test package were removed. Scoped
+settings reads confirmed accessibility enabled `0` and enabled services `null`.
+Neither keyboard checks in other apps nor the incomplete observer log establish
+Signal screen-reader acceptance.
+
+Signal's installed build 27 was reread and still matches the `c22fc5b5` artifact
+above. No runtime source or binary changed in this follow-up. The actual closed
+cover now has an unsent synthetic `Flip fold test 1104` draft ready for an
+unfold/refold check. No source/provider was enabled; the draft was not saved,
+reviewed or sent. The phone remains CLOSED0 pending the owner opening it.
+The full two-direction draft roundtrip remains unverified. Do not infer it from
+the earlier one-way proof or from adb setup/resume commands.
+
+The [quiet cross-app receipt](https://github.com/ambient-time/clocks-app/blob/49088b8f742c960d9533ec99d68ad425c94d0000/docs/reviews/flip-quiet-checks-20261104.md)
+retains the new artifact/state boundaries and keyboard evidence for Hexsweeper
+and Attractive. Continue with Signal in the foreground, then check background
+apps on resume separately. Clear only the synthetic draft afterward. Keep
+TalkBack off; no collection, microphone, model execution or sensitive permission
+is needed for the layout/continuity test.
 
 ## Rollback
 
