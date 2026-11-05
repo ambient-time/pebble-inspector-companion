@@ -155,9 +155,10 @@ Android reported OPENED3 and the exact draft remained on inner resume in task171
 The phone had been used between preparation and observation, so this pass proves
 retained draft state on resume, rather than uninterrupted foreground transfer.
 No source/provider was enabled; the draft was not saved, reviewed or sent.
-The phone still reports OPENED3 and cover OFF after the requested close, so the
-controlled return-to-cover gate remains open. The full two-direction draft
-roundtrip is unverified. Do not infer it from earlier one-way proof or adb setup.
+The phone initially still reported OPENED3 and cover OFF after a close reply,
+so that receipt correctly left the return unverified. The later observed
+return completes this draft check, as recorded below; it was not inferred from
+the reply or from adb setup.
 
 The [quiet cross-app receipt](https://github.com/ambient-time/clocks-app/blob/49088b8f742c960d9533ec99d68ad425c94d0000/docs/reviews/flip-quiet-checks-20261104.md)
 retains the new artifact/state boundaries and keyboard evidence for Hexsweeper
@@ -167,8 +168,24 @@ TalkBack off; no collection, microphone, model execution or sensitive permission
 is needed for the layout/continuity test.
 
 The [November 5 inner-screen receipt](https://github.com/ambient-time/clocks-app/blob/b1038d7bbc162ada910fa5d61ba0f3ac13132970/docs/reviews/flip-quiet-checks-20261104.md)
-retains the current draft screenshot and physical-state gate. The synthetic
-draft remains ready for that return check and should be cleared only afterward.
+retains the inner draft screenshot and the gate as it stood at that time.
+
+### Observed physical return — November 5
+
+The connected phone subsequently reported actual CLOSED0, with normal cover
+unlock. Cover home was visible first. Opening Signal through its real App Tray
+icon returned the exact `Flip fold test 1104` draft in task 171. The scoped
+ActivityTaskManager record at 01:38:38 identifies SystemUI UID 10054 as caller;
+no adb activity-launch command was used for that return. Together with the
+inner observation, this proves retained draft state through both physical
+directions on unchanged build 27. It does not claim uninterrupted automatic
+foreground transfer. Nothing was saved, reviewed or sent.
+
+The [current cross-app restoration receipt](https://github.com/ambient-time/clocks-app/blob/4e13484f91c33f9489594da5fe7b38d02165eaeb/docs/reviews/flip-fold-restoration-20261105.md)
+retains the cover draft capture and distinguishes the later Hex/Attractive
+framework recreation fixes. The synthetic draft remains pending final test-data
+cleanup; no source/provider, scan, collection or model was activated. TalkBack
+stays off.
 
 ## Rollback
 
