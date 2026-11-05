@@ -47,7 +47,7 @@ class MainActivity : ComponentActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         val app = application as SignalApplication
         val ui = androidx.lifecycle.ViewModelProvider(this)[SignalUiViewModel::class.java].session
-        val coverFrame = SignalCoverFrame(this)
+        val coverFrame = SignalCoverFrame(this).apply { setBackgroundColor(android.graphics.Color.BLACK) }
         val composeView = ComposeView(this)
         coverFrame.addView(composeView, android.widget.FrameLayout.LayoutParams(-1, -1))
         setContentView(coverFrame)
