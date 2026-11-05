@@ -3,26 +3,34 @@ package com.lukesteuber.signalstation
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.sizeIn
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.InterceptPlatformTextInput
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.asAndroidBitmap
 import coredevices.pebble.signal.*
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.awaitCancellation
 import org.junit.Rule
 import org.junit.Test
 import kotlin.test.assertEquals
 
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 class SignalCoverUiTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+    private var fixtureImeBottom = 0
 
     @Test fun wideFrameNavigationKeepsAllDestinationsAndCollectionOff() {
         val station = CoverUiStation()
@@ -55,12 +63,18 @@ class SignalCoverUiTest {
     private fun questionJourney(width: Dp, height: Dp, scale: Float) {
         val station = CoverUiStation()
         show(station, width, { height }, scale)
-        navigate("Ask")
-        scrollTo("Your question").performTextReplacement("Synthetic cover question")
-        scrollTo("Review question").assertHeightIsAtLeast(48.dp).performClick()
-        compose.onNodeWithText("Review before sending").assertExists()
-        scrollTo("Send question once").assertIsEnabled().assertHeightIsAtLeast(48.dp)
-        compose.runOnIdle { assertEquals(1, station.reviews); assertEquals(0, station.sends); assertEquals(0, station.actions) }
+        try {
+            navigate("Ask")
+            scrollTo("Your question").performTextReplacement("Synthetic cover question")
+            scrollTo("Review question").assertIsDisplayed().assertIsEnabled().assertHeightIsAtLeast(48.dp).performClick()
+            compose.runOnIdle { assertEquals(1, station.reviews, "The visible Review control must receive the touch") }
+            scrollTo("Review before sending").assertIsDisplayed()
+            scrollTo("Send question once").assertIsEnabled().assertHeightIsAtLeast(48.dp)
+            compose.runOnIdle { assertEquals(1, station.reviews); assertEquals(0, station.sends); assertEquals(0, station.actions) }
+        } catch (failure: Throwable) {
+            captureFailure("question-${width.value.toInt()}x${height.value.toInt()}")
+            throw failure
+        }
     }
 
     private fun show(station: CoverUiStation, width: Dp, height: () -> Dp, scale: Float = 1f) {
@@ -70,10 +84,15 @@ class SignalCoverUiTest {
                 view.setContent {
                     CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, scale)) {
                         val density = LocalDensity.current
+                        val imeBottom = WindowInsets.ime.getBottom(density)
+                        SideEffect { fixtureImeBottom = imeBottom }
                         val inset = signalCoverBottomInset("samsung", "SM-F776U1",
                             with(density) { width.roundToPx() }, with(density) { height().roundToPx() }, emptyList())
-                        Box(Modifier.requiredSize(width, height())) {
-                            SignalCoverContent(inset) { SignalScreen(station, standalone = true, uiSession = session) }
+                        // Fixed viewports model available app space; the real IME is tested on the cover.
+                        InterceptPlatformTextInput(interceptor = { _, _ -> awaitCancellation() }) {
+                            Box(Modifier.requiredSize(width, height())) {
+                                SignalCoverContent(inset) { SignalScreen(station, standalone = true, uiSession = session) }
+                            }
                         }
                     }
                 }
@@ -88,11 +107,15 @@ class SignalCoverUiTest {
             val frame = SignalCoverFrame(activity, "samsung", "SM-F776U1")
             frame.layout(0, 0, 948, 1048)
             assertEquals(209, frame.bottomInset)
-            val cutout = android.view.DisplayCutout(android.graphics.Rect(0, 0, 0, 48),
-                listOf(android.graphics.Rect(428, 1000, 948, 1048)))
-            frame.onApplyWindowInsets(android.view.WindowInsets.Builder().setDisplayCutout(cutout).build())
+            val bounds = android.graphics.Rect(428, 1000, 948, 1048)
+            val cutout = android.view.DisplayCutout(android.graphics.Insets.of(0, 0, 0, 48),
+                null, null, null, bounds)
+            val insets = android.view.WindowInsets.Builder().setDisplayCutout(cutout).build()
+            assertEquals(listOf(bounds), insets.displayCutout?.boundingRects, "Synthetic insets must carry the bottom rectangle")
+            val forwarded = frame.dispatchApplyWindowInsets(insets)
             assertEquals(48, frame.bottomInset)
-            frame.onApplyWindowInsets(android.view.WindowInsets.Builder().build())
+            assertEquals(listOf(bounds), forwarded.displayCutout?.boundingRects, "The boundary must forward the cutout to Compose")
+            frame.dispatchApplyWindowInsets(android.view.WindowInsets.Builder().build())
             assertEquals(209, frame.bottomInset)
         }
     }
@@ -128,7 +151,17 @@ class SignalCoverUiTest {
 
     private fun scrollTo(text: String): SemanticsNodeInteraction {
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(text))
-        return compose.onNodeWithText(text)
+        return compose.onNodeWithText(text).performScrollTo()
+    }
+
+    private fun captureFailure(name: String) {
+        println("COVER_FIXTURE failure=$name imeBottomPx=$fixtureImeBottom")
+        println(compose.onRoot(useUnmergedTree = true).printToString())
+        runCatching {
+            val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
+            val output = java.io.File(compose.activity.getExternalFilesDir(null), "cover-fixtures").apply { mkdirs() }
+            java.io.File(output, "$name.png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+        }.onFailure { println("COVER_FIXTURE screenshot=${it.javaClass.simpleName}") }
     }
 }
 

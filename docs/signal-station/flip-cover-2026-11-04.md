@@ -1,6 +1,6 @@
 # Flip cover layout — November 4, 2026
 
-Status: **built; device validation pending**. Source is the isolated Napoleon
+Status: **built and installed; cover launch validation pending normal unlock**. Source is the isolated Napoleon
 worktree `/Users/luke/workspace/signal-station-flip-cover`, branch
 `codex/flip-cover-20261104`, based on `a20a1e89`. The original checkout under
 `/Users/luke/workspace/android-builds/appcat-20261103/pebble-inspector-companion`
@@ -56,10 +56,17 @@ warnings and no errors.
 
 `SignalCoverUiTest` contains synthetic 379 × 336 and 399 × 441 dp fixtures,
 double-text question review, route access without collection, draft retention
-across resize, same-size inset changes, and harmless dialog dismissal. Compilation
-does not establish that these instrumentation tests passed. Device/emulator
-control belongs to the coordinating session; no device was driven in this
-implementation lane. TalkBack, keyboard presentation, physical unfolding and
+across resize, same-size inset changes, and harmless dialog dismissal. The first native run on the Flip inner screen passed four of six. Two fixture
+defects were isolated: direct `onApplyWindowInsets` invoked Android’s legacy
+redispatch and lost the synthetic cutout; the actual inner-screen IME measured
+1116 px (372 dp) and overwhelmed the artificial 336 dp window. The corrected
+fixture uses `dispatchApplyWindowInsets`, verifies cutout forwarding, and
+intercepts platform text input only in fixed-size fixtures. Review controls
+still require visible, enabled, 48 dp targets and an actual touch. The corrected
+six-case rerun remains pending; this does not establish real keyboard safety.
+AOSP documents the inset dispatch flow in [View.java](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/core/java/android/view/View.java);
+Compose’s [text test actions](https://github.com/androidx/androidx/blob/androidx-main/compose/ui/ui-test/src/commonMain/kotlin/androidx/compose/ui/test/TextActions.kt)
+explicitly focus the field before replacing text. TalkBack, keyboard presentation, physical unfolding and
 dialog placement against the real cameras still require runtime evidence.
 Until full-panel dialogs are checked, the wide frame is the conservative setup.
 Status remains built rather than device-tested.
@@ -75,8 +82,15 @@ Artifacts:
 The Android Debug certificate SHA-256 is
 `e1faa235dbdd132ac86856639b60b12ad9f9b658fc921fd8160db84ed8dfa28d`.
 Reverify both artifact checksum and installed signer before any in-place upgrade.
-No installation, publication, push or merge was performed by this implementation
-lane.
+The local version-27 APK was installed in place on the Flip after verifying
+continuity with its existing debug-preview certificate. Its SHA-256 is
+`8f751d4489cfc217b77847a9fd62a337285cc14b6284997a239354b2a6c81586`;
+the embedded production revision is `e24c8f03`. Signal Station is selected in
+MultiStar’s cover App Tray, preserving prior selections. Source integration is
+`codex/signal-station`; GitHub Android and iOS CI passed
+[run 41960975280](https://github.com/ambient-time/pebble-inspector-companion/actions/runs/41960975280).
+No new public release was made. The coordinating Ambient Time record is
+`docs/reviews/flip-apps-20261104.md` in `ambient-time/clocks-app`.
 
 ## Rollback
 
