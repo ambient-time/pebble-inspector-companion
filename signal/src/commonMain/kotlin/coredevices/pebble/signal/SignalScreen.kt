@@ -2,6 +2,7 @@ package coredevices.pebble.signal
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
 import androidx.compose.ui.platform.LocalDensity
@@ -33,7 +34,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
@@ -84,14 +84,17 @@ private data class SignalConfirmation(val title: String, val message: String, va
 fun SignalScreen(station: SignalStation, standalone: Boolean = false, onManageWatch: (() -> Unit)? = null,
     uiSession: SignalUiSession = remember { SignalUiSession() }, speech: SignalSpeech? = null) {
     androidx.compose.runtime.CompositionLocalProvider(LocalSignalUiSession provides uiSession, LocalSignalSpeech provides speech) {
-        if (standalone) SignalMaterialTheme { SignalScreenContent(station, true, onManageWatch) }
-        else SignalScreenContent(station, false, onManageWatch)
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val compact = maxWidth < 600.dp && maxHeight < 480.dp
+            if (standalone) SignalMaterialTheme { SignalScreenContent(station, true, onManageWatch, compact) }
+            else SignalScreenContent(station, false, onManageWatch, compact)
+        }
     }
 }
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onManageWatch: (() -> Unit)?) {
+private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onManageWatch: (() -> Unit)?, compact: Boolean) {
     val state by station.state.collectAsState()
     val ui = LocalSignalUiSession.current
     var page by object : kotlin.properties.ReadWriteProperty<Any?, SignalPage> {
@@ -190,7 +193,11 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
         onDispose { station.setHomeVisible(false) }
     }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).then(if (standalone) Modifier.statusBarsPadding().navigationBarsPadding() else Modifier).imePadding()) {
-        if (!keyboardOpen) {
+        if (!keyboardOpen && compact) {
+            SignalCompactNavigation(page, fieldTestOpen || detailId != null || page !in signalRootPages,
+                onBack = { ui.back() }, onDestination = ui::tab,
+                onSettings = { ui.settingsSection = "menu"; page = SignalPage.Settings })
+        } else if (!keyboardOpen) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 SignalAntennaGlyph()
                 Column(Modifier.weight(1f).padding(start = 12.dp)) {
@@ -199,7 +206,7 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
                 TextButton(onClick = { ui.settingsSection = "menu"; page = SignalPage.Settings }) { Text("Settings") }
             }
         }
-        if (page !in setOf(SignalPage.Today, SignalPage.Conversation, SignalPage.History, SignalPage.Home) && detailId == null && !fieldTestOpen) {
+        if (!compact && page !in setOf(SignalPage.Today, SignalPage.Conversation, SignalPage.History, SignalPage.Home) && detailId == null && !fieldTestOpen) {
             TextButton(onClick = { ui.back() }, modifier = Modifier.padding(horizontal = 8.dp)) {
                 Text("Back")
             }
@@ -292,6 +299,7 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
             )
             SignalPage.Conversation -> SignalConversation(
                 state, station, questionDraft, { questionDraft = it; station.dismissQuestionReview() },
+                compact = compact,
                 onSend = {
                     submittedQuestion = questionDraft.trim()
                     submittedRecordIds = state.records.map { it.id }.toSet()
@@ -322,7 +330,7 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
             SignalPage.Settings -> SignalConfiguration(state, station, onManageWatch) { confirmation = it }
         }
         }
-        if (!keyboardOpen) NavigationBar(containerColor = MaterialTheme.colorScheme.surface, windowInsets = WindowInsets(0, 0, 0, 0)) {
+        if (!keyboardOpen && !compact) NavigationBar(containerColor = MaterialTheme.colorScheme.surface, windowInsets = WindowInsets(0, 0, 0, 0)) {
             listOf(SignalPage.Today, SignalPage.Conversation, SignalPage.Home, SignalPage.History).forEach { destination ->
                 val roots = setOf(SignalPage.Today, SignalPage.Conversation, SignalPage.Home, SignalPage.History)
                 val activePage = page.takeIf { it in roots } ?: ui.stack.lastOrNull { it.page in roots }?.page ?: SignalPage.Today
@@ -340,7 +348,7 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
     SignalDeletionDialog(state, station)
     SignalHomeConfirmationDialog(state, station)
     confirmation?.let { request ->
-        AlertDialog(
+        SignalAlertDialog(
             onDismissRequest = { confirmation = null },
             title = { Text(request.title) },
             text = { Text(request.message) },
@@ -359,6 +367,7 @@ private fun SignalConversation(
     station: SignalStation,
     draft: String,
     onDraft: (String) -> Unit,
+    compact: Boolean,
     onSend: () -> Unit,
     searchHistory: Boolean,
     onHistoryChange: (Boolean) -> Unit,
@@ -385,7 +394,7 @@ private fun SignalConversation(
     }
     val keyboardOpen = WindowInsets.ime.getBottom(LocalDensity.current) > 0
     val ready = state.settings.provider in state.configuredProviders && state.settings.model.isNotBlank()
-    saveTitle?.let { title -> AlertDialog(onDismissRequest = { saveTitle = null }, title = { Text("Save question") },
+    saveTitle?.let { title -> SignalAlertDialog(onDismissRequest = { saveTitle = null }, title = { Text("Save question") },
         text = { OutlinedTextField(title, { saveTitle = it }, label = { Text("Name") }, singleLine = true) },
         confirmButton = { TextButton(onClick = { station.saveQuestion(title, draft, searchHistory, saveAsNew); saveTitle = null }, enabled = title.isNotBlank()) { Text("Save") } },
         dismissButton = { TextButton(onClick = { saveTitle = null }) { Text("Cancel") } }) }
@@ -473,6 +482,16 @@ private fun SignalConversation(
         }
         return
     }
+    val composer: @Composable () -> Unit = {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (!keyboardOpen) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = { panel = "context" }) { Text(state.evidenceSelection?.let { "Evidence · ${it.matchedCount} results" } ?: "Evidence · ${state.attachedRecords.size} attached") }
+                TextButton(onClick = { panel = "options" }) { Text("Options") }
+            }
+            OutlinedTextField(draft, onDraft, Modifier.fillMaxWidth(), label = { Text("Your question") }, minLines = 1, maxLines = 3, enabled = !state.busy)
+            Button(onClick = onSend, enabled = !state.busy && !state.historyLoading && draft.isNotBlank(), modifier = Modifier.fillMaxWidth().sizeIn(minHeight = 48.dp)) { Text("Review question") }
+        }
+    }
     Column(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.weight(1f), state = scroll, contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             item {
@@ -510,16 +529,10 @@ private fun SignalConversation(
                     HorizontalDivider()
                 }
             }
+            if (compact) item(key = "composer") { composer() }
         }
         if (newReply) TextButton(onClick = { scope.launch { scroll.scrollToItem(records.size); newReply = false } }) { Text("New reply") }
-        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            if (!keyboardOpen) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = { panel = "context" }) { Text(state.evidenceSelection?.let { "Evidence · ${it.matchedCount} results" } ?: "Evidence · ${state.attachedRecords.size} attached") }
-                TextButton(onClick = { panel = "options" }) { Text("Options") }
-            }
-            OutlinedTextField(draft, onDraft, Modifier.fillMaxWidth(), label = { Text("Your question") }, minLines = 1, maxLines = 3, enabled = !state.busy)
-            Button(onClick = onSend, enabled = !state.busy && !state.historyLoading && draft.isNotBlank(), modifier = Modifier.fillMaxWidth().sizeIn(minHeight = 48.dp)) { Text("Review question") }
-        }
+        if (!compact) composer()
     }
 }
 

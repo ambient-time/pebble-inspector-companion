@@ -339,7 +339,7 @@ internal fun SignalPresencePage(station: SignalStation, state: SignalState, onDe
     }
     SignalLookupReviewDialog(state, station, onDetail)
     candidate?.let { found ->
-        AlertDialog(onDismissRequest = { candidate = null }, title = { Text("Name this device") }, text = {
+        SignalAlertDialog(onDismissRequest = { candidate = null }, title = { Text("Name this device") }, text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("${found.radio} · ${found.address}")
                 OutlinedTextField(deviceLabel, { deviceLabel = it.take(80) }, label = { Text("Your device name") }, singleLine = true)
@@ -351,7 +351,7 @@ internal fun SignalPresencePage(station: SignalStation, state: SignalState, onDe
         val lat = latitude.toDoubleOrNull()?.takeIf { it.isFinite() && it in -90.0..90.0 }
         val lon = longitude.toDoubleOrNull()?.takeIf { it.isFinite() && it in -180.0..180.0 }
         val meters = radius.toIntOrNull()?.takeIf { it in 25..10000 }
-        AlertDialog(onDismissRequest = { showPlaceEditor = false }, title = { Text(if (editingPlace == null) "Save a familiar place" else "Edit familiar place") }, text = {
+        SignalAlertDialog(onDismissRequest = { showPlaceEditor = false }, title = { Text(if (editingPlace == null) "Save a familiar place" else "Edit familiar place") }, text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(placeLabel, { placeLabel = it.take(80) }, label = { Text("Your place name") }, singleLine = true)
                 OutlinedTextField(latitude, { latitude = it }, label = { Text("Latitude") }, singleLine = true)
@@ -367,9 +367,9 @@ internal fun SignalPresencePage(station: SignalStation, state: SignalState, onDe
         }, enabled = placeLabel.isNotBlank() && lat != null && lon != null && meters != null) { Text("Save place") } }, dismissButton = { TextButton(onClick = { showPlaceEditor = false }) { Text("Cancel") } })
     }
     removeTarget?.let { target ->
-        AlertDialog(onDismissRequest = { removeTarget = null }, title = { Text("Forget ${target.label}?") }, text = { Text("This removes the saved device. Existing history remains available until you delete it in History.") }, confirmButton = { TextButton(onClick = { station.removePresenceTarget(target.id); removeTarget = null }) { Text("Forget device") } }, dismissButton = { TextButton(onClick = { removeTarget = null }) { Text("Cancel") } })
+        SignalAlertDialog(onDismissRequest = { removeTarget = null }, title = { Text("Forget ${target.label}?") }, text = { Text("This removes the saved device. Existing history remains available until you delete it in History.") }, confirmButton = { TextButton(onClick = { station.removePresenceTarget(target.id); removeTarget = null }) { Text("Forget device") } }, dismissButton = { TextButton(onClick = { removeTarget = null }) { Text("Cancel") } })
     }
     removePlace?.let { place ->
-        AlertDialog(onDismissRequest = { removePlace = null }, title = { Text("Forget ${place.label}?") }, text = { Text("This removes the saved place. Existing history remains available until you delete it in History.") }, confirmButton = { TextButton(onClick = { station.removePlaceFence(place.id); removePlace = null }) { Text("Forget place") } }, dismissButton = { TextButton(onClick = { removePlace = null }) { Text("Cancel") } })
+        SignalAlertDialog(onDismissRequest = { removePlace = null }, title = { Text("Forget ${place.label}?") }, text = { Text("This removes the saved place. Existing history remains available until you delete it in History.") }, confirmButton = { TextButton(onClick = { station.removePlaceFence(place.id); removePlace = null }) { Text("Forget place") } }, dismissButton = { TextButton(onClick = { removePlace = null }) { Text("Cancel") } })
     }
 }

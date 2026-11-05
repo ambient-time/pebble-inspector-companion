@@ -8,7 +8,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -129,7 +128,7 @@ internal fun SignalLookupServiceControls(state: SignalState, station: SignalStat
 @Composable
 internal fun SignalLookupReviewDialog(state: SignalState, station: SignalStation, onDetail: (String) -> Unit) {
     val review = state.lookupReview ?: return
-    AlertDialog(onDismissRequest = station::dismissLookupReview,
+    SignalAlertDialog(onDismissRequest = station::dismissLookupReview,
         title = { Text("Review external lookup") },
         text = {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {

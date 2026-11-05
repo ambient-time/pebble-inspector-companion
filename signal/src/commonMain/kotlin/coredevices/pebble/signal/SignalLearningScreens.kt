@@ -484,7 +484,7 @@ internal fun SignalMemoryPage(state: SignalState, station: SignalStation, onEvid
     state.memories.firstOrNull { it.id == detail }?.let { memory ->
         SignalMemoryEvidence(memory, SignalLearning.eligible(memory, state.settings), onDismiss = { detail = null }, onEvidence = { detail = null; onEvidence(it) })
     }
-    if (noteOpen) AlertDialog(onDismissRequest = { noteOpen = false }, title = { Text(if (edit == null) "Personal note" else "Correct the wording") }, text = {
+    if (noteOpen) SignalAlertDialog(onDismissRequest = { noteOpen = false }, title = { Text(if (edit == null) "Personal note" else "Correct the wording") }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(if (edit == null) "Write what you want to remember. This will be identified as your note, without an inferred observation behind it." else "Your correction will be preserved with this memory and its evidence.")
             OutlinedTextField(text, { text = it.take(2000) }, label = { Text("Your words") }, minLines = 3, maxLines = 8, modifier = Modifier.fillMaxWidth())
@@ -498,7 +498,7 @@ internal fun SignalMemoryPage(state: SignalState, station: SignalStation, onEvid
 
 @Composable
 private fun SignalMemoryEvidence(memory: SignalMemory, eligible: Boolean, onDismiss: () -> Unit, onEvidence: (String) -> Unit) {
-    AlertDialog(onDismissRequest = onDismiss, title = { Text("Why this?") }, text = {
+    SignalAlertDialog(onDismissRequest = onDismiss, title = { Text("Why this?") }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(memory.text)
             Text(if (eligible) "Available when selected as question context." else "Not currently available for model context.", style = MaterialTheme.typography.bodySmall)
@@ -540,7 +540,7 @@ internal fun SignalSuggestedMemoryContext(state: SignalState, station: SignalSta
             TextButton(onClick = { preview = true }) { Text("Review suggested context") }
         } else Text("Suggestions are found on this phone. No provider request is made until you send.", style = MaterialTheme.typography.bodySmall)
     }
-    if (preview) AlertDialog(onDismissRequest = { preview = false }, title = { Text("Suggested context") }, text = {
+    if (preview) SignalAlertDialog(onDismissRequest = { preview = false }, title = { Text("Suggested context") }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(if (state.useMemory) "These memories will accompany your question when you tap Send." else "Use memory is off. These suggestions will not be sent.")
             suggestions.forEach { memory ->
@@ -560,7 +560,7 @@ internal fun SignalSuggestedMemoryContext(state: SignalState, station: SignalSta
 internal fun SignalDeletionDialog(state: SignalState, station: SignalStation) {
     val preview = state.deletionPreview ?: return
     var retained by remember(preview) { mutableStateOf(emptySet<String>()) }
-    AlertDialog(onDismissRequest = station::dismissDeletion, title = { Text(if (preview.memoryId == null) "Review deletion" else "Forget this memory?") }, text = {
+    SignalAlertDialog(onDismissRequest = station::dismissDeletion, title = { Text(if (preview.memoryId == null) "Review deletion" else "Forget this memory?") }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("${signalCount(preview.recordCount, "record")} and ${preview.memories.size} dependent ${if (preview.memories.size == 1) "memory" else "memories"} will be removed. This includes dependent analysis and cached context. This cannot be undone.")
             if (preview.memories.isNotEmpty()) {

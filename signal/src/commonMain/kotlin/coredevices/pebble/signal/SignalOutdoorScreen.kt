@@ -29,7 +29,7 @@ internal fun OutdoorConnectionDialog(initial: HomeConnection, state: SignalState
     val candidate = initial.copy(name = name.trim(), baseUrl = "", credentialKey = "", allowPrivateHttp = false, mqtt = null, outdoor = config)
     val error = runCatching { validateOutdoorConnection(candidate) }.exceptionOrNull()?.message
     val scroll = rememberScrollState()
-    AlertDialog(onDismissRequest = dismiss, title = { Text("Weather & environment") }, text = {
+    SignalAlertDialog(onDismissRequest = dismiss, title = { Text("Weather & environment") }, text = {
         val focus = LocalFocusManager.current
         val keyboard = LocalSoftwareKeyboardController.current
         fun finishTyping() { focus.clearFocus(); keyboard?.hide() }

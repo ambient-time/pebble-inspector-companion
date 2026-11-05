@@ -196,7 +196,7 @@ private fun HomeConnectionDialog(initial: HomeConnection, busy: Boolean, status:
     var attempted by remember { mutableStateOf(false) }
     val candidate = initial.copy(name = name.trim(), baseUrl = url.trim(), kind = kind, allowPrivateHttp = local, mqtt = if (kind == HomeConnectorKind.MQTT) mqtt else null)
     val mqttError = if (kind == HomeConnectorKind.MQTT) runCatching { validateMqttConnection(candidate) }.exceptionOrNull()?.message else null
-    AlertDialog(onDismissRequest = dismiss, title = { Text("Home connection") }, text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    SignalAlertDialog(onDismissRequest = dismiss, title = { Text("Home connection") }, text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (busy) {
             Text("Testing connection and reading selected topics…")
             LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -233,7 +233,7 @@ private fun HomeTileDialog(initial: HomeTile, entity: HomeEntity?, dismiss: () -
     var action by remember { mutableStateOf(initial.capabilityId.orEmpty()) }; var params by remember { mutableStateOf(initial.parameters) }
     val cap = entity?.capabilities?.firstOrNull { it.id == action }
     val valid = title.isNotBlank() && (action.isEmpty() || cap != null && runCatching { normalizeHomeParameters(cap,params) }.isSuccess)
-    AlertDialog(onDismissRequest = dismiss, title = { Text("Configure shortcut") }, text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    SignalAlertDialog(onDismissRequest = dismiss, title = { Text("Configure shortcut") }, text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(entity?.id ?: initial.entityId)
         OutlinedTextField(title,{ title = it.take(100) },label = { Text("Label") })
         OutlinedTextField(room,{ room = it.take(100) },label = { Text("Room group") })
@@ -279,7 +279,7 @@ internal fun SignalHomeConfirmationDialog(state: SignalState, station: SignalSta
     val reviewScroll = key(entry.action.id) { rememberScrollState() }
     val connection = state.home.connections.firstOrNull { it.id == entry.action.connectionId }?.name ?: entry.action.connectionId
     val target = state.home.snapshot.entities.firstOrNull { it.connectionId == entry.action.connectionId && it.id == entry.action.entityId }?.name ?: entry.action.entityId
-    AlertDialog(onDismissRequest = { station.cancelHomeAction(entry.action.id) }, title = { Text("Confirm Home action") }, text = { Column(Modifier.verticalScroll(reviewScroll), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    SignalAlertDialog(onDismissRequest = { station.cancelHomeAction(entry.action.id) }, title = { Text("Confirm Home action") }, text = { Column(Modifier.verticalScroll(reviewScroll), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("System: $connection\nTarget: $target\nDevice: ${entry.action.entityId}\nAction: ${entry.action.capabilityId}")
         Text("Parameters", style = MaterialTheme.typography.titleSmall)
         if (entry.action.parameters.isEmpty()) Text("None")

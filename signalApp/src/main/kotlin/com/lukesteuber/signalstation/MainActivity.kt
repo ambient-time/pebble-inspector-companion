@@ -5,7 +5,6 @@ import android.util.Log
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -13,7 +12,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.ComposeView
 import coredevices.pebble.signal.SignalScreen
+import coredevices.pebble.signal.SignalAlertDialog
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
 
@@ -46,7 +47,11 @@ class MainActivity : ComponentActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         val app = application as SignalApplication
         val ui = androidx.lifecycle.ViewModelProvider(this)[SignalUiViewModel::class.java].session
-        setContent {
+        val coverFrame = SignalCoverFrame(this)
+        val composeView = ComposeView(this)
+        coverFrame.addView(composeView, android.widget.FrameLayout.LayoutParams(-1, -1))
+        setContentView(coverFrame)
+        composeView.setContent {
             var showWatch by remember { mutableStateOf(false) }
             val scope = rememberCoroutineScope()
             var connectionError by remember { mutableStateOf("") }
@@ -78,9 +83,10 @@ class MainActivity : ComponentActivity() {
                     } finally { selecting = false }
                 }
             }
-            SignalScreen(app.station, standalone = true, uiSession = ui, speech = speech,
-                onManageWatch = { speech.stop(); connectionError = ""; showWatch = true })
-            if (showWatch) AlertDialog(
+            SignalCoverContent(coverFrame.bottomInset) {
+                SignalScreen(app.station, standalone = true, uiSession = ui, speech = speech,
+                    onManageWatch = { speech.stop(); connectionError = ""; showWatch = true })
+            if (showWatch) SignalAlertDialog(
                 onDismissRequest = { if (!selecting) showWatch = false },
                 title = { Text("Connect a watch") },
                 text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -118,6 +124,7 @@ class MainActivity : ComponentActivity() {
                 confirmButton = { TextButton(enabled = !selecting, onClick = { showWatch = false }) { Text("Done") } },
                 dismissButton = { TextButton(enabled = !selecting, onClick = { selectWatchApp(null) }) { Text("Disconnect Signal Station") } },
             )
+            }
         }
     }
 }
