@@ -1,8 +1,8 @@
 # Flip cover layout — November 4, 2026
 
 Status: **installed; cold cover launch, keyboard, dialog and physical unfolding checks passed**.
-Corrected six-case UI rerun: **6 passed**. Physical refold, final black-strip
-confirmation and TalkBack remain pending. Source is the isolated Napoleon
+Corrected six-case UI rerun: **6 passed**. Final-build refold/relaunch and
+wide/tall/full camera-clearance checks passed. TalkBack remains unverified. Source is the isolated Napoleon
 worktree `/Users/luke/workspace/signal-station-flip-cover`, branch
 `codex/flip-cover-20261104`, based on `a20a1e89`. The original checkout under
 `/Users/luke/workspace/android-builds/appcat-20261103/pebble-inspector-companion`
@@ -86,10 +86,22 @@ dialog. Nothing was saved or sent.
 Luke then physically opened the phone. The device reported state 3; the same
 Activity task, 133, automatically continued on the inner display. The identical
 draft remained visible and normal phone navigation returned. The temporary
-screenshot is `/tmp/signal-unfold-final.png` on Napoleon. Physical refold
-continuity and TalkBack remain pending. The final black camera-strip background
-will also be confirmed during refold; the earlier camera reserve and full-frame
-dialog placement were already exercised on the physical cover.
+screenshot is `/tmp/signal-unfold-final.png` on Napoleon.
+
+After the final APK update and test cleanup, Luke refolded the phone, normally
+unlocked the cover and opened Signal Station from the App Tray. Android reported
+actual CLOSED state 0; the final APK checksum was re-read and matched the
+`c22fc5b5` artifact below. The Now screen was visible on cover display 1, task
+155. Wide → tall → full → wide passed on this final build. In full mode the
+visible window covered `[0,0][948,1048]`; app content ended above the camera strip
+near y839 and the reserved lower area was black. The app was left ready on Now
+in the wide frame, with no synthetic draft, collection or new permissions.
+Final cover evidence is retained in Ambient Time at
+`docs/reviews/assets/flip-apps-20261104/signal-full.png`.
+
+This establishes final-build refold/relaunch and camera clearance. The earlier
+draft test establishes cover-to-inner retention; a draft roundtrip through both
+physical fold directions and TalkBack remain separate, unverified checks.
 
 Artifacts:
 
