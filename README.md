@@ -50,6 +50,16 @@ separate automated checks, phone installation and watch evidence. Physical
 2 SE favorite-screen acceptance and the current TalkBack journey remain open.
 No new watch package or public release was made for this fix.
 
+## Private Flip checkpoint — November 5, 2026
+
+The separate private development preview **0.9.5-flip-dev (27)** was tested on
+the Galaxy Z Flip8 (SM-F776U1). Its cover layout, keyboard and dialogs were
+checked, and the exact synthetic draft retained through inner resume and actual
+cover App Tray return. See the [artifact and physical-return record](docs/signal-station/flip-cover-2026-11-04.md#observed-physical-return--november-5).
+This does not replace the October public downloads or Pixel checkpoint above.
+Uninterrupted foreground transfer is not claimed; TalkBack was skipped at the
+owner's request. Synthetic test-draft cleanup is still recorded separately.
+
 ## Product direction
 
 Signal Station is intended to combine conversation, speech, sensing and optional

@@ -99,9 +99,11 @@ in the wide frame, with no synthetic draft, collection or new permissions.
 Final cover evidence is retained in Ambient Time at
 `docs/reviews/assets/flip-apps-20261104/signal-full.png`.
 
-This establishes final-build refold/relaunch and camera clearance. The earlier
-draft test establishes cover-to-inner retention; a draft roundtrip through both
-physical fold directions remains a separate, unverified check. TalkBack was
+At this November 4 checkpoint, final-build refold/relaunch and camera clearance
+were established, while the draft roundtrip was still unverified. The
+[observed November 5 return](#observed-physical-return--november-5) below completes
+that exact draft check through inner resume and actual cover App Tray return.
+It does not establish uninterrupted automatic foreground transfer. TalkBack was
 subsequently skipped at Luke's request; see the quiet follow-up below.
 
 Artifacts:

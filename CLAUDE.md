@@ -12,9 +12,17 @@ The September 15 release was build 17 with companion Pebble 1.7.1; see
 standing action permission is granted by setup or upgrade. Sent uncertain
 mutations must never inherit generic networking retry behavior.
 
-The latest private installation checkpoint is Android **0.9.2-public-data-dev (24)**,
+The October 5 private Pixel installation checkpoint is Android **0.9.2-public-data-dev (24)**,
 installed in place on Pixel 9a and Pixel 10 with matching APK checksums. See
 [build 24 evidence](docs/signal-station/private-build24-2026-10-05.md).
+The separate November 5 Flip checkpoint is **0.9.5-flip-dev (27)** with embedded
+production revision `323074cf`; see the [cover receipt](docs/signal-station/flip-cover-2026-11-04.md#observed-physical-return--november-5).
+Its synthetic draft retained through the observed inner resume and actual cover
+App Tray return. This is a private device checkpoint, not a public release or
+uninterrupted foreground-transfer claim. TalkBack remains skipped for this
+workstream at Luke's request. Recheck artifact identity and fixtures before any
+new device run; the dated Pixel checkpoint below is not the Flip build.
+
 The October 3 testing downloads remain Android build 20 / Pebble 1.8.1; build 24
 was not publicly distributed. Physical 2 SE favorite-screen acceptance and the
 current TalkBack journey remain open. Keep dated release records distinct.
