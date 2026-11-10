@@ -60,6 +60,18 @@ This does not replace the October public downloads or Pixel checkpoint above.
 Uninterrupted foreground transfer is not claimed; TalkBack was skipped at the
 owner's request. Synthetic test-draft cleanup is still recorded separately.
 
+## Release-signed preview — November 9, 2026
+
+**0.9.6 (28)** is the first build signed with Signal Station's own release key
+and built without the debuggable flag. Its features are those of
+0.9.5-flip-dev (27). Every earlier build was signed with the Android debug key,
+and Android will not update across a signing key change: uninstall the earlier
+build once, which removes saved history, keys and watch links. See
+[Build a release](docs/signal-station/development.md#build-a-release). The APK
+links two libraries that are not free software: ML Kit's on-device prompt
+library and Garmin's Connect IQ companion SDK. No new device acceptance is
+claimed for this build beyond what its own record states.
+
 ## Product direction
 
 Signal Station is intended to combine conversation, speech, sensing and optional
