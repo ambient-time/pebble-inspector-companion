@@ -15,7 +15,31 @@ path in the environment or untracked `local.properties`.
 
 The APK appears in `signalApp/build/outputs/apk/debug/`. The build prepares bundled
 wake-recognition assets and needs network access for uncached dependencies.
-No answer-provider key is needed to compile. The preview is debug-signed.
+No answer-provider key is needed to compile. A debug build is signed with the
+local Android debug key and is for development only.
+
+## Build a release
+
+The published APK is signed with Signal Station's own release key and is never
+debuggable. The key lives in the release toolkit's store, with its password in
+the login Keychain, so the build runs through the toolkit:
+
+```sh
+~/workspace/android-release-toolkit/scripts/android-release \
+  with-signing --profile signal-station -- scripts/build-signal-release.sh
+```
+
+Commit first. The script refuses a dirty tree, runs the app module's unit tests
+and release lint, and stages
+`dist/signal-station/signal-station-<version>-<code>-<revision>.apk` with
+`SHA256SUMS.txt`. The APK records the revision it was built from, and the
+published source archive is cut from that same commit.
+`:signalApp:assembleRelease` fails without the signing values.
+
+Builds up to 0.9.5-flip-dev (27) were signed with the Android debug key. Android
+will not update across a signing key change, so an earlier build must be
+uninstalled once before 0.9.6 or later is installed. That removes saved
+history, keys and watch links.
 
 | Directory | Role |
 | --- | --- |

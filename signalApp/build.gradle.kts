@@ -5,6 +5,14 @@ plugins {
     alias(libs.plugins.composeCompiler)
 }
 val signalRelease = Properties().apply { rootProject.file("signalApp/release.properties").inputStream().use { load(it) } }
+// The published APK is signed with Signal Station's own release key. The four
+// values arrive from the environment only; nothing is read from disk.
+val releaseStoreFile = providers.environmentVariable("SIGNAL_STATION_RELEASE_STORE_FILE").orNull
+val releaseStorePassword = providers.environmentVariable("SIGNAL_STATION_RELEASE_STORE_PASSWORD").orNull
+val releaseKeyAlias = providers.environmentVariable("SIGNAL_STATION_RELEASE_KEY_ALIAS").orNull
+val releaseKeyPassword = providers.environmentVariable("SIGNAL_STATION_RELEASE_KEY_PASSWORD").orNull
+val releaseSigningAvailable = listOf(releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword)
+    .all { !it.isNullOrBlank() }
 val signalRevision = providers.exec { commandLine("git", "rev-parse", "HEAD") }.standardOutput.asText.map { it.trim() }
 val identityDirectory = layout.buildDirectory.dir("generated/signalIdentity")
 val generateSignalIdentity = tasks.register("generateSignalIdentity") {
@@ -36,6 +44,22 @@ android {
         buildConfigField("boolean", "GARMIN_TETHERED", (providers.gradleProperty("signalGarminTethered").orNull == "true").toString())
     }
     sourceSets.getByName("main").assets.srcDir(identityDirectory.get().asFile)
+    signingConfigs {
+        create("release") {
+            if (releaseSigningAvailable) {
+                storeFile = file(releaseStoreFile!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            if (releaseSigningAvailable) signingConfig = signingConfigs.getByName("release")
+        }
+    }
     buildFeatures { compose = true; buildConfig = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -66,3 +90,14 @@ dependencies {
 tasks.matching { it.name.contains("Assets") || it.name.contains("Lint") || it.name.startsWith("lint") }.configureEach { dependsOn(":androidApp:prepareSignalWakeModel") }
 
 tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(generateSignalIdentity) }
+
+// An unsigned release APK is easy to mistake for a publishable one. Published
+// builds are release-signed and never debuggable.
+tasks.matching { it.name == "assembleRelease" }.configureEach {
+    val signed = releaseSigningAvailable // a local copy keeps the configuration cache usable
+    doFirst {
+        check(signed) {
+            "Release signing is not configured. Run scripts/build-signal-release.sh through the release toolkit's with-signing command."
+        }
+    }
+}
