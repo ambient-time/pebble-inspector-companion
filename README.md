@@ -68,9 +68,10 @@ and built without the debuggable flag. Its features are those of
 and Android will not update across a signing key change: uninstall the earlier
 build once, which removes saved history, keys and watch links. See
 [Build a release](docs/signal-station/development.md#build-a-release). The APK
-links two libraries that are not free software: ML Kit's on-device prompt
-library and Garmin's Connect IQ companion SDK. No new device acceptance is
-claimed for this build beyond what its own record states.
+links libraries that are not free software: ML Kit's on-device prompt library,
+the Google Play services client libraries it brings with it, and Garmin's
+Connect IQ companion SDK. [NOTICE.md](NOTICE.md) lists them. No new device
+acceptance is claimed for this build beyond what its own record states.
 
 ## Product direction
 
@@ -126,6 +127,8 @@ fork also includes code under [GNU GPLv3](LICENSE); see
 [licensing scope](LICENSING.md). Core Devices' original notices
 and [commercial license](LICENSE-COMMERCIAL) remain intact; see
 [upstream licensing](UPSTREAM.md#copyright-and-licensing).
+The Signal Station APK also bundles third-party libraries under their own
+terms; [NOTICE.md](NOTICE.md) lists them.
 See [public source access](docs/signal-station/open-source.md) for repository and release details.
 
 Upstream software by [Core Devices](https://github.com/coredevices/mobileapp).
