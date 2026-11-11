@@ -2,7 +2,7 @@
 
 Capture signals. Notice what changes.
 
-[![Download Signal Station](https://img.shields.io/badge/Signal_Station-Download-2563eb?style=flat-square)](https://dr.eamer.dev/downloads/apps/signal-station/) [![Ambient Time](https://img.shields.io/badge/Ambient_Time-Collection-181717?style=flat-square)](https://github.com/ambient-time)
+[![Download Signal Station](https://img.shields.io/badge/Signal_Station-Download-2563eb?style=flat-square)](https://dr.eamer.dev/downloads/apps/signal-station/) [![F-Droid repository](https://img.shields.io/badge/F--Droid-LocalType_releases_repo-1976D2?style=flat-square)](https://dr.eamer.dev/downloads/fdroid/) [![Ambient Time](https://img.shields.io/badge/Ambient_Time-Collection-181717?style=flat-square)](https://github.com/ambient-time)
 
 I built Signal Station as a field notebook for Android, with a Pebble interface
 for your wrist. Explore nearby Wi-Fi and Bluetooth signals, save sensor readings,
