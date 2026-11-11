@@ -1,6 +1,6 @@
 # On-device answers
 
-Private preview, October 3, 2026. Android 0.7.0-local-dev (20).
+Written for the private preview of October 3, 2026: Android 0.7.0-local-dev (20). Later the same day, build 20 became the public testing download; see [the October 3 testing downloads](download-preview-2026-10-03.md).
 
 Settings → Answers offers On phone · Gemini Nano and On phone · Gemma alongside existing cloud providers. Existing provider choices, keys, history and pairing remain intact on upgrade. Changing sources starts a new conversation under the existing settings rules; prior history is kept. No automatic cloud fallback is permitted.
 
@@ -12,4 +12,4 @@ Gemma uses a separate non-exported LiteRT-LM process with bounded loading/genera
 
 Verification: 293 Signal host tests passed and 8 were skipped; 15 module tests, Android builds and module lint passed. Device checks passed in both apps on Pixel 10 and Pixel 9a. A separate Android integration test confirmed exact review/send parity, one-use consent on success and failure, and rejection of oversized local evidence. Setup panels were inspected at 130% text scale. Native process startup was checked without model files.
 
-No Gemma download was started. End-to-end Gemma transfer/import/inference, sustained background behavior and wearer-led watch acceptance remain open. Installed files and a successful Test on this phone result are deliberately separate checks. Speech recognition and external lookups retain their own network settings. This does not add speaker playback to Signal's watch app or publish a Store release or public APK.
+No Gemma download was started. End-to-end Gemma transfer/import/inference, sustained background behavior and wearer-led watch acceptance remain open. Installed files and a successful Test on this phone result are deliberately separate checks. Speech recognition and external lookups retain their own network settings. This preview did not add speaker playback to Signal's watch app. When this was written, build 20 had no Store release or public APK; the APK was published to the download page afterward, with the Pebble 1.8.1 package staged as a Store draft.

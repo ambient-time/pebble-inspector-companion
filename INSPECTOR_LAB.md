@@ -8,7 +8,7 @@ capture history; the watch collects signals and shows a short answer.
 By Luke Steuber. This is an experimental Android companion and Pebble watchapp.
 
 The Android fork preserves Core Devices' source, notices and history from
-`d52101ad3d8940c5aa392d6f224e774cb6f5ce84`. The [upstream README](README.md)
+`d52101ad3d8940c5aa392d6f224e774cb6f5ce84`. The [upstream README](UPSTREAM.md)
 describes the rest of the companion. The earlier Field Inspector audio experiment
 remains in Git history; its choppy speaker playback is no longer part of this app.
 
