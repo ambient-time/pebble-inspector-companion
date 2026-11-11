@@ -8,7 +8,7 @@ Signal Station collects individually selected observations, keeps local history 
 
 The released Android build uses shared Kotlin/Compose models, UI, provider formats, Home connectors and an action-permission engine. Android supplies collectors, encrypted persistence, lifecycle services, transport policy and the station coordinator. The Pebble program exchanges bounded packets with that phone implementation. An iOS port can reuse shared logic, but still needs real iOS adapters and a product shell. Geepers is a separate Capacitor application with a Swift Foundation Models bridge and its own research tools and voice hooks. Ambient Time's Garmin faces are separate Monkey C applications. Neither Geepers nor those Garmin faces currently implements Signal Station Home.
 
-Sources inspected: Signal Android `abb39a3b`, watch `20a6226` (binary source `68e26c05`), Geepers checkout `9984d31`, and refreshed Ambient Time `origin/main` `4aef30be`. Garmin SDK 9.2.0 and installed Venu 2S definition (API 5.0.0, firmware definition 1905) were inspected. Those definitions do not prove today's installed watch firmware.
+Sources inspected: Signal Android `abb39a3b`, watch `20a6226` (binary source `68e26c05`), a Geepers checkout, and refreshed Ambient Time `origin/main` `4aef30be`. Garmin SDK 9.2.0 and installed Venu 2S definition (API 5.0.0, firmware definition 1905) were inspected. Those definitions do not prove today's installed watch firmware.
 
 ## Platform boundaries
 
@@ -73,8 +73,7 @@ Further precision: [HealthKit SDNN](https://developer.apple.com/documentation/he
 - `signal/src/androidMain/.../AndroidSignalStation.kt`, `SignalCollectors.kt`, `SignalStore.kt`, `SignalHealthConnect.kt`: Android-specific work that needs real iOS equivalents.
 - `SignalWakeService.kt`: bounded local microphone/wake-phrase implementation.
 - `pebble/src/iosMain/.../watchModule.ios.kt`: upstream Pebble services exist; SignalStation is not registered.
-- `geepers-app/ios/App/App/Info.plist`, `FoundationModelsPlugin.swift`, `GeepersTools.swift`: native bridge and current iOS permissions/tools.
-- `geepers-app/client/src/hooks/useSpeechRecognition.ts`, `useServerSTT.ts`, `useTTS.ts`: existing voice paths.
+- The Geepers app's native iOS bridge, current iOS permissions and tools, and existing speech recognition and speech output paths. Its source is not in this repository.
 - `ambient-time/appstores/garmin/faces/*/manifest.xml`, `supported-devices.json`, `circular-batch.json`, `DEVICE-EVIDENCE.md`: app type, actual target sets and dated hardware evidence.
 
 ## Implementation gates

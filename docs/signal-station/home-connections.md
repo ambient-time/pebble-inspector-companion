@@ -100,6 +100,14 @@ command-complete receipt alone remains accepted with an explanatory message;
 matching reported state is a separate observation and still does not prove
 physical movement. Cancellation does not undo a sent command.
 
+Geepers is my own home hub. The hub side is a separate private project, and
+its source is not in this repository. What the app uses is a small HTTP API
+under `/api/signal-home/v1`, authorized with the connection's bearer token:
+`snapshot` returns the device catalog in pages, with each device's readings and
+declared actions; `actions` requests one action; and `receipts/<id>` reports
+that request's outcome. `SignalGeepersHomeConnector` in the `signal` module is
+the client.
+
 Geepers keeps Matter/Zigbee controllers and credentials on the hub. Its Home API
 exposes their observations and supported Node Hub display commands. Phone
 display controls require the hub's bounded-dispatch capability; older hubs remain

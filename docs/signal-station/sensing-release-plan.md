@@ -45,14 +45,14 @@ Ship Android independently when its gates pass. Prepare the existing Pebble list
 
 Observed September 10:
 
-- Android source is `/Users/luke/workspace/pebble-inspector-companion`, clean at `4a2c5121912b50607ead0fcdd7179b8baacba665`. `signalApp/release.properties` declares `0.2.2-learning-dev`, build 6, package `com.lukesteuber.signalstation`. Android minimum API 26; compile SDK 37.
+- Android source is `~/workspace/pebble-inspector-companion`, clean at `4a2c5121912b50607ead0fcdd7179b8baacba665`. `signalApp/release.properties` declares `0.2.2-learning-dev`, build 6, package `com.lukesteuber.signalstation`. Android minimum API 26; compile SDK 37.
 - Both public app pages return HTTP 200 with identical HTML SHA-256 `3ec30fa51e1883270d9b3fe7164d7fba4bef106c4a49a1f2c084c4cd006c29ed`. They show build 6, the new icon/OG assets and the minimal page design.
 - `SignalCollectors` and `SignalPresenceCollector` can independently acquire the same radios/location for one capture. Hardware summaries are text; `SignalLearning.normalize` only infers a number from a wholly numeric string. Session storage applies `readings.take(200)` and learning frames apply `.take(64)`.
 - Existing `SignalChanges` already implements local comparisons, but currently excludes observation sessions/health imports and most structured sensor/radio values. Extend it rather than create a competing report subsystem.
 - Existing `SignalObservationService` has finite sessions, Stop, no automatic restart, and battery/storage/thermal guards. Existing Health Connect import preserves origins, intervals and updates/deletions, but flattens sleep/heart-rate detail.
-- Watch development source is `/Users/luke/workspace/pebble-field-inspector`, clean at `d3eeabb`, package 1.3.0. Companion `scripts/build-signal-addon-watch.py` produces a separate no-PKJS 1.4.0 addon for the independent Android package.
+- Watch development source is `~/workspace/pebble-field-inspector`, clean at `d3eeabb`, package 1.3.0. Companion `scripts/build-signal-addon-watch.py` produces a separate no-PKJS 1.4.0 addon for the independent Android package.
 - The saved store receipt records app ID `37360ca4d9764881bd1d6f4d`, Unlisted / Draft 1.2.0, checked September 9. The public URL returned an application-not-found body during this review; a later fetch was denied. Neither is dashboard confirmation. Re-read the authenticated dashboard during release preparation.
-- The actual Ambient page is `https://ambient-time.com/watch/pebble/`. It already contains Signal Station in a collapsed beta section. Its current source is the clean `/Users/luke/workspace/ambient-time-pebble-apps-faces` worktree, branch `codex/pebble-beta-preview`, commit `c2f4e625`. The primary Ambient checkout has unrelated dirty watch work and older page-generation code. Do not deploy from that stale generator.
+- The actual Ambient page is `https://ambient-time.com/watch/pebble/`. It already contains Signal Station in a collapsed beta section. Its current source is the clean `~/workspace/ambient-time-pebble-apps-faces` worktree, branch `codex/pebble-beta-preview`, commit `c2f4e625`. The primary Ambient checkout has unrelated dirty watch work and older page-generation code. Do not deploy from that stale generator.
 
 Historical, not rerun in this planning task: build 6 documentation records 112 host tests, 22 Android instrumentation tests and 77 publishing tests. These are a baseline inventory, not validation of future changes or physical devices.
 

@@ -66,7 +66,7 @@ to that clean source. It now pins corrected 1.6.2; see the dated trial receipt f
 current bytes. The existing 1.5.0 release descriptor is unchanged.
 
 ```sh
-ANDROID_HOME=/Users/luke/Library/Android/sdk ./gradlew \
+ANDROID_HOME="$HOME/Library/Android/sdk" ./gradlew \
   :signal:testAndroidHostTest :signalApp:assembleDebug --no-daemon --no-parallel
 python3 scripts/build-signal-addon-watch.py ../pebble-field-inspector \
   --descriptor signalApp/watch-collection-preview.json \
