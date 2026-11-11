@@ -48,8 +48,9 @@ work; already-sent uncertain actions remain visible without automatic retry.
 | Measured: Geepers / Node Hub | 36 dashboard tests; 295 hub tests, mypy over 31 files, targeted Ruff passed. |
 | Observed: selected display | One color-puck refresh received HTTP 202 and a correlated completed-command receipt. This proves reported command handling, not visible appearance. |
 
-The deployed Geepers gateway uses source `9807a2b`, with Node Hub `988932f`.
-Its final observed catalog had 24 records: eight display registry records
+The deployed Geepers gateway and its Node Hub are described in
+[Home connections](home-connections.md#permissions-and-receipts).
+The gateway's final observed catalog had 24 records: eight display registry records
 (including unavailable/simulator entries), eight Matter endpoints and eight paired
 Zigbee devices. All eight Zigbee records awaited readings in that gateway check.
 Catalog presence and response time are not sensor measurements. Temporary phone

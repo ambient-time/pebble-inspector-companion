@@ -3,9 +3,9 @@
 Status: **installed; cold cover launch, keyboard, dialog and physical unfolding checks passed**.
 Corrected six-case UI rerun: **6 passed**. Final-build refold/relaunch and
 wide/tall/full camera-clearance checks passed. TalkBack remains unverified. Source is the isolated Napoleon
-worktree `/Users/luke/workspace/signal-station-flip-cover`, branch
+worktree `~/workspace/signal-station-flip-cover`, branch
 `codex/flip-cover-20261104`, based on `a20a1e89`. The original checkout under
-`/Users/luke/workspace/android-builds/appcat-20261103/pebble-inspector-companion`
+`~/workspace/android-builds/appcat-20261103/pebble-inspector-companion`
 was read for its cached build asset and was not modified.
 
 ## Change
@@ -45,7 +45,7 @@ directory; no model was downloaded or executed.
 
 ```sh
 JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home \
-ANDROID_HOME=/Users/luke/Library/Android/sdk ./gradlew \
+ANDROID_HOME="$HOME/Library/Android/sdk" ./gradlew \
   :signalApp:assembleDebug :signalApp:assembleDebugAndroidTest \
   :signalApp:testDebugUnitTest :signal:testAndroidHostTest \
   :signalApp:lintDebug --offline --console=plain
