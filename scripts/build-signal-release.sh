@@ -67,6 +67,13 @@ if [[ "${identity}" != *"${revision:0:8}"* ]]; then
   exit 1
 fi
 
+for notice in assets/signal-station/LICENSE-vosk.txt assets/signal-station/WAKE_MODEL_NOTICE.txt; do
+  if ! unzip -l "${built}" "${notice}" >/dev/null 2>&1; then
+    echo "The APK is missing the speech notice ${notice}." >&2
+    exit 1
+  fi
+done
+
 mkdir -p "${stage_dir}"
 find "${stage_dir}" -maxdepth 1 -type f -delete
 apk="signal-station-${version_name}-${version_code}-${revision:0:8}.apk"
