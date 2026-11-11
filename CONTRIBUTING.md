@@ -18,7 +18,9 @@ Follow the existing style and keep unrelated formatting out of your patch.
 Explain the checks you ran and any you could not run. A passing build does not
 prove watch compatibility or background behavior.
 
-This fork retains its existing GPLv3 license and upstream notices. Changes sent
+This fork retains its existing GPLv3 license and upstream notices. My original
+Signal Station contributions are also offered under MIT; [LICENSING.md](LICENSING.md)
+says which directories that covers. Changes sent
 to Core Devices follow [their contribution rules](CONTRIBUTING-UPSTREAM.md),
 including their contributor agreement. Those are upstream submission rules.
 
