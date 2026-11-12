@@ -192,7 +192,7 @@ class SignalCollectors(private val context: Context) {
 
     private suspend fun bluetooth(enabled: Set<String>, settings: SignalSettings): RadioProbe {
         val keys = enabled.filter { it == "bluetooth" || it.startsWith("bluetooth.") }
-        if (!permitted(Manifest.permission.ACCESS_FINE_LOCATION) || (Build.VERSION.SDK_INT >= 31 && (!permitted(Manifest.permission.BLUETOOTH_SCAN) || !permitted(Manifest.permission.BLUETOOTH_CONNECT)))) return RadioProbe(unavailable(keys, "permission_denied"))
+        if (!permitted(Manifest.permission.ACCESS_FINE_LOCATION) || (Build.VERSION.SDK_INT >= 31 && !permitted(Manifest.permission.BLUETOOTH_SCAN))) return RadioProbe(unavailable(keys, "permission_denied"))
         val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         val adapter = manager.adapter ?: return RadioProbe(unavailable(keys, "hardware_unavailable"))
         if (!adapter.isEnabled) return RadioProbe(unavailable(keys, "radio_disabled"))
@@ -335,7 +335,7 @@ class SignalCollectors(private val context: Context) {
             val at = result.measuredAt
             if (at == null || System.currentTimeMillis() - at !in 0..900_000) return SignalWeather.missing(keys, "location_stale")
             note = "phone position rounded to 0.01 degree; ${result.status}; location_time=$at; accuracy_m=${if (fix.hasAccuracy()) fix.accuracy else "unknown"}"
-            SignalPlace("Near this phone", round(fix.latitude * 100) / 100, round(fix.longitude * 100) / 100)
+            SignalPlace("Near this device", round(fix.latitude * 100) / 100, round(fix.longitude * 100) / 100)
         } else settings.weatherPlace ?: return SignalWeather.missing(keys, "choose_weather_place")
         return weather.collect(keys, place, note)
     }

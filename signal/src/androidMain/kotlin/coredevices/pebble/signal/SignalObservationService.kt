@@ -31,8 +31,7 @@ class SignalObservationService : Service() {
             val notification = notification("Starting selected observations…")
             if (Build.VERSION.SDK_INT >= 29) {
                 var types = if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
-                if (pending.sourceKeys.any { it == "location" || it.startsWith("presence.") || it.startsWith("wifi") || it.startsWith("weather.") || it.startsWith("cellular") } && (granted(Manifest.permission.ACCESS_FINE_LOCATION) || granted(Manifest.permission.ACCESS_COARSE_LOCATION))) types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
-                if (pending.sourceKeys.any { it.startsWith("bluetooth") || it == "presence.bluetooth" } && (Build.VERSION.SDK_INT < 31 || granted(Manifest.permission.BLUETOOTH_SCAN))) types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+                if (pending.sourceKeys.any { it == "location" || it.startsWith("presence.") || it.startsWith("wifi") || it.startsWith("bluetooth") || it.startsWith("weather.") || it.startsWith("cellular") } && (granted(Manifest.permission.ACCESS_FINE_LOCATION) || granted(Manifest.permission.ACCESS_COARSE_LOCATION))) types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
                 if (Build.VERSION.SDK_INT >= 34 && "sensor.21" in pending.sourceKeys && (granted(Manifest.permission.BODY_SENSORS) || granted("android.permission.health.READ_HEART_RATE"))) types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH
                 startForeground(6110, notification, types)
             } else startForeground(6110, notification)
