@@ -37,7 +37,7 @@ internal class GarminSession(
 class GarminAppLink(private val connection: GarminConnection) : SignalWatchLink {
     private val mutable = MutableStateFlow<List<SignalWatch>>(emptyList())
     override val watches = mutable.asStateFlow()
-    override val capabilities = SignalWatchCapabilities(messages = true, description = "Uses Garmin Connect on this phone.")
+    override val capabilities = SignalWatchCapabilities(messages = true, description = "Uses Garmin Connect on this device.")
     lateinit var request: suspend (String, String, String?, SignalWatchSession) -> SignalWatchResponse
     /** Called after every watch-list change, before any request from that session is handled. */
     var onChanged: () -> Unit = {}

@@ -104,7 +104,7 @@ object SignalTrend {
         row.fields["deviceId"]?.takeIf(String::isNotBlank) ?: row.fields["device"]?.takeIf(String::isNotBlank) ?: when {
             row.source.startsWith("health_connect:") -> listOf("deviceManufacturer", "deviceModel", "deviceType")
                 .joinToString(" · ") { row.fields[it]?.takeIf(String::isNotBlank) ?: "unknown" }
-            row.source == "phone" -> "This phone"
+            row.source == "phone" -> "This device"
             record.watchId.isNotBlank() -> record.watchId
             else -> "Device not recorded"
         }, row.identity, row.period, row.fields["recordingMethod"]?.takeIf(String::isNotBlank)

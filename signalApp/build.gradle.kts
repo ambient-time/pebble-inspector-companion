@@ -17,20 +17,24 @@ val releaseKeyAlias = providers.environmentVariable("SIGNAL_STATION_RELEASE_KEY_
 val releaseKeyPassword = providers.environmentVariable("SIGNAL_STATION_RELEASE_KEY_PASSWORD").orNull
 val releaseSigningAvailable = listOf(releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword)
     .all { !it.isNullOrBlank() }
+// -PsignalPlay=true builds the Google Play variant: no links to pages that offer installers.
+val signalPlay = providers.gradleProperty("signalPlay").orNull == "true"
 val signalRevision = providers.exec { commandLine("git", "rev-parse", "HEAD") }.standardOutput.asText.map { it.trim() }
 val identityDirectory = layout.buildDirectory.dir("generated/signalIdentity")
 val generateSignalIdentity = tasks.register("generateSignalIdentity") {
     inputs.file("release.properties")
     inputs.property("revision", signalRevision)
+    inputs.property("play", signalPlay)
     outputs.dir(identityDirectory)
     val revision = signalRevision
     val directory = identityDirectory
     val version = signalRelease.getProperty("versionName")
     val code = signalRelease.getProperty("versionCode")
+    val suffix = if (signalPlay) "" else " · preview"
     doLast {
         directory.get().file("signal-build.txt").asFile.apply {
             parentFile.mkdirs()
-            writeText("$version ($code) · ${revision.get().take(8)} · development preview")
+            writeText("$version ($code) · ${revision.get().take(8)}$suffix")
         }
     }
 }
@@ -73,6 +77,11 @@ android {
         versionCode = signalRelease.getProperty("versionCode").toInt()
         versionName = signalRelease.getProperty("versionName")
         // -PsignalGarminTethered=true talks to the Connect IQ simulator over adb instead of Garmin Connect.
+        buildConfigField("boolean", "PLAY_BUILD", signalPlay.toString())
+        listOf("guideUrl", "sourceUrl", "privacyPolicyUrl", "contactEmail").forEach { key ->
+            val constant = key.replace(Regex("[A-Z]")) { "_" + it.value }.uppercase()
+            buildConfigField("String", constant, "\"" + signalRelease.getProperty(key, "") + "\"")
+        }
         buildConfigField("boolean", "GARMIN_TETHERED", (providers.gradleProperty("signalGarminTethered").orNull == "true").toString())
     }
     sourceSets.getByName("main").assets.srcDir(identityDirectory.get().asFile)

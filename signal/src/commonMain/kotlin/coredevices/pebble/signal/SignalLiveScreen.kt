@@ -110,7 +110,7 @@ internal fun SignalLivePage(state: SignalState, station: SignalStation, onSource
                 Text("Scans only while this view is open, for up to 5 minutes. Android may limit scan updates.", style = MaterialTheme.typography.bodySmall)
                 Text("Tinted rows were seen in at least three fresh scans. Counts reset with a new session or after an observation leaves the view. Repetition does not establish trust or safety.", style = MaterialTheme.typography.bodySmall)
                 Text("Recently seen means within 15 seconds. Older observations are labeled and leave after 60 seconds.", style = MaterialTheme.typography.bodySmall)
-                Text("Save snapshot stores the visible fresh readings on this phone. Ask saves a snapshot and opens a draft for review.", style = MaterialTheme.typography.bodySmall)
+                Text("Save snapshot stores the visible fresh readings on this device. Ask saves a snapshot and opens a draft for review.", style = MaterialTheme.typography.bodySmall)
                 if (live.updatedAt > 0) Text("Latest update: ${signalDateTime(live.updatedAt)}", style = MaterialTheme.typography.bodySmall)
                 if (live.omittedAtLeast > 0) Text("At least ${live.omittedAtLeast} additional observations omitted from this bounded view.", style = MaterialTheme.typography.bodySmall)
             }

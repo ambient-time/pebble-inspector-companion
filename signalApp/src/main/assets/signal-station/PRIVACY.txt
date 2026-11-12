@@ -1,0 +1,77 @@
+Signal Station privacy policy
+
+Signal Station is a field notebook. It saves readings you choose on your device and lets you ask a language model about them. I run no server for this app. I receive nothing from it: no account, no analytics, no advertising, no crash reports.
+
+Data leaves your device only when you send it somewhere, to a service you chose. This policy lists each of those cases.
+
+What the app stores on your device
+
+Captures and their readings, questions and answers, memories, saved questions, recording sessions, Home connection details and the Home action log, and the provider keys and server tokens you enter. All of it is encrypted with a key held in the Android Keystore. Android backup and device transfer are turned off for this app, so none of it is copied to a cloud backup.
+
+Every source starts off. Android asks for a permission only when a source you turned on needs it.
+
+Readings you can choose to collect
+
+Battery and charging state, time and timezone, network status, device sensors, step and heart-rate sensors, location, visible Wi-Fi networks (names, BSSIDs, signal levels), nearby Bluetooth devices (names, addresses, signal levels), cell information (network codes, area codes, cell ids), Health Connect records (steps, distance, calories, exercise, sleep, heart rate, resting heart rate, heart rate variability), weather for a place, and states from a home system you connected.
+
+When a question is sent to a model provider
+
+You pick the provider: OpenAI, Anthropic, Google Gemini, xAI, OpenRouter, or an endpoint you enter. You supply your own key. When you tap Send, the app sends that provider your question, earlier turns of the same conversation, and the readings and memories you attached.
+
+Attached readings are sent as saved. They are not redacted. If you attached them, that includes precise coordinates, Wi-Fi BSSIDs and network names, Bluetooth addresses, cell ids, and health records. The Review before sending screen shows the exact text before anything is sent. What the provider does with it is governed by that provider's terms and your account with them.
+
+If you let a question use a home connection, data the model retrieves from your home system is sent to the same provider.
+
+Scheduled model analysis
+
+Record over time has an option named Scheduled model analysis. It is off unless you turn it on. While a recording session runs with it on, the app sends the latest two captures of that session to your provider on a schedule, without asking before each send. It uses only the sources you selected for that session. It stops when the session stops.
+
+On-device models
+
+With Gemini Nano or Gemma selected, the question and readings are processed on the device and are not sent to a provider. A failed local answer never falls back to a hosted one. Downloading Gemma fetches a model file from huggingface.co; that request carries no readings.
+
+Gemini Nano runs through Google's ML Kit and Android AICore. The ML Kit library is part of the app. Google states that ML Kit may send Google usage and diagnostic information, such as device and app information, performance metrics and API configuration, and that it does not send the text you process. See Google's ML Kit terms and data disclosure pages.
+
+Lookups
+
+Weather: a place you chose, or your position rounded to about 1 km, goes to Open-Meteo. For a chosen place in the United States the app can also ask api.weather.gov, NOAA Tides and Currents, and the USGS earthquake service.
+
+Nearby places and addresses: after you review the request, your captured location rounded to four decimal places (about 11 m) and a search radius go to an OpenStreetMap Overpass service (overpass-api.de unless you change it).
+
+Radio location: after you review the request, the BSSIDs, names and signal levels of visible Wi-Fi networks and the ids of visible cell towers go to a location service (api.beacondb.net unless you change it). Hidden and _nomap networks are left out.
+
+Place search for weather sends the text you type to Open-Meteo.
+
+Home connections
+
+If you connect Home Assistant, openHAB, an MQTT broker or another supported hub, the app stores the address and the access token you enter, encrypted, on your device. It sends the token only to that server. If you mark a private address as trusted, the connection may use plain HTTP or an unencrypted socket on your network.
+
+Watches
+
+If you link a Pebble, short replies and requests pass through the Pebble app you chose. If you link a Garmin watch, they pass through Garmin Connect. Those apps have their own policies.
+
+Voice
+
+Wake listening and voice drafts are recognized on the device. Audio is held in memory, is not saved and is not sent anywhere. Dictation on a Pebble uses the Pebble app's own speech service.
+
+Health data
+
+Health Connect records are read only for the types you grant, stored encrypted on your device, and used to answer your own questions. The app does not write health records, does not use them for advertising, and does not sell or transfer them. They leave the device only when you attach them to a question you send, or when scheduled model analysis is on for a session that includes them. The app's use of information received from Health Connect follows the Health Connect permissions policy, including its limited use requirements.
+
+Keeping and deleting
+
+Data stays on your device until you delete it. In the app you can delete a record, a conversation, a filtered selection, all history, a memory, a saved key, a home connection and a downloaded model. Settings, Storage, Erase all app data removes everything the app has stored, including keys, tokens, logs and model files. Uninstalling the app does the same.
+
+Because I hold none of your data, there is nothing for me to delete on request. Data you sent to a provider or lookup service is held by that service under its policy.
+
+Children
+
+The app is not directed to children.
+
+Contact
+
+Questions about this policy: luke@lukesteuber.com
+
+Changes
+
+When this policy changes, the new text ships with an app update and replaces the published page.

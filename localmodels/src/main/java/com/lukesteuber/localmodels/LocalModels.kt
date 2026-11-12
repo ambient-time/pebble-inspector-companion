@@ -106,10 +106,10 @@ class LocalModels private constructor(private val app: Application) {
                     client.answer(LocalModelPolicy.prompt(messages))
                 }
                 LocalModelPolicy.NANO -> withContext(Dispatchers.Main.immediate) {
-                    if (resumed.isEmpty()) throw LocalModelFailure("Gemini Nano needs this phone app open on screen. Nothing was sent to a cloud provider.")
+                    if (resumed.isEmpty()) throw LocalModelFailure("Gemini Nano needs this app open on screen. Nothing was sent to a cloud provider.")
                     coroutineScope {
                         val task = async(start = CoroutineStart.LAZY) {
-                            if (checkNano() != NanoAvailability.READY) throw LocalModelFailure("Gemini Nano is not ready on this phone. Check On-device setup in Answers.")
+                            if (checkNano() != NanoAvailability.READY) throw LocalModelFailure("Gemini Nano is not ready on this device. Check On-device setup in Answers.")
                             val request = GenerateContentRequest.builder(TextPart(LocalModelPolicy.prompt(messages))).apply {
                                 maxOutputTokens = 512; temperature = 0.3f
                             }.build()
@@ -158,7 +158,7 @@ class LocalModels private constructor(private val app: Application) {
                     files.import(uri) {
                     mutableImport.value = "Importing ${ModelImportRules.formatBytes(it)}"
                 } } }
-                complete("Imported model stored on this phone. Run Check saved setup to test it.")
+                complete("Imported model stored on this device. Run Check saved setup to test it.")
             } catch (e: CancellationException) { complete("Import cancelled. The previous model is kept."); throw e }
             catch (e: Exception) { complete((e as? LocalModelFailure)?.message ?: "Import failed. The previous model is kept.") }
             finally { mutableImport.value = null; filesChanged() }

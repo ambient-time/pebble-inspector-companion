@@ -3,10 +3,10 @@ package coredevices.pebble.signal
 /** Local comparisons describe measurements, never inferred events between captures. */
 object SignalChanges {
     /** Automatic local analysis compares only consecutive retained samples from this explicit session. */
-    fun createScheduled(current: SignalRecord, previous: SignalRecord?, enabled: Set<String>, id: String, createdAt: Long): SignalRecord? {
+    fun createScheduled(current: SignalRecord, previous: SignalRecord?, enabled: Set<String>, id: String, createdAt: Long, names: Map<String, String> = emptyMap()): SignalRecord? {
         if (previous == null || current.sessionId.isBlank() || previous.sessionId != current.sessionId ||
             current.kind != "observation" || previous.kind != "observation") return null
-        return create(current, listOf(previous), enabled, id, createdAt)?.copy(sessionId = current.sessionId)
+        return create(current, listOf(previous), enabled, id, createdAt, names)?.copy(sessionId = current.sessionId)
     }
     private fun scope(record: SignalRecord) = record.sourceKeys + record.observations.map { it.key }
     private fun eligible(record: SignalRecord, enabled: Set<String>) = record.state == "ready" &&
@@ -21,7 +21,9 @@ object SignalChanges {
     }
 
     /** Caller supplies a new durable ID and wall time; null means no compatible eligible baseline. */
-    fun create(current: SignalRecord, records: List<SignalRecord>, enabled: Set<String>, id: String, createdAt: Long): SignalRecord? {
+    /** [names] maps source keys to the names shown in Sources, so the summary reads like the rest of the app. */
+    fun create(current: SignalRecord, records: List<SignalRecord>, enabled: Set<String>, id: String, createdAt: Long, names: Map<String, String> = emptyMap()): SignalRecord? {
+        fun name(key: String) = names[key] ?: key.replace('.', ' ').replace('_', ' ')
         val previous = baseline(current, records, enabled) ?: return null
         val before = previous.observations.groupBy(::identity)
         val after = current.observations.groupBy(::identity)
@@ -34,7 +36,7 @@ object SignalChanges {
             val next = after[key]?.singleOrNull()
             if (old == null || next == null || !comparable(old) || !comparable(next) || !compatibleWindow(old, next)) { unknown++; continue }
             if (old.measuredAt != null && next.measuredAt != null && next.measuredAt <= old.measuredAt && (old.value != next.value || old.status != next.status)) { unknown++; continue }
-            val title = "${if (next.key.startsWith("presence.") && next.identity.isNotBlank()) next.value.substringBefore(": ${next.status}").take(100) else (next.key + " " + next.metric).trim().replace('.', ' ').replace('_', ' ')}${next.date?.let { " ($it)" }.orEmpty()}"
+            val title = "${if (next.key.startsWith("presence.") && next.identity.isNotBlank()) next.value.substringBefore(": ${next.status}").take(100) else (name(next.key) + " " + next.metric.replace('.', ' ').replace('_', ' ')).trim()}${next.date?.let { " ($it)" }.orEmpty()}"
             if (next.key.startsWith("presence.")) {
                 if (old.status == next.status) unchanged++
                 else changes += "$title: ${old.status} → ${next.status}. This is a change in observations, not proof of arrival or departure."
@@ -43,19 +45,19 @@ object SignalChanges {
                 val b = (next.number ?: next.value.toDoubleOrNull())?.takeIf { it.isFinite() }
                 if (a != null && b != null) {
                     if (!(b - a).isFinite()) { unknown++; continue }
-                    if (a == b) unchanged++ else changes += "$title: $a → $b ${next.unit} (difference ${b - a})."
+                    if (a == b) unchanged++ else changes += "$title: ${SignalDisplay.number(a)} → ${SignalDisplay.number(b)} ${next.unit}".trimEnd() + " (difference ${SignalDisplay.number(b - a)})."
                 } else if (next.key == "device.charging" && old.value in setOf("true", "false") && next.value in setOf("true", "false")) {
                     if (old.value == next.value) unchanged++ else changes += "$title: ${old.value} → ${next.value}."
                 } else unknown++
             }
         }
         val text = buildString {
-            append("Compared captures from ${signalDateTime(previous.createdAt)} and ${signalDateTime(current.createdAt)} (phone local time).\n")
+            append("Compared captures from ${signalDateTime(previous.createdAt)} and ${signalDateTime(current.createdAt)} (local time).\n")
             append("${changes.size} changed; $unchanged unchanged; $unknown unknown or not comparable.\n")
             val added = scope(current) - commonSources
             val removed = scope(previous) - commonSources
-            if (added.isNotEmpty()) append("Newly included sources: ${added.sorted().joinToString()}.\n")
-            if (removed.isNotEmpty()) append("Sources absent from the newer record: ${removed.sorted().joinToString()}.\n")
+            if (added.isNotEmpty()) append("Newly included sources: ${added.map(::name).sorted().joinToString()}.\n")
+            if (removed.isNotEmpty()) append("Sources absent from the newer record: ${removed.map(::name).sorted().joinToString()}.\n")
             val omitted = (previous.coverage + current.coverage).sumOf { it.omitted }
             if (omitted > 0) append("$omitted readings were omitted from these saved records; comparisons cover retained evidence.\n")
             SignalRadioChanges.describe(previous, current).forEach { append(it); append('\n') }

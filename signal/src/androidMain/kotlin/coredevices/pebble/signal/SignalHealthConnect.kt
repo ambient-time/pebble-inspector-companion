@@ -200,7 +200,7 @@ class SignalHealthRationaleActivity : android.app.Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(android.widget.TextView(this).apply {
-            text = "Signal Station reads only the health types you choose. Imported readings are encrypted on this phone and stay here until deleted. A language model receives health context only when you explicitly send a request with those sources enabled. Signal Station does not write health records. Manage access in Health Connect; delete local copies in Activity and Memory."
+            text = "Signal Station reads only the health types you choose. Imported readings are encrypted on this device and stay here until deleted. A language model receives health context only when you explicitly send a request with those sources enabled. Signal Station does not write health records. Manage access in Health Connect; delete local copies in History or in Patterns."
             setPadding(40, 80, 40, 40); textSize = 18f
         })
     }

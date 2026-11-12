@@ -68,7 +68,7 @@ internal fun SignalPresencePage(station: SignalStation, state: SignalState, onDe
         if (pane == "all") {
         item {
             Text("Nearby", Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineMedium)
-            Text("Keep a local record of your devices and familiar places. Radio activity can suggest changes around this phone; it cannot count people or reliably identify movement on its own.")
+            Text("Keep a local record of your devices and familiar places. Radio activity can suggest changes around this device; it cannot count people or reliably identify movement on its own.")
         }
 
         }
@@ -80,7 +80,7 @@ internal fun SignalPresencePage(station: SignalStation, state: SignalState, onDe
                     station.updateSettings(settings.copy(enabled = if (enabled) settings.enabled + key else settings.enabled - key))
                 }
             }
-            Text("Choose sources, then scan when ready. Saved sightings stay on this phone; model analysis happens only when requested. Device and place switches stop future observations; delete old records separately in History.")
+            Text("Choose sources, then scan when ready. Saved sightings stay on this device; model analysis happens only when requested. Device and place switches stop future observations; delete old records separately in History.")
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = station::scanPresence, enabled = !state.busy && settings.enabled.any { it.startsWith("presence.") }) { Text("Save presence check") }

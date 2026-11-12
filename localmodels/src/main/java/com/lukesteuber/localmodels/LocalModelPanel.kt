@@ -52,13 +52,13 @@ import kotlinx.coroutines.*
         }
     }
     Text("On-device setup", style = MaterialTheme.typography.titleMedium)
-    Text("Answers run on this phone. Local failures never switch to a cloud provider. Pebble dictation and optional hosted speech have their own network settings.")
+    Text("Answers run on this device. Local failures never switch to a cloud provider. Pebble dictation and optional hosted speech have their own network settings.")
     if (provider == LocalModelPolicy.NANO) {
         Text(when (nano) {
-            NanoAvailability.READY -> "Gemini Nano is available. Keep this phone app open on screen while asking."
-            NanoAvailability.DOWNLOADABLE -> "Android offers a system-model download for this phone."
+            NanoAvailability.READY -> "Gemini Nano is available. Keep this app open on screen while asking."
+            NanoAvailability.DOWNLOADABLE -> "Android offers a system-model download for this device."
             NanoAvailability.DOWNLOADING -> "Android is downloading the system model."
-            NanoAvailability.UNSUPPORTED -> "Android does not offer Gemini Nano prompting on this phone."
+            NanoAvailability.UNSUPPORTED -> "Android does not offer Gemini Nano prompting on this device."
             NanoAvailability.UNKNOWN -> "System-model availability has not been checked."
             NanoAvailability.UNAVAILABLE -> "System-model availability could not be checked. Try again."
         }, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
@@ -94,7 +94,7 @@ import kotlinx.coroutines.*
         Text("First answers may take longer while loading. Android can stop background work; keep the app open if a watch request cannot start.")
     }
     if (message.isNotEmpty()) Text(message, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
-    if (confirmDownload) AlertDialog(onDismissRequest = { confirmDownload = false }, title = { Text("Download 2.59 GB to this phone?") },
+    if (confirmDownload) AlertDialog(onDismissRequest = { confirmDownload = false }, title = { Text("Download 2.59 GB to this device?") },
         text = { Column {
             Text("Gemma 4 E2B from Hugging Face LiteRT Community. The exact size and SHA-256 are checked before use. No account or provider key is needed.")
             Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(value = unmetered, role = Role.Checkbox, onValueChange = { unmetered = it }), verticalAlignment = Alignment.CenterVertically) {

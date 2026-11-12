@@ -196,7 +196,7 @@ class SignalLearningUiTest {
         val station = LearningUiStation(baseState().copy(settings = readySettings(), configuredProviders = setOf("openai")))
         show(station, 2f)
         compose.onNode(hasText("Ask") and hasClickAction()).performClick()
-        compose.onNodeWithText("Your question").performTextInput("Preserve this phone draft")
+        compose.onNodeWithText("Your question").performTextInput("Preserve this device draft")
         androidx.test.espresso.Espresso.closeSoftKeyboard()
         val systems = listOf("Downstairs lamps", "Garden controller", "Garage sensors", "Workshop switches")
         compose.runOnIdle { station.state.value = station.state.value.copy(watchQuestionReview = SignalQuestionReview(
@@ -223,7 +223,7 @@ class SignalLearningUiTest {
         compose.runOnIdle { assertEquals(0, station.providerRequests) }
         reveal("Send watch question once")
         compose.onNodeWithText("Send watch question once").performScrollTo().performClick()
-        compose.onNodeWithText("Preserve this phone draft").assertExists()
+        compose.onNodeWithText("Preserve this device draft").assertExists()
         compose.runOnIdle { assertEquals(1, station.providerRequests) }
     }
 
@@ -355,7 +355,7 @@ class SignalLearningUiTest {
         val example = memory("fixture-baseline", "Phone battery usually stays between 68% and 84%")
         val capture = SignalRecord(
             id = "fixture-capture", threadId = "fixture-thread", createdAt = NOW,
-            question = "Captured readings", summary = "Phone battery 78% · saved on this phone",
+            question = "Captured readings", summary = "Phone battery 78% · saved on this device",
             provider = "local", model = "", state = "ready", kind = "capture",
             observations = listOf(SignalObservation(BATTERY, "phone", "78", "%", NOW, measuredAt = NOW)),
             sourceKeys = setOf(BATTERY),
@@ -426,7 +426,7 @@ class SignalLearningUiTest {
         compose.onNode(hasScrollAction()).performScrollToNode(hasText("Numeric history · local"))
         compose.onNodeWithText("Numeric history · local").performScrollTo().performClick()
         compose.onNodeWithText("Exact values and evidence").performScrollTo().performClick()
-        compose.onNodeWithText("Measurement table · phone local time").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Measurement table · local time").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Evidence · sensing-2").performScrollTo().assertIsDisplayed()
         captureFixtureScreenshot("sensing-table-${fontScale.toInt()}.png")
         compose.onNode(hasText("Now") and hasClickAction()).performClick()

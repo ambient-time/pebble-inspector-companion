@@ -134,6 +134,6 @@ class PebbleAppLink(
             throw SignalProviderException("Open Signal Station on your watch using the Pebble app.")
     }
     override suspend fun install(watchId: String) {
-        throw SignalProviderException("Install the watch app through Pebble after the installation hold is lifted.")
+        throw SignalProviderException("Signal Station cannot install the watch app from here. Install it on the watch through your Pebble app.")
     }
 }
