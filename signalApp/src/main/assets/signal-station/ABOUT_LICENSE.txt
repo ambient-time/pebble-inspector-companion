@@ -1,0 +1,3 @@
+I offer my original contributions to Signal Station under the MIT License. This permission covers only material for which I hold copyright. It does not relicense code, media, models or documentation owned by others.
+
+The published Signal Station APK is built from :signalApp. Among this repository's projects, :signalApp depends only on :signal and :localmodels, and the APK contains no Core Devices code. The app talks to a Pebble through the separately installed Pebble app.

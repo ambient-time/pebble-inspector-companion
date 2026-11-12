@@ -1,0 +1,67 @@
+{
+  "preamble": "Signal Station: third-party notices\n\nSignal Station's own code is offered under the MIT License. The app also bundles the software and data listed here. Each item stays under its own terms, which the MIT grant does not change. This list is generated from the resolved release classpath of the build and from the files packaged with it.",
+  "groups": {},
+  "libraries": {
+    "net.java.dev.jna:jna": "Apache-2.0 (offered as LGPL-2.1-or-later or Apache-2.0; used here under Apache-2.0)",
+    "com.garmin.connectiq:ciq-companion-app-sdk": "Garmin Connect IQ SDK License Agreement (not free software)",
+    "com.google.mlkit:common": "ML Kit Terms of Service (not free software)",
+    "com.google.mlkit:genai-common": "ML Kit Terms of Service (not free software)",
+    "com.google.mlkit:genai-prompt": "ML Kit Terms of Service (not free software)",
+    "com.google.mlkit:genai-schema": "Android Software Development Kit License (not free software)",
+    "com.google.android.gms:play-services-base": "Android Software Development Kit License (not free software)",
+    "com.google.android.gms:play-services-basement": "Android Software Development Kit License (not free software)",
+    "com.google.android.gms:play-services-tasks": "Android Software Development Kit License (not free software)"
+  },
+  "sections": [
+    {
+      "title": "Libraries under terms that are not free software licenses",
+      "body": "Google ML Kit GenAI Prompt API (com.google.mlkit), used for Gemini Nano answers on devices that provide it.\nTerms: ML Kit Terms of Service, https://developers.google.com/ml-kit/terms\nML Kit's own third-party notices are packaged with the app under META-INF/third_party_licenses/.\n\nGoogle Play services base, basement and tasks libraries (com.google.android.gms), which ML Kit brings with it.\nTerms: Android Software Development Kit License, https://developer.android.com/studio/terms.html\n\nGarmin Connect IQ companion app SDK (com.garmin.connectiq), used for the Garmin watch link.\nTerms: Garmin's Connect IQ SDK License Agreement and Connect IQ Application Developer Agreement, https://developer.garmin.com/connect-iq/sdk/"
+    },
+    {
+      "title": "Offline speech recognition",
+      "body": "Vosk Android 0.3.75, including its native library libvosk.so, by Alpha Cephei Inc. License: Apache-2.0.\nSource: https://github.com/alphacep/vosk-api\nVosk's native library is built from other speech projects as well; see the Vosk source for their notices.\n\nWake model vosk-model-small-en-us-0.15, Copyright 2020 Alpha Cephei Inc. License: Apache-2.0.\nBundled with the app as signal-station/wake-model.zip.\nModel catalog: https://alphacephei.com/vosk/models\nSHA-256: 30f26242c4eb449f948e42cb302dd7a686cb29a3423a8367f99ff41780942498\n\nJava Native Access (JNA) 5.18.1, including libjnidispatch.so, a dependency of Vosk. Offered under LGPL-2.1-or-later or Apache-2.0; used here under Apache-2.0.\nSource: https://github.com/java-native-access/jna"
+    },
+    {
+      "title": "On-device model runtime",
+      "body": "LiteRT-LM 0.17.0 (com.google.ai.edge.litertlm), including liblitertlm_jni.so, used for Gemma answers on the device. License: Apache-2.0.\n\nNo Gemma model file is bundled. The app downloads or imports one only when you ask, and that file has its own terms: see the model page it is downloaded from."
+    },
+    {
+      "title": "Bundled data",
+      "body": "Public Suffix List, packaged by OkHttp as PublicSuffixDatabase.list. License: Mozilla Public License 2.0.\nSource: https://publicsuffix.org/\n\nProtocol Buffers runtime, repackaged inside androidx.datastore:datastore-preferences-external-protobuf and androidx.health.connect:connect-client-external-protobuf. Copyright 2008 Google Inc. License: BSD-3-Clause."
+    },
+    {
+      "title": "What is not in the app",
+      "body": "The app contains no Core Devices code. It talks to a Pebble through the separately installed Pebble app, over PebbleKit Android 2 (Apache-2.0). Weather, place and model providers are network services, not bundled software."
+    }
+  ],
+  "texts": [
+    {
+      "title": "MIT License (Signal Station's own code)",
+      "file": "MIT-signal-station.txt"
+    },
+    {
+      "title": "Apache License, Version 2.0",
+      "file": "Apache-2.0.txt"
+    },
+    {
+      "title": "BSD 3-Clause License (Protocol Buffers, Copyright 2008 Google Inc.)",
+      "file": "BSD-3-Clause-protobuf.txt"
+    },
+    {
+      "title": "MIT License (SLF4J API)",
+      "file": "MIT-slf4j.txt"
+    },
+    {
+      "title": "MIT License (Checker Framework qualifiers)",
+      "file": "MIT-checker-qual.txt"
+    },
+    {
+      "title": "CC0 1.0 Universal (Reactive Streams)",
+      "file": "CC0-1.0.txt"
+    },
+    {
+      "title": "Mozilla Public License 2.0 (Public Suffix List)",
+      "file": "MPL-2.0.txt"
+    }
+  ]
+}
