@@ -30,7 +30,7 @@ On-device models
 
 With Gemini Nano or Gemma selected, the question and readings are processed on the device and are not sent to a provider. A failed local answer never falls back to a hosted one. Downloading Gemma fetches a model file from huggingface.co; that request carries no readings.
 
-Gemini Nano runs through Google's ML Kit and Android AICore. The ML Kit library is part of the app. Google states that ML Kit may send Google usage and diagnostic information, such as device and app information, performance metrics and API configuration, and that it does not send the text you process. See Google's ML Kit terms and data disclosure pages.
+Gemini Nano runs through Google's ML Kit and Android AICore. The ML Kit library is part of the app. Google states that ML Kit collects usage and diagnostic information for Google: device information, app information, identifiers used for diagnostics and usage analytics, performance metrics, API configuration and error codes. Google states that this is encrypted in transit and not passed to third parties, and that the text you process stays on the device. See Google's ML Kit terms and data disclosure pages.
 
 Lookups
 
