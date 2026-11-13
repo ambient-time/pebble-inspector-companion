@@ -6,7 +6,7 @@ The Signal Station Android APK is built from `:signalApp` (package
 bundles the third-party software and data listed here. Each item stays under
 its own terms, which my MIT grant does not change.
 
-This list describes 0.9.7 (29). I took the coordinates and versions from the
+This list describes 0.9.8 (30). I took the coordinates and versions from the
 Gradle files and the resolved release runtime classpath
 (`./gradlew :signalApp:dependencies --configuration releaseRuntimeClasspath`),
 and the license names from each library's published POM. For the full terms,
@@ -69,7 +69,7 @@ library's own notices.
 
 ## In the app
 
-From 0.9.7 (29) the app shows these notices itself, with the full license
+From 0.9.8 (30) the app shows these notices itself, with the full license
 texts, under Settings, About. That file is
 `signalApp/src/main/assets/signal-station/THIRD_PARTY_NOTICES.txt`, written by
 `scripts/signal_notices.py` from the resolved release classpath; the script's

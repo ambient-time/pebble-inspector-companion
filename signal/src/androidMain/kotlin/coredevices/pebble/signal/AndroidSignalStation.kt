@@ -1869,7 +1869,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
             }
             try {
                 val places = placeSearch?.invoke(query) ?: collectors.searchWeatherPlaces(query)
-                if (token == weatherSearchGeneration) mutable.update { it.copy(weatherPlaces = places, weatherSearchStatus = if (places.isEmpty()) "No matching places. Try a city and country." else "Choose the place to save.") }
+                if (token == weatherSearchGeneration) mutable.update { it.copy(weatherPlaces = places, weatherSearchStatus = if (places.isEmpty()) "No matching places. Try the city name alone." else "Choose the place to save.") }
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) { if (token == weatherSearchGeneration) mutable.update { it.copy(weatherSearchStatus = "Place search unavailable. Try again later.") } }
             finally { foregroundWatch.cancel(); if (token == weatherSearchGeneration) mutable.update { it.copy(weatherSearching = false) } }

@@ -386,7 +386,7 @@ class SignalLearningUiTest {
 
         compose.onNode(hasText("Settings") and hasClickAction()).assertIsDisplayed().performClick()
         compose.onNodeWithText("Answers").performScrollTo().performClick()
-        compose.onNodeWithText("Capture works without a provider key. Add a key when you want model analysis.").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Capture works without an answer source. Choose an on-device model or add your own cloud provider key for analysis.").performScrollTo().assertIsDisplayed()
         compose.onNode(hasText("Now") and hasClickAction()).assertIsDisplayed().performClick()
         compose.onNodeWithText("Capture now").performScrollTo().assertIsDisplayed()
         compose.runOnIdle { assertEquals(0, station.providerRequests) }

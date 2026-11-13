@@ -618,7 +618,7 @@ private fun SignalHistory(
             }
             if (results.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
             if (results.error.isNotBlank()) Text(results.error, color = MaterialTheme.colorScheme.error)
-            Text("${results.matchingCount} results · ${selected.size} selected", Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+            Text("${signalCount(results.matchingCount.toInt(), "result")} · ${selected.size} selected", Modifier.semantics { liveRegion = LiveRegionMode.Polite })
             if (pending) Text("Apply changed filters before using these results.")
             else if (results.updatedAt > 0) Text("Updated ${signalDateTime(results.updatedAt)} · refresh for new records.", style = MaterialTheme.typography.bodySmall)
         }
@@ -807,7 +807,7 @@ private fun SignalConfiguration(state: SignalState, station: SignalStation, onMa
             Text("${signalCount(state.historyCount.toInt(), "record")} · ${signalStorageLabel(state.storageBytes)} on this device")
             Text("Export all data includes eligible saved app data. Use History filters to export a specific selection.")
             listOf("json" to "JSON", "markdown" to "Markdown", "csv" to "CSV readings").forEach { (format, label) ->
-                OutlinedButton(onClick = { onConfirm(SignalConfirmation("Export all data?", "Share all currently eligible data using the existing full export. History filters do not apply.") { station.shareHistory(format) }) }, enabled = !state.busy && state.historyCount > 0) { Text("Export all data · $label") }
+                OutlinedButton(onClick = { onConfirm(SignalConfirmation("Export all data?", "Share everything the app has saved from sources that are turned on. History filters do not apply.") { station.shareHistory(format) }) }, enabled = !state.busy && state.historyCount > 0) { Text("Export all data · $label") }
             }
             TextButton(onClick = { station.previewDeleteRecords(null) }, enabled = !state.busy && state.historyReady && state.historyCount > 0) { Text("Review deletion of all history") }
             Text("Deleting history keeps your provider keys, home connections and their activity log, downloaded models and settings.", style = MaterialTheme.typography.bodySmall)
@@ -936,7 +936,7 @@ private fun SignalConfiguration(state: SignalState, station: SignalStation, onMa
             Text("Weather switches below send a chosen place or your phone position rounded to about 1 km to Open-Meteo during a capture or enabled observation session. Coordinates stay out of model context unless Location is also enabled.")
             if (settings.weatherLocation == "place") {
                 Text(settings.weatherPlace?.let { "Saved place: ${it.name}" } ?: "Choose a place before collecting weather.")
-                OutlinedTextField(weatherQuery, { weatherQuery = it.take(100) }, Modifier.fillMaxWidth(), label = { Text("City and country") }, singleLine = true, enabled = !state.busy)
+                OutlinedTextField(weatherQuery, { weatherQuery = it.take(100) }, Modifier.fillMaxWidth(), label = { Text("City name") }, singleLine = true, enabled = !state.busy)
                 OutlinedButton(onClick = { station.searchWeatherPlaces(weatherQuery) }, enabled = !state.busy && !state.weatherSearching && weatherQuery.trim().length >= 2) { Text("Find places") }
                 Text("Find places sends this search to Open-Meteo. It does not use phone location.", style = MaterialTheme.typography.bodySmall)
                 if (state.weatherSearchStatus.isNotBlank()) Text(state.weatherSearchStatus, Modifier.semantics { liveRegion = LiveRegionMode.Polite })

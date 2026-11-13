@@ -8,15 +8,15 @@ class SignalRadioChangesTest {
             address?.let { SignalObservation("wifi.identifiers", "phone", collectedAt = at, measuredAt = at, status = "fresh", fields = mapOf("slot" to slot, "bssid" to it)) }))
     @Test fun changedScanOrderStillMatchesRetainedIdentity() {
         val text = SignalRadioChanges.describe(record("a", 1, "ab:cd:ef:01:02:03"), record("b", 2, "ab:cd:ef:01:02:03", "9", -55.0)).joinToString()
-        assertContains(text, "1 matched retained identities"); assertContains(text, "-5.0 dB")
+        assertContains(text, "Wi-Fi: 1 matched in both captures"); assertContains(text, "difference -5 dB")
         assertFalse(text.contains("ab:cd"))
     }
     @Test fun scanSlotsAndLabelsAloneNeverMatchDevices() {
-        assertContains(SignalRadioChanges.describe(record("a", 1), record("b", 2)).joinToString(), "no individual-device comparison")
-        assertContains(SignalRadioChanges.describe(record("a", 1, "a"), record("b", 2, "b")).joinToString(), "no individual-device comparison")
+        assertContains(SignalRadioChanges.describe(record("a", 1), record("b", 2)).joinToString(), "none is compared one to one")
+        assertContains(SignalRadioChanges.describe(record("a", 1, "a"), record("b", 2, "b")).joinToString(), "none is compared one to one")
     }
     @Test fun duplicateOrCachedMeasurementsDoNotBecomeChange() {
-        assertContains(SignalRadioChanges.describe(record("a", 2), record("b", 2)).joinToString(), "no newer measured")
+        assertContains(SignalRadioChanges.describe(record("a", 2), record("b", 2)).joinToString(), "no newer scan to compare")
         val after = record("b", 3).let { it.copy(observations = it.observations.map { row -> row.copy(status = "cached") }) }
         assertTrue(SignalRadioChanges.describe(record("a", 1), after).isEmpty())
     }

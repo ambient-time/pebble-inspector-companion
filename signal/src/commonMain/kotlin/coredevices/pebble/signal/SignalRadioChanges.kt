@@ -4,14 +4,15 @@ package coredevices.pebble.signal
 object SignalRadioChanges {
     fun describe(before: SignalRecord, after: SignalRecord): List<String> = buildList {
         for (radio in listOf("wifi", "bluetooth", "cellular")) {
+            val label = when (radio) { "wifi" -> "Wi-Fi"; "bluetooth" -> "Bluetooth"; else -> "Cell" }
             fun signals(record: SignalRecord) = record.observations.filter { it.key == radio && it.metric in setOf("rssi", "signal") && SignalLearning.fresh(it) && it.number?.isFinite() == true }
             val old = signals(before); val next = signals(after)
             if (old.isEmpty() || next.isEmpty()) continue
             if (next.maxOf { it.measuredAt!! } <= old.maxOf { it.measuredAt!! }) {
-                add("$radio: no newer measured radio sample; cached/repeated observations are not a change.")
+                add("$label: no newer scan to compare. Cached or repeated readings are not a change.")
                 continue
             }
-            add("$radio: ${old.size} → ${next.size} retained fresh observations. Different reception or scan coverage can change this count.")
+            add("$label: ${old.size} → ${next.size} signals in range. Reception and scan coverage can change this count.")
             fun identified(record: SignalRecord, signals: List<SignalObservation>): Map<String, SignalObservation> = record.observations
                 .filter { it.key == "$radio.identifiers" && SignalLearning.fresh(it) }
                 .mapNotNull { id ->
@@ -29,11 +30,11 @@ object SignalRadioChanges {
                 val left = a.getValue(id); val right = b.getValue(id)
                 if (right.measuredAt!! <= left.measuredAt!!) null else left to right
             }
-            if (pairs.isEmpty()) add("$radio: no unambiguous retained identity matched across newer measurements; no individual-device comparison.")
+            if (pairs.isEmpty()) add("$label: no signal could be matched across the two captures, so none is compared one to one.")
             else {
                 val deltas = pairs.map { it.second.number!! - it.first.number!! }.sorted()
                 val median = if (deltas.size % 2 == 0) (deltas[deltas.size / 2 - 1] + deltas[deltas.size / 2]) / 2 else deltas[deltas.size / 2]
-                add("$radio: ${pairs.size} matched retained identities; median signal difference $median dB. Signal strength is not distance or proof of a person's presence.")
+                add("$label: ${pairs.size} matched in both captures; median signal difference ${SignalDisplay.number(median)} dB. Signal strength is not distance or proof of a person's presence.")
             }
         }
     }
