@@ -220,8 +220,7 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
                 TextButton(onClick = { ui.settingsSection = "menu"; page = SignalPage.Settings }) { Text("Settings") }
             }
         }
-        if (!compact && page !in setOf(SignalPage.Today, SignalPage.Conversation, SignalPage.History, SignalPage.Home) && detailId == null && !fieldTestOpen
-            && !(page == SignalPage.Settings && ui.settingsSection != "menu")) {
+        if (!compact && page !in setOf(SignalPage.Today, SignalPage.Conversation, SignalPage.History, SignalPage.Home) && detailId == null && !fieldTestOpen) {
             TextButton(onClick = { ui.back() }, modifier = Modifier.padding(horizontal = 8.dp)) {
                 Text("Back")
             }
@@ -450,7 +449,7 @@ private fun SignalConversation(
                         Text("${selection.matchedCount} selected history results. Current source eligibility and message limits still apply.")
                         TextButton(onClick = station::clearEvidenceSelection) { Text("Remove history selection") }
                     }
-                    Text(if (state.attachedRecords.isEmpty()) "No capture attached." else "${state.attachedRecords.size} observations attached.")
+                    Text(if (state.attachedRecords.isEmpty()) "No capture attached." else "${signalCount(state.attachedRecords.size, "observation")} attached.")
                     TextButton(onClick = onChooseAttachment) { Text("Attach from History") }
                 }
                 items(state.attachedRecords, key = { "attachment:${it.id}" }) { attachment ->
@@ -739,7 +738,7 @@ private fun SignalDetail(
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(name, style = MaterialTheme.typography.titleMedium)
                 if (reading.metric.isNotBlank()) Text(reading.metric.replace('_', ' ').replace('.', ' '), style = MaterialTheme.typography.labelLarge)
-                val value = reading.number?.takeIf { it.isFinite() }?.toString() ?: reading.boolean?.toString() ?: reading.value
+                val value = reading.number?.takeIf { it.isFinite() }?.let(SignalDisplay::number) ?: reading.boolean?.toString() ?: reading.value
                 val watchDescription = SignalWatchHistory.describe(reading) ?: signalWatchMotionDescription(reading)
                 SelectionContainer { Text(watchDescription ?: if (value.isBlank()) reading.status.replace('_', ' ') else "$value ${reading.unit}".trim()) }
                 if (reading.value.isNotBlank() && reading.value != value && (reading.number == null || reading.value.toDoubleOrNull() != reading.number)) {
@@ -818,9 +817,8 @@ private fun SignalConfiguration(state: SignalState, station: SignalStation, onMa
 
         if (section == "answers") {
         item {
-            SignalHeading("Settings")
-            Text("Capture works without an answer source. Choose an on-phone model or add your own cloud provider key for analysis.")
             SignalHeading("Answers")
+            Text("Capture works without an answer source. Choose an on-device model or add your own cloud provider key for analysis.")
         }
         item {
             val local = provider in SignalLocalModels.providers
@@ -866,7 +864,7 @@ private fun SignalConfiguration(state: SignalState, station: SignalStation, onMa
         }
 
         }
-        if (section == "sources") {
+        if (section == "sources" && state.sources.any { it.key.startsWith("healthconnect.") }) {
         item {
             HorizontalDivider()
             SignalHealthControls(state, station)
@@ -900,7 +898,10 @@ private fun SignalConfiguration(state: SignalState, station: SignalStation, onMa
         if (section == "devices") {
         item {
             HorizontalDivider()
-            SignalHeading("Watch connection")
+            SignalHeading("Connected devices")
+            LocalSignalAppInfo.current.takeIf { !it.playBuild && it.guideUrl.isNotBlank() }?.let { info ->
+                TextButton(onClick = { runCatching { uriHandler.openUri(info.guideUrl) } }) { Text("Download page and guide") }
+            }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = { ui.values.keys.filter { it.startsWith("onboarding.") }.toList().forEach(ui.values::remove); station.updateSettings(settings.copy(onboardingComplete = false)) }, enabled = !state.busy) { Text("Revisit setup guide") }
                 onManageWatch?.let { TextButton(onClick = it) { Text("Watch connection") } }

@@ -105,8 +105,8 @@ class SignalLearningUiTest {
         compose.onNodeWithText("Connect a Pebble").performScrollTo().assertIsDisplayed()
         captureFixtureScreenshot("setup-pebble-font-200.png")
         compose.onNodeWithText("Connect a Pebble").performClick()
-        compose.onNode(hasScrollAction()).performScrollToNode(hasText("About and watch connection"))
-        compose.onNodeWithText("About and watch connection").performScrollTo().assertIsDisplayed()
+        compose.onNode(hasScrollAction()).performScrollToNode(hasText("Connected devices"))
+        compose.onNodeWithText("Connected devices").performScrollTo().assertIsDisplayed()
         compose.onNode(hasScrollAction()).performScrollToNode(hasText("Download page and guide"))
         compose.onNodeWithText("Download page and guide").performScrollTo().assertIsDisplayed()
         captureFixtureScreenshot("setup-devices-font-200.png")
@@ -312,7 +312,8 @@ class SignalLearningUiTest {
 
         compose.onNodeWithText("Record over time").performScrollTo().performClick()
         compose.onNodeWithText("Session length: 1 hour").performScrollTo().assertExists()
-        compose.onNodeWithText("Choose session sources · 1 selected").performScrollTo().performClick()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Choose session sources · 1 selected"))
+        compose.onNodeWithText("Choose session sources · 1 selected").performClick()
         compose.onNodeWithContentDescription("Phone battery").performScrollTo().assertIsOn()
         compose.onNodeWithText("Start recording").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(listOf(60 to setOf(BATTERY)), station.observationStarts) }
@@ -526,9 +527,9 @@ class SignalLearningUiTest {
         compose.activityRule.scenario.onActivity { activity ->
             val retained = androidx.lifecycle.ViewModelProvider(activity)[SignalUiViewModel::class.java].session
             activity.setLearningTestContent {
-                if (fontScale == null) SignalScreen(station, standalone = true, uiSession = retained)
+                if (fontScale == null) SignalScreen(station, standalone = true, uiSession = retained, appInfo = SignalAppInfo(guideUrl = "https://example.invalid/guide"))
                 else CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale)) {
-                    androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.then(if (fontScale == 2f) androidx.compose.ui.Modifier.widthIn(max = 320.dp) else androidx.compose.ui.Modifier)) { SignalScreen(station, standalone = true, uiSession = retained) }
+                    androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.then(if (fontScale == 2f) androidx.compose.ui.Modifier.widthIn(max = 320.dp) else androidx.compose.ui.Modifier)) { SignalScreen(station, standalone = true, uiSession = retained, appInfo = SignalAppInfo(guideUrl = "https://example.invalid/guide")) }
                 }
             }
         }

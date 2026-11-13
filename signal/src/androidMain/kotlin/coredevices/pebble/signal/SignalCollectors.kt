@@ -60,7 +60,7 @@ class SignalCollectors(private val context: Context) {
         SignalWatchHistory.source,
     ) + SignalWeather.sources + SignalPresence.sources + SignalContext.sources + listOf("steps", "active_seconds", "distance", "active_calories", "resting_calories", "sleep", "restful_sleep", "heart_rate", "activity")
         .map { SignalSource("health.$it", it.replace('_', ' ').replaceFirstChar(Char::uppercase), "Health") } +
-        sensors.getSensorList(Sensor.TYPE_ALL).distinctBy { it.type }.map { SignalSource("sensor.${it.type}", it.name, "Sensors") }
+        sensors.getSensorList(Sensor.TYPE_ALL).distinctBy { it.type }.filter { it.type != Sensor.TYPE_HEART_RATE || signalHeartRateDeclared(context) }.map { SignalSource("sensor.${it.type}", sensorLabel(it), "Sensors") }
 
     suspend fun collect(settings: SignalSettings, activeWifi: Boolean = true): List<SignalObservation> = acquire(settings, activeWifi).observations
 
@@ -188,6 +188,32 @@ class SignalCollectors(private val context: Context) {
         Sensor.TYPE_ORIENTATION -> "degrees"
         Sensor.TYPE_ROTATION_VECTOR, Sensor.TYPE_GAME_ROTATION_VECTOR, Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR -> "unitless components"
         else -> "sensor-specific Android SensorEvent units; see sensorType"
+    }
+
+    /** A plain name for standard sensor types; a vendor sensor keeps the name its hardware reports. */
+    private fun sensorLabel(sensor: Sensor): String = when (sensor.type) {
+        Sensor.TYPE_ACCELEROMETER -> "Accelerometer"
+        Sensor.TYPE_MAGNETIC_FIELD -> "Magnetic field"
+        Sensor.TYPE_GYROSCOPE -> "Gyroscope"
+        Sensor.TYPE_LIGHT -> "Ambient light"
+        Sensor.TYPE_PRESSURE -> "Air pressure"
+        Sensor.TYPE_PROXIMITY -> "Proximity"
+        Sensor.TYPE_GRAVITY -> "Gravity"
+        Sensor.TYPE_LINEAR_ACCELERATION -> "Linear acceleration"
+        Sensor.TYPE_ROTATION_VECTOR -> "Rotation"
+        Sensor.TYPE_RELATIVE_HUMIDITY -> "Relative humidity"
+        Sensor.TYPE_AMBIENT_TEMPERATURE -> "Ambient temperature"
+        Sensor.TYPE_MAGNETIC_FIELD_UNCALIBRATED -> "Magnetic field, uncalibrated"
+        Sensor.TYPE_GAME_ROTATION_VECTOR -> "Rotation without compass"
+        Sensor.TYPE_GYROSCOPE_UNCALIBRATED -> "Gyroscope, uncalibrated"
+        Sensor.TYPE_SIGNIFICANT_MOTION -> "Significant motion"
+        Sensor.TYPE_STEP_DETECTOR -> "Step detector"
+        Sensor.TYPE_STEP_COUNTER -> "Step counter"
+        Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR -> "Compass rotation"
+        Sensor.TYPE_HEART_RATE -> "Heart rate sensor"
+        Sensor.TYPE_ACCELEROMETER_UNCALIBRATED -> "Accelerometer, uncalibrated"
+        Sensor.TYPE_HINGE_ANGLE -> "Hinge angle"
+        else -> sensor.name
     }
 
     private suspend fun bluetooth(enabled: Set<String>, settings: SignalSettings): RadioProbe {

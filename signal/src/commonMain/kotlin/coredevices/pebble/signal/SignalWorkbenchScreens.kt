@@ -74,7 +74,7 @@ internal fun SignalSourcesPage(state: SignalState, station: SignalStation, onSet
                     }) { enabled ->
                     station.updateSettings(state.settings.copy(enabled = if (enabled) state.settings.enabled + source.key else state.settings.enabled - source.key))
                 }
-                state.sourceStatus.firstOrNull { it.key == source.key && source.key in state.settings.enabled }?.let {
+                state.sourceStatus.firstOrNull { it.key == source.key && source.key in state.settings.enabled && it.status != "not_sampled" }?.let {
                     SignalSourceStatusRow(it, state, station, onSettings)
                 }
             }
