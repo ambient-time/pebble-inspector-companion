@@ -80,7 +80,8 @@ android {
         buildConfigField("boolean", "PLAY_BUILD", signalPlay.toString())
         listOf("guideUrl", "sourceUrl", "privacyPolicyUrl", "contactEmail").forEach { key ->
             val constant = key.replace(Regex("[A-Z]")) { "_" + it.value }.uppercase()
-            buildConfigField("String", constant, "\"" + signalRelease.getProperty(key, "") + "\"")
+            val value = if (signalPlay && key == "guideUrl") "" else signalRelease.getProperty(key, "")
+            buildConfigField("String", constant, "\"" + value + "\"")
         }
         buildConfigField("boolean", "GARMIN_TETHERED", (providers.gradleProperty("signalGarminTethered").orNull == "true").toString())
     }
