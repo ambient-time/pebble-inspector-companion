@@ -6,7 +6,7 @@ The Signal Station Android APK is built from `:signalApp` (package
 bundles the third-party software and data listed here. Each item stays under
 its own terms, which my MIT grant does not change.
 
-This list describes 0.9.6 (28). I took the coordinates and versions from the
+This list describes 0.9.7 (29). I took the coordinates and versions from the
 Gradle files and the resolved release runtime classpath
 (`./gradlew :signalApp:dependencies --configuration releaseRuntimeClasspath`),
 and the license names from each library's published POM. For the full terms,
@@ -46,7 +46,7 @@ native library is built from other speech projects as well; see the
 
 | Component | Coordinates | License |
 | --- | --- | --- |
-| PebbleKit Android 2 client | `io.rebble.pebblekit2:client:1.1.0`, with `client-api`, `common` and `common-api` 1.1.0 | Apache-2.0 |
+| PebbleKit Android 2 client | `io.rebble.pebblekit2:client:1.3.2`, with `client-api`, `common` and `common-api` 1.3.2 | Apache-2.0 |
 | Ktor client, with its OkHttp and CIO engines and WebSockets | `io.ktor:ktor-client-core:3.5.1` and the other `io.ktor` 3.5.1 modules it resolves | Apache-2.0 |
 | ktor-mqtt | `de.kempmobil.ktor.mqtt:mqtt-core:1.2.0` and `mqtt-client:1.2.0` | Apache-2.0 |
 | LiteRT-LM, including `liblitertlm_jni.so`, used for Gemma answers on the phone | `com.google.ai.edge.litertlm:litertlm-android:0.17.0` | Apache-2.0 |
@@ -66,6 +66,14 @@ native library is built from other speech projects as well; see the
 OkHttp also packages a copy of the Public Suffix List as
 `assets/PublicSuffixDatabase.list`. That list has its own terms; see the
 library's own notices.
+
+## In the app
+
+From 0.9.7 (29) the app shows these notices itself, with the full license
+texts, under Settings, About. That file is
+`signalApp/src/main/assets/signal-station/THIRD_PARTY_NOTICES.txt`, written by
+`scripts/signal_notices.py` from the resolved release classpath; the script's
+`--check` mode fails when the file is stale.
 
 ## What is not in the APK
 

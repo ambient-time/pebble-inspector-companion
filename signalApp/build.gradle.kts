@@ -108,13 +108,18 @@ android {
     }
     sourceSets.getByName("main").assets.srcDir(signalWakeAssets.get().asFile)
 }
+// Health Connect and the phone heart-rate sensor live in their own manifest, so the Play variant
+// declares no health permission. The app reads the merged manifest to decide whether to offer them.
+androidComponents {
+    onVariants { variant -> variant.sources.manifests.addStaticManifestFile(if (signalPlay) "src/play/AndroidManifest.xml" else "src/healthConnect/AndroidManifest.xml") }
+}
 dependencies {
     implementation(project(":localmodels"))
     implementation(project(":signal"))
     implementation(libs.androidx.activity.compose)
     implementation(libs.compose.material3)
     implementation(libs.serialization)
-    implementation("io.rebble.pebblekit2:client:1.1.0")
+    implementation("io.rebble.pebblekit2:client:1.3.2")
     implementation("com.garmin.connectiq:ciq-companion-app-sdk:2.4.0@aar")
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.junit)
