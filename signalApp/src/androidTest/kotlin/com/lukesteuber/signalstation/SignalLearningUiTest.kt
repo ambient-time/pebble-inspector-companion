@@ -340,8 +340,10 @@ class SignalLearningUiTest {
         compose.onNodeWithText("Ongoing · until stopped").performClick()
         compose.onNodeWithContentDescription("Local change analysis").performScrollTo().assertIsOn()
         compose.onNodeWithContentDescription("Scheduled model analysis").performScrollTo().assertIsOff()
-        compose.onNodeWithText("Save schedule and analysis").performScrollTo().performClick()
-        compose.onNodeWithText("Start recording").performScrollTo().performClick()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Save schedule and analysis"))
+        compose.onNodeWithText("Save schedule and analysis").performClick()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Start recording"))
+        compose.onNodeWithText("Start recording").performClick()
         compose.runOnIdle {
             assertEquals(listOf(0 to setOf(BATTERY)), station.observationStarts)
             assertEquals(null, station.state.value.observationSession?.endsAt)
