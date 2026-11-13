@@ -196,6 +196,14 @@ class SignalHealthPermissionActivity : ComponentActivity() {
     override fun onDestroy() { activityScope.cancel(); super.onDestroy() }
 }
 
+/** True when this build's manifest declares Health Connect access. The Google Play variant does not. */
+internal fun signalHealthConnectDeclared(context: Context): Boolean = signalDeclares(context, "android.permission.health.READ_STEPS")
+internal fun signalHeartRateDeclared(context: Context): Boolean =
+    signalDeclares(context, "android.permission.health.READ_HEART_RATE") || signalDeclares(context, android.Manifest.permission.BODY_SENSORS)
+private fun signalDeclares(context: Context, permission: String): Boolean = runCatching {
+    context.packageManager.getPackageInfo(context.packageName, android.content.pm.PackageManager.GET_PERMISSIONS).requestedPermissions.orEmpty().contains(permission)
+}.getOrDefault(false)
+
 class SignalHealthRationaleActivity : android.app.Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

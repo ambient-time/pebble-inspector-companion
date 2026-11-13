@@ -1,0 +1,6 @@
+<!-- Merged only into the Google Play variant (-PsignalPlay=true), which does not offer Health Connect. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+    <application>
+        <service android:name="androidx.health.platform.client.impl.sdkservice.HealthDataSdkService" tools:node="remove" />
+    </application>
+</manifest>

@@ -37,6 +37,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
     private val home by lazy { AndroidHomeCoordinator(store, scope, { mutable.value }, { change -> mutable.update(change) }, ::foreground, providedClient = homeClient, context = context) }
     private val learning by lazy { SignalLearningRepository(store) }
     private val health by lazy { SignalHealthConnect(context, store) }
+    private val healthConnect by lazy { signalHealthConnectDeclared(context) }
     private val indexReady = CompletableDeferred<Unit>()
     private var historyCursor = Long.MAX_VALUE
     private var historySearch: Job? = null
@@ -149,9 +150,9 @@ open class AndroidSignalStation(private val context: Context, protected val watc
                 historyCursor = page.cursor
                 mutable.value = SignalState(initialized = true, localModelsSupported = true, buildVersion = buildVersion(), settings = settings,
                     reportedAnswers = reportPrefs.getStringSet("ids", emptySet()).orEmpty().toSet(), watchCapabilities = watchLink.capabilities,
-                    records = page.records, historyHasMore = page.hasMore, sources = collectors.sources() + health.sources() + SignalSource("home.readings", "Home readings", "Home"), threadId = id(), configuredProviders = configured(),
+                    records = page.records, historyHasMore = page.hasMore, sources = collectors.sources() + (if (healthConnect) health.sources() else emptyList()) + SignalSource("home.readings", "Home readings", "Home"), threadId = id(), configuredProviders = configured(),
                     memories = withContext(Dispatchers.IO) { store.memory() }, sessions = withContext(Dispatchers.IO) { store.sessions().take(100) },
-                    historyCount = withContext(Dispatchers.IO) { store.count() }, storageBytes = withContext(Dispatchers.IO) { store.bytes() }, healthStatus = health.availability())
+                    historyCount = withContext(Dispatchers.IO) { store.count() }, storageBytes = withContext(Dispatchers.IO) { store.bytes() }, healthStatus = if (healthConnect) health.availability() else "")
                 home.initialize()
                 scope.launch {
                     try {
@@ -419,7 +420,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
         }
         ensureActiveToken(token)
         preparedQuestion = withHomeReview(prepared, homeIds, allowActions)
-        mutable.update { it.copy(diagnostics = SignalDiagnosticReport(it.buildVersion, "context_preparation", "ready", now() - started, prepared.review.bytes), questionReview = preparedQuestion?.review, status = "Ready to send. ${prepared.review.observationCount} readings included; nothing has left this device.") }
+        mutable.update { it.copy(diagnostics = SignalDiagnosticReport(it.buildVersion, "context_preparation", "ready", now() - started, prepared.review.bytes), questionReview = preparedQuestion?.review, status = "Ready to send. ${signalCount(prepared.review.observationCount, "reading")} included; nothing has left this device.") }
     }
     override fun saveQuestion(title: String, question: String, history: Boolean, asNew: Boolean) {
         if (question.isBlank() || title.isBlank() || mutable.value.busy) return
@@ -808,7 +809,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
             ensureActiveToken(token)
             attachRows(rows)
             draft(question)
-            status("${rows.size} records attached. Review the readings and send when ready.")
+            status("${signalCount(rows.size, "record")} attached. Review the readings and send when ready.")
         }
     }
     private fun buildVersion(): String = runCatching {
@@ -1272,6 +1273,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
         }
     }
     override fun requestHealthPermissions(days: Int, background: Boolean) {
+        if (!healthConnect) return
         if (days !in setOf(7, 30, 90) || !foreground()) return
         persistSettings(mutable.value.settings.copy(healthHistoryDays = days))
         context.startActivity(Intent(context, SignalHealthPermissionActivity::class.java).putExtra("sources", mutable.value.settings.enabled.toTypedArray()).putExtra("days", days).putExtra("background", background).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))

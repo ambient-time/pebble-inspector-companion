@@ -295,7 +295,7 @@ internal fun SignalSessionsPage(state: SignalState, station: SignalStation, onSo
                 }
                 if (confirmModelAnalysis) SignalAlertDialog(onDismissRequest = { confirmModelAnalysis = false },
                     title = { Text("Send readings on a schedule?") },
-                    text = { Text("While a recording session runs, Signal Station will send the latest two captures of that session to ${SignalDisplay.answerSource(state.settings.provider, state.settings.model)} every few captures. It will not ask before each send. The readings go as saved, with nothing removed: if the session includes them, that means location, Wi-Fi and Bluetooth identifiers, cell ids and health readings. Your provider may charge for each request. Sending stops when the session stops, and you can turn this off here at any time.") },
+                    text = { Text(if (state.settings.provider in SignalLocalModels.providers) "While a recording session runs, Signal Station will run ${providerLabel(state.settings.provider)} on the latest two captures of that session every few captures, without asking each time. With an on-device model nothing is sent. If you later switch to a cloud provider, this setting sends those captures to it." else "While a recording session runs, Signal Station will send the latest two captures of that session to ${SignalDisplay.answerSource(state.settings.provider, state.settings.model)} every few captures. It will not ask before each send. The readings go as saved, with nothing removed: if the session includes them, that means location, Wi-Fi and Bluetooth identifiers, cell ids and health readings. Your provider may charge for each request. Sending stops when the session stops, and you can turn this off here at any time.") },
                     confirmButton = { TextButton(onClick = { modelAnalysis = true; confirmModelAnalysis = false }) { Text("Turn on") } },
                     dismissButton = { TextButton(onClick = { confirmModelAnalysis = false }) { Text("Keep off") } })
                 if (modelAnalysis) {
@@ -408,6 +408,7 @@ internal fun SignalLearningControls(state: SignalState, station: SignalStation) 
 
 @Composable
 internal fun SignalHealthControls(state: SignalState, station: SignalStation) {
+    if (state.sources.none { it.key.startsWith("healthconnect.") }) return
     var days by remember(state.settings.healthHistoryDays) { mutableStateOf(state.settings.healthHistoryDays.toString()) }
     var background by remember { mutableStateOf(false) }
     val pendingPeriod = days.toInt() != state.settings.healthHistoryDays

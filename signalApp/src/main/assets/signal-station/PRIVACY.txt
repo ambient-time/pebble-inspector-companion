@@ -12,7 +12,7 @@ Every source starts off. Android asks for a permission only when a source you tu
 
 Readings you can choose to collect
 
-Battery and charging state, time and timezone, network status, device sensors, step and heart-rate sensors, location, visible Wi-Fi networks (names, BSSIDs, signal levels), nearby Bluetooth devices (names, addresses, signal levels), cell information (network codes, area codes, cell ids), Health Connect records (steps, distance, calories, exercise, sleep, heart rate, resting heart rate, heart rate variability), weather for a place, and states from a home system you connected.
+Battery and charging state, time and timezone, network status, device sensors including step sensors, location, visible Wi-Fi networks (names, BSSIDs, signal levels), nearby Bluetooth devices (names, addresses, signal levels), cell information (network codes, area codes, cell ids), activity, sleep and heart-rate summaries from a linked Pebble watch, weather for a place, and states from a home system you connected. Builds from the download page can also read Health Connect records (steps, distance, calories, exercise, sleep, heart rate, resting heart rate, heart rate variability).
 
 When a question is sent to a model provider
 
@@ -56,7 +56,7 @@ Wake listening and voice drafts are recognized on the device. Audio is held in m
 
 Health data
 
-Health Connect records are read only for the types you grant, stored encrypted on your device, and used to answer your own questions. The app does not write health records, does not use them for advertising, and does not sell or transfer them. They leave the device only when you attach them to a question you send, or when scheduled model analysis is on for a session that includes them. The app's use of information received from Health Connect follows the Health Connect permissions policy, including its limited use requirements.
+The Google Play build does not read Health Connect and asks for no health permission. Builds from the download page can. In those builds, Health Connect records are read only for the types you grant, stored encrypted on your device, and used to answer your own questions. The app does not write health records, does not use them for advertising, and does not sell or transfer them. They leave the device only when you attach them to a question you send, or when scheduled model analysis is on for a session that includes them. The app's use of information received from Health Connect follows the Health Connect permissions policy, including its limited use requirements.
 
 Keeping and deleting
 
