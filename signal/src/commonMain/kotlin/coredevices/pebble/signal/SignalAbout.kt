@@ -95,8 +95,8 @@ internal fun SignalAboutPage(section: String, buildVersion: String, onSection: (
         }
         item {
             Text("License", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleMedium)
-            license.orEmpty().forEach { Text(it) }
         }
+        items(license.orEmpty()) { Text(it) }
         item {
             listOfNotNull(
                 "MIT License text" to { onSection("about.license") },

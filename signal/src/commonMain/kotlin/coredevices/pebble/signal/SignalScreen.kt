@@ -804,7 +804,7 @@ private fun SignalConfiguration(state: SignalState, station: SignalStation, onMa
         item { TextButton(onClick = { section = "menu" }) { Text("Settings categories") } }
         if (section == "storage") item {
             SignalHeading("Storage")
-            Text("${state.historyCount} records · ${signalStorageLabel(state.storageBytes)} on this device")
+            Text("${signalCount(state.historyCount.toInt(), "record")} · ${signalStorageLabel(state.storageBytes)} on this device")
             Text("Export all data includes eligible saved app data. Use History filters to export a specific selection.")
             listOf("json" to "JSON", "markdown" to "Markdown", "csv" to "CSV readings").forEach { (format, label) ->
                 OutlinedButton(onClick = { onConfirm(SignalConfirmation("Export all data?", "Share all currently eligible data using the existing full export. History filters do not apply.") { station.shareHistory(format) }) }, enabled = !state.busy && state.historyCount > 0) { Text("Export all data · $label") }
