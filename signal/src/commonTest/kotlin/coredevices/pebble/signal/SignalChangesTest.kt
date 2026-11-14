@@ -26,7 +26,9 @@ class SignalChangesTest {
         val a = capture("a", 100_000, reading("80"))
         val b = capture("b", 200_000, reading("75", 200_000))
         val diff = assertNotNull(compare(a, b))
-        assertTrue(diff.answer.contains("difference -5.0"))
+        assertTrue(diff.answer.contains("device battery: 80 → 75 % (difference -5)."))
+        val named = assertNotNull(SignalChanges.create(b, listOf(a, b), a.sourceKeys, "diff", 300_000, mapOf("device.battery" to "Phone battery level")))
+        assertTrue(named.answer.contains("Phone battery level: 80 → 75 % (difference -5)."))
         assertEquals(listOf("a", "b"), diff.references)
         assertEquals("local", diff.provider)
         assertEquals(a.sourceKeys, diff.sourceKeys)
@@ -45,9 +47,9 @@ class SignalChangesTest {
         val a = capture("a", 100_000, reading("80"), reading("100", key = "sensor.5"))
         val b = capture("b", 200_000, reading("75", 200_000), reading("1000", 200_000, "sensor.6")).copy(kind = "observation")
         val result = assertNotNull(compare(a, b))
-        assertTrue(result.answer.contains("difference -5.0"))
-        assertTrue(result.answer.contains("Newly included sources: sensor.6"))
-        assertTrue(result.answer.contains("Sources absent from the newer record: sensor.5"))
+        assertTrue(result.answer.contains("difference -5)"))
+        assertTrue(result.answer.contains("Newly included sources: sensor 6"))
+        assertTrue(result.answer.contains("Sources absent from the newer record: sensor 5"))
         assertNull(SignalChanges.create(b, listOf(a), setOf("device.battery"), "x", 300_000))
     }
     @Test fun numericFieldsAndEquivalentHealthWindowsCompareWithoutIdenticalTimestamps() {
@@ -55,7 +57,7 @@ class SignalChangesTest {
             reading("summary", time, "healthconnect.steps").copy(source = "health_connect:origin", number = value,
                 unit = "steps", status = "recorded", period = "interval:$duration", windowStart = time - duration, windowEnd = time)
         ).copy(kind = "health_import")
-        assertTrue(assertNotNull(compare(health("a", 100_000, 20.0), health("b", 200_000, 35.0))).answer.contains("difference 15.0"))
+        assertTrue(assertNotNull(compare(health("a", 100_000, 20.0), health("b", 200_000, 35.0))).answer.contains("difference 15)"))
         assertTrue(assertNotNull(compare(health("a", 100_000, 20.0), health("b", 200_000, 35.0, 2000))).answer.contains("0 changed"))
     }
     @Test fun axesAndMetricKindsCannotBeMixed() {
@@ -106,7 +108,7 @@ class SignalChangesTest {
         val diff = assertNotNull(SignalChanges.create(current, listOf(a, b), current.sourceKeys, "diff", 300_000))
         assertEquals(listOf("b", "c"), diff.references)
         assertFalse(diff.answer.contains("reveal secrets"))
-        assertTrue(diff.answer.contains("difference -3.0"))
+        assertTrue(diff.answer.contains("difference -3)"))
     }
     @Test fun wifiClueKeepsItsSourceProvenance() {
         val rows = SignalPresence.observations(setOf("presence.places", "presence.wifi"), emptyList(),

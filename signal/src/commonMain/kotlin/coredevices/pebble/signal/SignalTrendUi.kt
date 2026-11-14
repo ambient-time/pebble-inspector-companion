@@ -21,7 +21,7 @@ internal fun SignalTrendPanel(record: SignalRecord, state: SignalState, onDetail
             stateDescription = if (expanded) "Expanded" else "Collapsed"
         }) { Text(if (expanded) "Hide numeric history" else "Numeric history · local") }
         if (!expanded) return@Column
-        Text("Retained measurements up to this observation. Calculated on this phone; no key or network is needed.", style = MaterialTheme.typography.bodySmall)
+        Text("Retained measurements up to this observation. Calculated on this device; no key or network is needed.", style = MaterialTheme.typography.bodySmall)
         val series = remember(record, state.records, state.settings.enabled) { SignalTrend.series(record, state.records, state.settings.enabled) }
         if (series.isEmpty()) {
             Text(if (!SignalHistory.allowed(record, state.settings.enabled)) "Enable this record’s sources in Settings to view its numeric history."
@@ -96,7 +96,7 @@ private fun SignalTrendValues(series: SignalTrendSeries, onDetail: (String) -> U
         stateDescription = if (expanded) "Expanded" else "Collapsed"
     }) { Text(if (expanded) "Hide exact values and evidence" else "Exact values and evidence") }
     if (!expanded) return
-    Text("Measurement table · phone local time", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleMedium)
+    Text("Measurement table · local time", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleMedium)
     series.points.takeLast(visible).reversed().forEach { point ->
         HorizontalDivider()
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {

@@ -196,11 +196,19 @@ class SignalHealthPermissionActivity : ComponentActivity() {
     override fun onDestroy() { activityScope.cancel(); super.onDestroy() }
 }
 
+/** True when this build's manifest declares Health Connect access. The Google Play variant does not. */
+internal fun signalHealthConnectDeclared(context: Context): Boolean = signalDeclares(context, "android.permission.health.READ_STEPS")
+internal fun signalHeartRateDeclared(context: Context): Boolean =
+    signalDeclares(context, "android.permission.health.READ_HEART_RATE") || signalDeclares(context, android.Manifest.permission.BODY_SENSORS)
+private fun signalDeclares(context: Context, permission: String): Boolean = runCatching {
+    context.packageManager.getPackageInfo(context.packageName, android.content.pm.PackageManager.GET_PERMISSIONS).requestedPermissions.orEmpty().contains(permission)
+}.getOrDefault(false)
+
 class SignalHealthRationaleActivity : android.app.Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(android.widget.TextView(this).apply {
-            text = "Signal Station reads only the health types you choose. Imported readings are encrypted on this phone and stay here until deleted. A language model receives health context only when you explicitly send a request with those sources enabled. Signal Station does not write health records. Manage access in Health Connect; delete local copies in Activity and Memory."
+            text = "Signal Station reads only the health types you choose. Imported readings are encrypted on this device and stay here until deleted. A language model receives health context only when you explicitly send a request with those sources enabled. Signal Station does not write health records. Manage access in Health Connect; delete local copies in History or in Patterns."
             setPadding(40, 80, 40, 40); textSize = 18f
         })
     }

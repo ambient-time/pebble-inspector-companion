@@ -23,12 +23,12 @@ object ModelImportRules {
         if (!name.lowercase(Locale.ROOT).endsWith(MODEL_EXTENSION)) {
             return Verdict.Rejected("Pick a $MODEL_EXTENSION file. “${name.ifEmpty { "That file" }}” isn't a LiteRT-LM model.")
         }
-        if (lowRamDevice) return Verdict.Rejected("This phone has too little memory to run a language model on this device.")
+        if (lowRamDevice) return Verdict.Rejected("This device has too little memory to run a language model on this device.")
         val size = sizeBytes ?: return Verdict.Ok
         if (size < MINIMUM_MODEL_BYTES) return Verdict.Rejected("That file is too small to be a language model.")
         if (size > totalRamBytes * MAX_FRACTION_OF_RAM) {
             return Verdict.Rejected(
-                "That model is ${formatBytes(size)}, too large for this phone with ${formatBytes(totalRamBytes)} of memory. Try a 1B model around 550 MB.",
+                "That model is ${formatBytes(size)}, too large for this device with ${formatBytes(totalRamBytes)} of memory. Try a 1B model around 550 MB.",
             )
         }
         if (freeBytes < size + FREE_SPACE_MARGIN_BYTES) {

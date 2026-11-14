@@ -138,7 +138,7 @@ internal fun SignalLookupReviewDialog(state: SignalState, station: SignalStation
                 Text(review.disclosure)
                 Text("Destination", style = MaterialTheme.typography.labelLarge)
                 SelectionContainer { Text(review.endpoint) }
-                TextButton(onClick = { station.dismissLookupReview(); onDetail(review.recordId) }) { Text("Inspect source record · ${review.recordId}") }
+                TextButton(onClick = { station.dismissLookupReview(); onDetail(review.recordId) }) { Text("Inspect source record") }
                 Text("Exact outgoing request", style = MaterialTheme.typography.labelLarge)
                 SelectionContainer { Text(review.payload) }
                 Text("Send lookup contacts this service. It does not send a question to your answer provider.", style = MaterialTheme.typography.bodySmall)

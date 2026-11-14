@@ -29,7 +29,7 @@ internal fun SignalLocalChangesAction(record: SignalRecord, state: SignalState, 
             (record.sourceKeys + record.observations.map { it.key }).none { it in state.settings.enabled } ->
                 "Enable a source from this record in Settings to compare its readings."
             baseline == null -> "No compatible earlier record is loaded. Collect another observation or load older activity."
-            else -> "Compares with ${signalDateTime(baseline.createdAt)} on this phone. Missing or cached readings stay unknown."
+            else -> "Compares with ${signalDateTime(baseline.createdAt)} on this device. Missing or cached readings stay unknown."
         }, style = MaterialTheme.typography.bodySmall)
     }
 }

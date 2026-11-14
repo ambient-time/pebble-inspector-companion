@@ -63,7 +63,7 @@ internal fun SignalHomePage(state: SignalState, station: SignalStation) {
         when (section) {
             "connections" -> {
                 item(span = { GridItemSpan(maxLineSpan) }) { Column {
-                    Text("Connect Home Assistant, openHAB, Geepers or an MQTT broker. Readings work on this phone without a watch. Credentials stay encrypted here; server-side permissions still apply.")
+                    Text("Connect Home Assistant, openHAB, Geepers or an MQTT broker. Readings work on this device without a watch. Credentials stay encrypted here; server-side permissions still apply.")
                     Button({ connectionDraft = HomeConnection("", "", HomeConnectorKind.HOME_ASSISTANT, "") }) { Text("Add connection") }
                     OutlinedButton({ connectionDraft = HomeConnection("", "Outdoors", HomeConnectorKind.PUBLIC_ENVIRONMENT, "") }) { Text("Add weather & environment") }
                 } }

@@ -155,6 +155,7 @@ data class SignalState(
     val healthStatus: String = "Health Connect is optional.",
     val selectedRecord: SignalRecord? = null,
     val selectedRecordLoading: Boolean = false,
+    val reportedAnswers: Set<String> = emptySet(),
 
 )
 
@@ -183,6 +184,13 @@ interface SignalStation {
     fun dismissHomeHandoff() {}
     fun exportHomeActivity() {}
     fun saveProvider(model: String, endpoint: String, key: String)
+    /** Saves the provider together with its model, endpoint and key, so a provider choice never applies on its own. */
+    fun saveAnswerSetup(provider: String, model: String, endpoint: String, key: String) {
+        if (provider != state.value.settings.provider) updateSettings(state.value.settings.copy(provider = provider, model = model, endpoint = endpoint))
+        saveProvider(model, endpoint, key)
+    }
+    fun setAnswerReported(id: String, reported: Boolean) {}
+    fun eraseAllData() {}
     fun saveKey(provider: String, key: String)
     fun saveQuestion(title: String, question: String, history: Boolean, asNew: Boolean = false) {}
     fun openSavedQuestion(id: String) {}

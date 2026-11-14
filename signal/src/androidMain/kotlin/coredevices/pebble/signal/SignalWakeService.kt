@@ -121,7 +121,7 @@ class SignalWakeService : Service() {
                         wakeLock.acquire(61 * 60 * 1000L)
                         val sessionStarted = SystemClock.elapsedRealtime()
                         check(recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING)
-                        announce(requested, "listening", "Listening for ‘go go gadget’. Audio stays on this phone.")
+                        announce(requested, "listening", "Listening for ‘go go gadget’. Audio stays on this device.")
                         val buffer = ShortArray(1600)
                         var recordingAt = 0L
                         while (SignalWakeRuntime.valid(requested)) {

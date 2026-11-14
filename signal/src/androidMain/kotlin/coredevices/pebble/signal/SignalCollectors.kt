@@ -60,7 +60,7 @@ class SignalCollectors(private val context: Context) {
         SignalWatchHistory.source,
     ) + SignalWeather.sources + SignalPresence.sources + SignalContext.sources + listOf("steps", "active_seconds", "distance", "active_calories", "resting_calories", "sleep", "restful_sleep", "heart_rate", "activity")
         .map { SignalSource("health.$it", it.replace('_', ' ').replaceFirstChar(Char::uppercase), "Health") } +
-        sensors.getSensorList(Sensor.TYPE_ALL).distinctBy { it.type }.map { SignalSource("sensor.${it.type}", it.name, "Sensors") }
+        sensors.getSensorList(Sensor.TYPE_ALL).distinctBy { it.type }.filter { it.type != Sensor.TYPE_HEART_RATE || signalHeartRateDeclared(context) }.map { SignalSource("sensor.${it.type}", sensorLabel(it), "Sensors") }
 
     suspend fun collect(settings: SignalSettings, activeWifi: Boolean = true): List<SignalObservation> = acquire(settings, activeWifi).observations
 
@@ -190,9 +190,35 @@ class SignalCollectors(private val context: Context) {
         else -> "sensor-specific Android SensorEvent units; see sensorType"
     }
 
+    /** A plain name for standard sensor types; a vendor sensor keeps the name its hardware reports. */
+    private fun sensorLabel(sensor: Sensor): String = when (sensor.type) {
+        Sensor.TYPE_ACCELEROMETER -> "Accelerometer"
+        Sensor.TYPE_MAGNETIC_FIELD -> "Magnetic field"
+        Sensor.TYPE_GYROSCOPE -> "Gyroscope"
+        Sensor.TYPE_LIGHT -> "Ambient light"
+        Sensor.TYPE_PRESSURE -> "Air pressure"
+        Sensor.TYPE_PROXIMITY -> "Proximity"
+        Sensor.TYPE_GRAVITY -> "Gravity"
+        Sensor.TYPE_LINEAR_ACCELERATION -> "Linear acceleration"
+        Sensor.TYPE_ROTATION_VECTOR -> "Rotation"
+        Sensor.TYPE_RELATIVE_HUMIDITY -> "Relative humidity"
+        Sensor.TYPE_AMBIENT_TEMPERATURE -> "Ambient temperature"
+        Sensor.TYPE_MAGNETIC_FIELD_UNCALIBRATED -> "Magnetic field, uncalibrated"
+        Sensor.TYPE_GAME_ROTATION_VECTOR -> "Rotation without compass"
+        Sensor.TYPE_GYROSCOPE_UNCALIBRATED -> "Gyroscope, uncalibrated"
+        Sensor.TYPE_SIGNIFICANT_MOTION -> "Significant motion"
+        Sensor.TYPE_STEP_DETECTOR -> "Step detector"
+        Sensor.TYPE_STEP_COUNTER -> "Step counter"
+        Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR -> "Compass rotation"
+        Sensor.TYPE_HEART_RATE -> "Heart rate sensor"
+        Sensor.TYPE_ACCELEROMETER_UNCALIBRATED -> "Accelerometer, uncalibrated"
+        Sensor.TYPE_HINGE_ANGLE -> "Hinge angle"
+        else -> sensor.name
+    }
+
     private suspend fun bluetooth(enabled: Set<String>, settings: SignalSettings): RadioProbe {
         val keys = enabled.filter { it == "bluetooth" || it.startsWith("bluetooth.") }
-        if (!permitted(Manifest.permission.ACCESS_FINE_LOCATION) || (Build.VERSION.SDK_INT >= 31 && (!permitted(Manifest.permission.BLUETOOTH_SCAN) || !permitted(Manifest.permission.BLUETOOTH_CONNECT)))) return RadioProbe(unavailable(keys, "permission_denied"))
+        if (!permitted(Manifest.permission.ACCESS_FINE_LOCATION) || (Build.VERSION.SDK_INT >= 31 && !permitted(Manifest.permission.BLUETOOTH_SCAN))) return RadioProbe(unavailable(keys, "permission_denied"))
         val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         val adapter = manager.adapter ?: return RadioProbe(unavailable(keys, "hardware_unavailable"))
         if (!adapter.isEnabled) return RadioProbe(unavailable(keys, "radio_disabled"))
@@ -335,7 +361,7 @@ class SignalCollectors(private val context: Context) {
             val at = result.measuredAt
             if (at == null || System.currentTimeMillis() - at !in 0..900_000) return SignalWeather.missing(keys, "location_stale")
             note = "phone position rounded to 0.01 degree; ${result.status}; location_time=$at; accuracy_m=${if (fix.hasAccuracy()) fix.accuracy else "unknown"}"
-            SignalPlace("Near this phone", round(fix.latitude * 100) / 100, round(fix.longitude * 100) / 100)
+            SignalPlace("Near this device", round(fix.latitude * 100) / 100, round(fix.longitude * 100) / 100)
         } else settings.weatherPlace ?: return SignalWeather.missing(keys, "choose_weather_place")
         return weather.collect(keys, place, note)
     }

@@ -16,7 +16,7 @@ import androidx.compose.ui.unit.dp
 internal fun SignalWakeControls(station: SignalStation, state: SignalState, onUseDraft: (String) -> Unit) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Go go gadget", style = MaterialTheme.typography.titleLarge)
-        Text("Say “go go gadget,” wait for the phone to vibrate, then speak your question. Audio stays on this phone. Only the text you review is sent when you tap Send.")
+        Text("Say “go go gadget,” wait for the phone to vibrate, then speak your question. Audio stays on this device. Only the text you review is sent when you tap Send.")
         Text(state.wakeStatus, Modifier.semantics { liveRegion = LiveRegionMode.Polite })
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (state.wakePhase in setOf("stopped", "error", "denied")) {

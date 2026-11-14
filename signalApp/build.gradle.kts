@@ -17,20 +17,24 @@ val releaseKeyAlias = providers.environmentVariable("SIGNAL_STATION_RELEASE_KEY_
 val releaseKeyPassword = providers.environmentVariable("SIGNAL_STATION_RELEASE_KEY_PASSWORD").orNull
 val releaseSigningAvailable = listOf(releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword)
     .all { !it.isNullOrBlank() }
+// -PsignalPlay=true builds the Google Play variant: no links to pages that offer installers.
+val signalPlay = providers.gradleProperty("signalPlay").orNull == "true"
 val signalRevision = providers.exec { commandLine("git", "rev-parse", "HEAD") }.standardOutput.asText.map { it.trim() }
 val identityDirectory = layout.buildDirectory.dir("generated/signalIdentity")
 val generateSignalIdentity = tasks.register("generateSignalIdentity") {
     inputs.file("release.properties")
     inputs.property("revision", signalRevision)
+    inputs.property("play", signalPlay)
     outputs.dir(identityDirectory)
     val revision = signalRevision
     val directory = identityDirectory
     val version = signalRelease.getProperty("versionName")
     val code = signalRelease.getProperty("versionCode")
+    val suffix = if (signalPlay) "" else " · preview"
     doLast {
         directory.get().file("signal-build.txt").asFile.apply {
             parentFile.mkdirs()
-            writeText("$version ($code) · ${revision.get().take(8)} · development preview")
+            writeText("$version ($code) · ${revision.get().take(8)}$suffix")
         }
     }
 }
@@ -73,6 +77,12 @@ android {
         versionCode = signalRelease.getProperty("versionCode").toInt()
         versionName = signalRelease.getProperty("versionName")
         // -PsignalGarminTethered=true talks to the Connect IQ simulator over adb instead of Garmin Connect.
+        buildConfigField("boolean", "PLAY_BUILD", signalPlay.toString())
+        listOf("guideUrl", "sourceUrl", "privacyPolicyUrl", "contactEmail").forEach { key ->
+            val constant = key.replace(Regex("[A-Z]")) { "_" + it.value }.uppercase()
+            val value = if (signalPlay && key == "guideUrl") "" else signalRelease.getProperty(key, "")
+            buildConfigField("String", constant, "\"" + value + "\"")
+        }
         buildConfigField("boolean", "GARMIN_TETHERED", (providers.gradleProperty("signalGarminTethered").orNull == "true").toString())
     }
     sourceSets.getByName("main").assets.srcDir(identityDirectory.get().asFile)
@@ -99,13 +109,18 @@ android {
     }
     sourceSets.getByName("main").assets.srcDir(signalWakeAssets.get().asFile)
 }
+// Health Connect and the phone heart-rate sensor live in their own manifest, so the Play variant
+// declares no health permission. The app reads the merged manifest to decide whether to offer them.
+androidComponents {
+    onVariants { variant -> variant.sources.manifests.addStaticManifestFile(if (signalPlay) "src/play/AndroidManifest.xml" else "src/healthConnect/AndroidManifest.xml") }
+}
 dependencies {
     implementation(project(":localmodels"))
     implementation(project(":signal"))
     implementation(libs.androidx.activity.compose)
     implementation(libs.compose.material3)
     implementation(libs.serialization)
-    implementation("io.rebble.pebblekit2:client:1.1.0")
+    implementation("io.rebble.pebblekit2:client:1.3.2")
     implementation("com.garmin.connectiq:ciq-companion-app-sdk:2.4.0@aar")
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.junit)

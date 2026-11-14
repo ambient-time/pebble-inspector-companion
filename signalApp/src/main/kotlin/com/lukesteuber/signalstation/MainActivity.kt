@@ -44,7 +44,6 @@ class MainActivity : ComponentActivity() {
             AndroidSignalSpeechEngine(this) { speech.stop() }
         }
         enableEdgeToEdge()
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         val app = application as SignalApplication
         val ui = androidx.lifecycle.ViewModelProvider(this)[SignalUiViewModel::class.java].session
         val coverFrame = SignalCoverFrame(this).apply { setBackgroundColor(android.graphics.Color.BLACK) }
@@ -60,6 +59,11 @@ class MainActivity : ComponentActivity() {
             val watches by app.watchLink.watches.collectAsState()
             val garminWatches by app.garmin.devices.collectAsState()
             val garminStatus by app.garmin.status.collectAsState()
+            val stationState by app.station.state.collectAsState()
+            LaunchedEffect(stationState.live.running) {
+                if (stationState.live.running) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
             LaunchedEffect(showWatch) {
                 if (showWatch) selectedHost = app.watchLink.selectedApp()
             }
@@ -83,8 +87,13 @@ class MainActivity : ComponentActivity() {
                     } finally { selecting = false }
                 }
             }
+            val appInfo = remember {
+                coredevices.pebble.signal.SignalAppInfo(playBuild = BuildConfig.PLAY_BUILD, guideUrl = BuildConfig.GUIDE_URL,
+                    sourceUrl = BuildConfig.SOURCE_URL, privacyUrl = BuildConfig.PRIVACY_POLICY_URL, contactEmail = BuildConfig.CONTACT_EMAIL,
+                    readText = { name -> assets.open("signal-station/$name").bufferedReader().use { it.readText() } })
+            }
             SignalCoverContent(coverFrame.bottomInset) {
-                SignalScreen(app.station, standalone = true, uiSession = ui, speech = speech,
+                SignalScreen(app.station, standalone = true, uiSession = ui, speech = speech, appInfo = appInfo,
                     onManageWatch = { speech.stop(); connectionError = ""; showWatch = true })
             if (showWatch) SignalAlertDialog(
                 onDismissRequest = { if (!selecting) showWatch = false },
@@ -115,10 +124,10 @@ class MainActivity : ComponentActivity() {
                     Text("Garmin", style = MaterialTheme.typography.titleSmall)
                     Text(if (garminWatches.isEmpty()) garminStatus else garminWatches.joinToString("\n") { "${it.name} · ${if (it.connected) "connected" else "not connected"}" })
                     Text("Garmin watches connect through Garmin Connect. Install Signal Station on the Garmin watch, then choose it under Settings → Watch. The Garmin app shows Home favorites and recent replies; questions and capture stay on Pebble and the phone.", style = MaterialTheme.typography.bodySmall)
-                    TextButton(onClick = {
-                        val guide = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://dr.eamer.dev/downloads/apps/signal-station/"))
+                    if (!BuildConfig.PLAY_BUILD) TextButton(onClick = {
+                        val guide = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(BuildConfig.GUIDE_URL))
                         if (runCatching { startActivity(guide) }.isFailure)
-                            connectionError = "Could not open the guide. Visit dr.eamer.dev/downloads/apps/signal-station/ in your browser."
+                            connectionError = "Could not open the guide. Visit ${BuildConfig.GUIDE_URL.removePrefix("https://")} in your browser."
                     }, enabled = !selecting) { Text("Watch download and setup guide") }
                 } },
                 confirmButton = { TextButton(enabled = !selecting, onClick = { showWatch = false }) { Text("Done") } },

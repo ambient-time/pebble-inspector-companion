@@ -47,7 +47,7 @@ internal fun OutdoorConnectionDialog(initial: HomeConnection, state: SignalState
                     TextButton({ finishTyping(); place = saved; accepted = false }) { Text("Use saved weather place: ${saved.name}") }
                 }
                 OutlinedTextField(query, { query = it.take(100); showResults = false }, label = { Text("City and country") }, modifier = Modifier.fillMaxWidth())
-                Text("Search sends your typed city to Open-Meteo. It does not request this phone's location.", style = MaterialTheme.typography.bodySmall)
+                Text("Search sends your typed city to Open-Meteo. It does not request this device's location.", style = MaterialTheme.typography.bodySmall)
                 TextButton({ finishTyping(); showResults = true; station.searchWeatherPlaces(query) }, enabled = !state.weatherSearching && query.trim().length >= 2) { Text("Search Open-Meteo") }
                 if (showResults) {
                     Text(state.weatherSearchStatus, Modifier.semantics { liveRegion = LiveRegionMode.Polite })

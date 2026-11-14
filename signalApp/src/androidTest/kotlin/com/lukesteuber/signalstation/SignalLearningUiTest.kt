@@ -105,8 +105,8 @@ class SignalLearningUiTest {
         compose.onNodeWithText("Connect a Pebble").performScrollTo().assertIsDisplayed()
         captureFixtureScreenshot("setup-pebble-font-200.png")
         compose.onNodeWithText("Connect a Pebble").performClick()
-        compose.onNode(hasScrollAction()).performScrollToNode(hasText("About and watch connection"))
-        compose.onNodeWithText("About and watch connection").performScrollTo().assertIsDisplayed()
+        compose.onNode(hasScrollAction()).performScrollToNode(hasText("Connected devices"))
+        compose.onNodeWithText("Connected devices").performScrollTo().assertIsDisplayed()
         compose.onNode(hasScrollAction()).performScrollToNode(hasText("Download page and guide"))
         compose.onNodeWithText("Download page and guide").performScrollTo().assertIsDisplayed()
         captureFixtureScreenshot("setup-devices-font-200.png")
@@ -196,7 +196,7 @@ class SignalLearningUiTest {
         val station = LearningUiStation(baseState().copy(settings = readySettings(), configuredProviders = setOf("openai")))
         show(station, 2f)
         compose.onNode(hasText("Ask") and hasClickAction()).performClick()
-        compose.onNodeWithText("Your question").performTextInput("Preserve this phone draft")
+        compose.onNodeWithText("Your question").performTextInput("Preserve this device draft")
         androidx.test.espresso.Espresso.closeSoftKeyboard()
         val systems = listOf("Downstairs lamps", "Garden controller", "Garage sensors", "Workshop switches")
         compose.runOnIdle { station.state.value = station.state.value.copy(watchQuestionReview = SignalQuestionReview(
@@ -223,7 +223,7 @@ class SignalLearningUiTest {
         compose.runOnIdle { assertEquals(0, station.providerRequests) }
         reveal("Send watch question once")
         compose.onNodeWithText("Send watch question once").performScrollTo().performClick()
-        compose.onNodeWithText("Preserve this phone draft").assertExists()
+        compose.onNodeWithText("Preserve this device draft").assertExists()
         compose.runOnIdle { assertEquals(1, station.providerRequests) }
     }
 
@@ -312,7 +312,8 @@ class SignalLearningUiTest {
 
         compose.onNodeWithText("Record over time").performScrollTo().performClick()
         compose.onNodeWithText("Session length: 1 hour").performScrollTo().assertExists()
-        compose.onNodeWithText("Choose session sources · 1 selected").performScrollTo().performClick()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Choose session sources · 1 selected"))
+        compose.onNodeWithText("Choose session sources · 1 selected").performClick()
         compose.onNodeWithContentDescription("Phone battery").performScrollTo().assertIsOn()
         compose.onNodeWithText("Start recording").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(listOf(60 to setOf(BATTERY)), station.observationStarts) }
@@ -339,8 +340,10 @@ class SignalLearningUiTest {
         compose.onNodeWithText("Ongoing · until stopped").performClick()
         compose.onNodeWithContentDescription("Local change analysis").performScrollTo().assertIsOn()
         compose.onNodeWithContentDescription("Scheduled model analysis").performScrollTo().assertIsOff()
-        compose.onNodeWithText("Save schedule and analysis").performScrollTo().performClick()
-        compose.onNodeWithText("Start recording").performScrollTo().performClick()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Save schedule and analysis"))
+        compose.onNodeWithText("Save schedule and analysis").performClick()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Start recording"))
+        compose.onNodeWithText("Start recording").performClick()
         compose.runOnIdle {
             assertEquals(listOf(0 to setOf(BATTERY)), station.observationStarts)
             assertEquals(null, station.state.value.observationSession?.endsAt)
@@ -355,7 +358,7 @@ class SignalLearningUiTest {
         val example = memory("fixture-baseline", "Phone battery usually stays between 68% and 84%")
         val capture = SignalRecord(
             id = "fixture-capture", threadId = "fixture-thread", createdAt = NOW,
-            question = "Captured readings", summary = "Phone battery 78% · saved on this phone",
+            question = "Captured readings", summary = "Phone battery 78% · saved on this device",
             provider = "local", model = "", state = "ready", kind = "capture",
             observations = listOf(SignalObservation(BATTERY, "phone", "78", "%", NOW, measuredAt = NOW)),
             sourceKeys = setOf(BATTERY),
@@ -375,7 +378,8 @@ class SignalLearningUiTest {
         compose.onNode(hasText("History") and hasClickAction()).assertIsDisplayed().performClick()
         compose.onNode(hasText("Patterns") and hasClickAction()).performScrollTo().performClick()
         compose.onNodeWithText("Remembered").performScrollTo().performClick()
-        compose.onNodeWithText(example.text).performScrollTo().assertIsDisplayed()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(example.text))
+        compose.onNodeWithText(example.text).assertIsDisplayed()
         captureFixtureScreenshot("memory-font-200.png")
         compose.onNodeWithText("Why this?").performScrollTo().performClick()
         compose.onNode(hasText(example.coverage) and hasAnyAncestor(isDialog())).performScrollTo().assertIsDisplayed()
@@ -383,7 +387,7 @@ class SignalLearningUiTest {
 
         compose.onNode(hasText("Settings") and hasClickAction()).assertIsDisplayed().performClick()
         compose.onNodeWithText("Answers").performScrollTo().performClick()
-        compose.onNodeWithText("Capture works without a provider key. Add a key when you want model analysis.").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Capture works without an answer source. Choose an on-device model or add your own cloud provider key for analysis.").performScrollTo().assertIsDisplayed()
         compose.onNode(hasText("Now") and hasClickAction()).assertIsDisplayed().performClick()
         compose.onNodeWithText("Capture now").performScrollTo().assertIsDisplayed()
         compose.runOnIdle { assertEquals(0, station.providerRequests) }
@@ -426,7 +430,7 @@ class SignalLearningUiTest {
         compose.onNode(hasScrollAction()).performScrollToNode(hasText("Numeric history · local"))
         compose.onNodeWithText("Numeric history · local").performScrollTo().performClick()
         compose.onNodeWithText("Exact values and evidence").performScrollTo().performClick()
-        compose.onNodeWithText("Measurement table · phone local time").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Measurement table · local time").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Evidence · sensing-2").performScrollTo().assertIsDisplayed()
         captureFixtureScreenshot("sensing-table-${fontScale.toInt()}.png")
         compose.onNode(hasText("Now") and hasClickAction()).performClick()
@@ -526,9 +530,9 @@ class SignalLearningUiTest {
         compose.activityRule.scenario.onActivity { activity ->
             val retained = androidx.lifecycle.ViewModelProvider(activity)[SignalUiViewModel::class.java].session
             activity.setLearningTestContent {
-                if (fontScale == null) SignalScreen(station, standalone = true, uiSession = retained)
+                if (fontScale == null) SignalScreen(station, standalone = true, uiSession = retained, appInfo = SignalAppInfo(guideUrl = "https://example.invalid/guide"))
                 else CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale)) {
-                    androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.then(if (fontScale == 2f) androidx.compose.ui.Modifier.widthIn(max = 320.dp) else androidx.compose.ui.Modifier)) { SignalScreen(station, standalone = true, uiSession = retained) }
+                    androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.then(if (fontScale == 2f) androidx.compose.ui.Modifier.widthIn(max = 320.dp) else androidx.compose.ui.Modifier)) { SignalScreen(station, standalone = true, uiSession = retained, appInfo = SignalAppInfo(guideUrl = "https://example.invalid/guide")) }
                 }
             }
         }

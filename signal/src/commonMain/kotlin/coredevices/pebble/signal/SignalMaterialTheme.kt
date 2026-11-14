@@ -11,6 +11,8 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
@@ -54,9 +56,15 @@ internal fun SignalAntennaGlyph() {
     val ring = MaterialTheme.colorScheme.primary
     val dot = MaterialTheme.colorScheme.tertiary
     Canvas(Modifier.size(32.dp)) {
-        val radius = size.minDimension * 0.4f
-        listOf(0.33f, 0.66f, 1f).forEach { drawCircle(ring, radius * it, style = Stroke(1.5.dp.toPx())) }
-        drawCircle(dot, 3.dp.toPx(), Offset(center.x + radius * 0.65f, center.y - radius * 0.65f))
+        // The launcher mark: three arcs open at the bottom, a mast, and the dot where they meet.
+        val unit = size.minDimension / 68f
+        val hub = Offset(center.x, center.y - 3f * unit)
+        val stroke = Stroke(4f * unit, cap = StrokeCap.Round)
+        listOf(31f, 22f, 13f).forEach { radius ->
+            drawArc(ring, 124f, 292f, false, Offset(hub.x - radius * unit, hub.y - radius * unit), Size(radius * 2 * unit, radius * 2 * unit), style = stroke)
+        }
+        drawLine(ring, hub, Offset(hub.x, hub.y + 34f * unit), 4f * unit, StrokeCap.Round)
+        drawCircle(dot, 6f * unit, hub)
     }
 }
 

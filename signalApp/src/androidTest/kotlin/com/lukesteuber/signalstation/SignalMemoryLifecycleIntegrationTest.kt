@@ -106,10 +106,10 @@ class SignalMemoryLifecycleIntegrationTest {
                 scenario.onActivity { station.updateSettings(station.state.value.settings.copy(onboardingComplete = true, enabled = setOf(key), learningEnabled = true)) }
                 until { station.state.value.memories.any { it.kind == "baseline" && it.state == "proposed" } }
                 val memory = station.state.value.memories.first { it.kind == "baseline" && it.state == "proposed" }
-                scenario.onActivity { station.reviewMemory(memory.id, "correct", "I usually keep this phone charged.") }
+                scenario.onActivity { station.reviewMemory(memory.id, "correct", "I usually keep this device charged.") }
                 until { station.state.value.memories.any { it.id == memory.id && it.state == "confirmed" } }
                 val corrected = station.state.value.memories.first { it.id == memory.id }
-                assertEquals("I usually keep this phone charged.", corrected.text)
+                assertEquals("I usually keep this device charged.", corrected.text)
                 scenario.onActivity { station.enableLearning(true) }
                 until { !station.state.value.busy }
                 delay(1000)

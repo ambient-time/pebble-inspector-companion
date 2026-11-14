@@ -134,7 +134,10 @@ class SignalLookupIntegrationTest {
                 assertEquals("3", store.document("learning-frame-version"))
                 assertNull(store.document("obsolete-frame"))
                 assertEquals(original, store.record("original"))
-                assertEquals(memory, store.memory().single())
+                // A confirmed memory keeps its wording and evidence through the upgrade and comes back flagged for review.
+                val upgraded = store.memory().single()
+                assertEquals(memory, upgraded.copy(needsReview = false))
+                assertEquals(true, upgraded.needsReview)
                 assertEquals(question, store.savedQuestions().single())
             } finally { withContext(Dispatchers.Main) { second.close() } }
         }

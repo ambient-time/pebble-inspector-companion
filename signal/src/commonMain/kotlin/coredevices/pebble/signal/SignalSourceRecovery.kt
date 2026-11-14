@@ -11,7 +11,7 @@ object SignalSourceRecovery {
         "permission_denied" -> "Permission is needed for this source."
         "location_services_disabled" -> "Android location services are off."
         "radio_disabled" -> "The radio is off."
-        "hardware_unavailable" -> "This source is unavailable on this phone."
+        "hardware_unavailable" -> "This source is unavailable on this device."
         "cached", "passive_cached" -> "Previously measured readings; check their age."
         "timeout" -> "The collection window ended before a reading arrived."
         "rate_limited", "deferred" -> "Waiting before another request to conserve battery and respect Android limits."

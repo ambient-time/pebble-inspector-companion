@@ -52,7 +52,7 @@ class ModelInferenceService : Service() {
                         catch (_: Throwable) { runCatching { candidate.close() } }
                     }
                 }
-                val current = engine ?: throw LocalModelFailure("This model could not load on this phone. Use the portable Gemma download.")
+                val current = engine ?: throw LocalModelFailure("This model could not load on this device. Use the portable Gemma download.")
                 val answer = current.createConversation(ConversationConfig(
                     samplerConfig = SamplerConfig(topK = 20, topP = 0.9, temperature = 0.3),
                     maxOutputToken = 512,

@@ -47,16 +47,16 @@ internal fun SignalLearningSetup(state: SignalState, station: SignalStation, onC
         item {
             SignalAntennaGlyph()
             Text("Signal Station", Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineLarge)
-            Text("Chat on your phone or Pebble, collect readings, and ask about what changed.", style = MaterialTheme.typography.titleMedium)
+            Text("Chat here or from a Pebble, collect readings, and ask about what changed.", style = MaterialTheme.typography.titleMedium)
         }
         if (destination == null) {
             item {
                 Text("Start with something real", Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineSmall)
-                Text("Save a moment, observe changes over time, or ask a question. Your phone is enough; a watch is optional.")
+                Text("Save a moment, observe changes over time, or ask a question. This device is enough; a watch is optional.")
             }
             item {
                 Button(onClick = { destination = SignalStartDestination.Capture }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Capture now") }
-                Text("Choose readings to save on this phone. No provider key is needed.", style = MaterialTheme.typography.bodySmall)
+                Text("Choose readings to save on this device. No provider key is needed.", style = MaterialTheme.typography.bodySmall)
                 OutlinedButton(onClick = { destination = SignalStartDestination.Observe }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Around me") }
                 Text("View temporary Wi-Fi and Bluetooth readings. Save a snapshot when useful.", style = MaterialTheme.typography.bodySmall)
                 TextButton(onClick = { complete(if (state.settings.provider in state.configuredProviders && state.settings.model.isNotBlank()) SignalStartDestination.Ask else SignalStartDestination.Answers) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
@@ -68,7 +68,7 @@ internal fun SignalLearningSetup(state: SignalState, station: SignalStation, onC
                 Card { Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     LearningHeading("Add a Pebble when ready")
                     Text("This Android app keeps your full replies and handles requests to your chosen model. The optional watch app lets you ask from your wrist and read a compact reply.")
-                    Text("1. Pair your watch in its usual Pebble app.\n2. Install the Signal Station watch app from the download guide.\n3. Open Connected devices here, choose your Pebble app and watch, then tap Check connection.")
+                    Text("1. Pair your watch in its usual Pebble app.\n2. Install the Signal Station watch app ${if (LocalSignalAppInfo.current.playBuild) "on the watch. It is still in testing." else "from the download guide."}\n3. Open Connected devices here, choose your Pebble app and watch, then tap Check connection.")
                     OutlinedButton(onClick = { complete(SignalStartDestination.Devices) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Connect a Pebble") }
                     Text("Your existing pairing stays in the Pebble app. Phone features work without a watch.", style = MaterialTheme.typography.bodySmall)
                 } }
@@ -148,7 +148,7 @@ internal fun SignalTodayPage(state: SignalState, station: SignalStation, onAsk: 
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onCapture, enabled = !state.busy && state.settings.enabled.isNotEmpty(), modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Capture now") }
                 OutlinedButton(onClick = onLive, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Around me") }
-                Text("${signalCount(state.settings.enabled.size, "source")} selected · saved on this phone", style = MaterialTheme.typography.bodySmall)
+                Text("${signalCount(state.settings.enabled.size, "source")} selected · saved on this device", style = MaterialTheme.typography.bodySmall)
                 if (state.settings.enabled.isEmpty()) Text("Choose at least one source to begin.")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = onObserve) { Text("Record over time") }
@@ -288,10 +288,18 @@ internal fun SignalSessionsPage(state: SignalState, station: SignalStation, onSo
             item {
                 SignalToggle("Local change analysis", localAnalysis, !state.busy,
                     "After each capture, compare with the previous sample in this session. Saved reports cite both captures. No model request.") { localAnalysis = it }
+                var confirmModelAnalysis by signalUiState("record.modelAnalysisConfirm") { false }
                 SignalToggle("Scheduled model analysis", modelAnalysis, !state.busy,
-                    "Automatically send the latest two session captures to your selected provider. This may incur provider charges.") { modelAnalysis = it }
+                    "Off unless you turn it on. Sends the latest two session captures to your selected provider on a schedule, without asking before each send. This may incur provider charges.") {
+                    if (it) confirmModelAnalysis = true else modelAnalysis = false
+                }
+                if (confirmModelAnalysis) SignalAlertDialog(onDismissRequest = { confirmModelAnalysis = false },
+                    title = { Text("Send readings on a schedule?") },
+                    text = { Text(if (state.settings.provider in SignalLocalModels.providers) "While a recording session runs, Signal Station will run ${providerLabel(state.settings.provider)} on the latest two captures of that session every few captures, without asking each time. With an on-device model nothing is sent. If you later switch to a cloud provider, this setting sends those captures to it." else "While a recording session runs, Signal Station will send the latest two captures of that session to ${SignalDisplay.answerSource(state.settings.provider, state.settings.model)} every few captures. It will not ask before each send. The readings go as saved, with nothing removed: if the session includes them, that means location, Wi-Fi and Bluetooth identifiers, cell ids and health readings. Your provider may charge for each request. Sending stops when the session stops, and you can turn this off here at any time.") },
+                    confirmButton = { TextButton(onClick = { modelAnalysis = true; confirmModelAnalysis = false }) { Text("Turn on") } },
+                    dismissButton = { TextButton(onClick = { confirmModelAnalysis = false }) { Text("Keep off") } })
                 if (modelAnalysis) {
-                    Text("Send to ${state.settings.provider} · ${state.settings.model}", style = MaterialTheme.typography.labelLarge)
+                    Text("Send to ${SignalDisplay.answerSource(state.settings.provider, state.settings.model)}", style = MaterialTheme.typography.labelLarge)
                     if (state.settings.endpoint.isNotBlank()) Text(state.settings.endpoint, style = MaterialTheme.typography.bodySmall)
                     OutlinedTextField(value = analysisCadence, onValueChange = { if (it.length <= 2 && it.all(Char::isDigit)) analysisCadence = it },
                         label = { Text("Analyze every N saved captures") }, singleLine = true, enabled = !state.busy,
@@ -391,7 +399,7 @@ internal fun SignalLearningControls(state: SignalState, station: SignalStation) 
         SignalToggle("Learn from my observations", true, !state.busy,
             "Process eligible saved and future observations locally. Background collection remains a separate choice.", station::enableLearning)
     } else {
-        Text("Find patterns in eligible saved and future observations on this phone. Review a suggestion before it becomes remembered knowledge. You can inspect the evidence, correct it, or forget it.")
+        Text("Find patterns in eligible saved and future observations on this device. Review a suggestion before it becomes remembered knowledge. You can inspect the evidence, correct it, or forget it.")
         Button(onClick = { station.enableLearning(true) }, enabled = !state.busy) { Text("Enable local learning") }
     }
     Text(state.learningStatus, Modifier.semantics { liveRegion = LiveRegionMode.Polite }, style = MaterialTheme.typography.bodySmall)
@@ -400,6 +408,7 @@ internal fun SignalLearningControls(state: SignalState, station: SignalStation) 
 
 @Composable
 internal fun SignalHealthControls(state: SignalState, station: SignalStation) {
+    if (state.sources.none { it.key.startsWith("healthconnect.") }) return
     var days by remember(state.settings.healthHistoryDays) { mutableStateOf(state.settings.healthHistoryDays.toString()) }
     var background by remember { mutableStateOf(false) }
     val pendingPeriod = days.toInt() != state.settings.healthHistoryDays
@@ -433,7 +442,7 @@ internal fun SignalMemoryPage(state: SignalState, station: SignalStation, onEvid
     LazyColumn(Modifier.fillMaxSize(), state = signalListState("patterns"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
             Text("Patterns", Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineMedium)
-            Text("What this phone remembers, with the evidence and your corrections.")
+            Text("What this device remembers, with the evidence and your corrections.")
             if (!state.settings.learningEnabled) SignalLearningControls(state, station)
             else Text(state.learningStatus, Modifier.semantics { liveRegion = LiveRegionMode.Polite })
         }
@@ -538,7 +547,7 @@ internal fun SignalSuggestedMemoryContext(state: SignalState, station: SignalSta
         if (suggestions.isNotEmpty()) {
             suggestions.forEach { Text(it.text, style = MaterialTheme.typography.bodySmall) }
             TextButton(onClick = { preview = true }) { Text("Review suggested context") }
-        } else Text("Suggestions are found on this phone. No provider request is made until you send.", style = MaterialTheme.typography.bodySmall)
+        } else Text("Suggestions are found on this device. No provider request is made until you send.", style = MaterialTheme.typography.bodySmall)
     }
     if (preview) SignalAlertDialog(onDismissRequest = { preview = false }, title = { Text("Suggested context") }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
