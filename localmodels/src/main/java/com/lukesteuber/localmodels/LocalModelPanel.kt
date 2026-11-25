@@ -3,6 +3,8 @@ package com.lukesteuber.localmodels
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.ui.Alignment
 import androidx.compose.material3.*
@@ -95,7 +97,7 @@ import kotlinx.coroutines.*
     }
     if (message.isNotEmpty()) Text(message, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
     if (confirmDownload) AlertDialog(onDismissRequest = { confirmDownload = false }, title = { Text("Download 2.59 GB to this device?") },
-        text = { Column {
+        text = { Column(Modifier.verticalScroll(rememberScrollState())) {
             Text("Gemma 4 E2B from Hugging Face LiteRT Community. The exact size and SHA-256 are checked before use. No account or provider key is needed.")
             Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(value = unmetered, role = Role.Checkbox, onValueChange = { unmetered = it }), verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(unmetered, null); Text("Unmetered network only")

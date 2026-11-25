@@ -8,6 +8,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -15,7 +16,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 internal fun SignalWakeControls(station: SignalStation, state: SignalState, onUseDraft: (String) -> Unit) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Go go gadget", style = MaterialTheme.typography.titleLarge)
+        Text("Go go gadget", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge)
         Text("Say “go go gadget,” wait for the phone to vibrate, then speak your question. Audio stays on this device. Only the text you review is sent when you tap Send.")
         Text(state.wakeStatus, Modifier.semantics { liveRegion = LiveRegionMode.Polite })
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -32,7 +33,7 @@ internal fun SignalWakeControls(station: SignalStation, state: SignalState, onUs
             station.updateSettings(state.settings.copy(reviewWakeOnWatch = it))
         }
         if (state.wakeDraft.isNotBlank()) {
-            Text("Voice draft", style = MaterialTheme.typography.titleMedium)
+            Text("Voice draft", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleMedium)
             Text(state.wakeDraft)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = station::reviewWakeOnWatch, enabled = !state.busy && state.watches.any { it.id == state.settings.watchId && it.connected }) { Text("Review on watch") }

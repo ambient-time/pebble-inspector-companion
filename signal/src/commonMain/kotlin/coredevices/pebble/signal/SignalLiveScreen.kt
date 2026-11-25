@@ -16,8 +16,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
@@ -50,7 +52,7 @@ internal fun SignalLivePage(state: SignalState, station: SignalStation, onSource
         item {
             Text("Live signals", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge)
             Text("Strength is not distance, direction or a count of people.", style = MaterialTheme.typography.bodySmall)
-            Text(live.status, style = MaterialTheme.typography.bodyMedium)
+            Text(live.status, Modifier.semantics { liveRegion = LiveRegionMode.Polite }, style = MaterialTheme.typography.bodyMedium)
             if (live.scanning) LinearProgressIndicator(Modifier.fillMaxWidth())
             Text("Recently seen", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleMedium)
             Text("${fresh.count { it.radio == "bluetooth" }} Bluetooth · ${fresh.count { it.radio == "wifi" }} Wi-Fi · ${visible.size - fresh.size} older", style = MaterialTheme.typography.bodyMedium)
@@ -163,7 +165,7 @@ private fun SignalLiveGraph(samples: List<Int>) {
     val color = MaterialTheme.colorScheme.primary
     val values = samples.takeLast(12)
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text("Signal history", style = MaterialTheme.typography.titleSmall)
+        Text("Signal history", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleSmall)
         Canvas(Modifier.fillMaxWidth().height(64.dp).semantics { contentDescription = "Signal strength graph, oldest to newest: ${values.joinToString()} dBm" }) {
             fun point(index: Int): Offset = Offset(size.width * index / (values.size - 1).coerceAtLeast(1), size.height * (1f - (values[index].coerceIn(-100, -20) + 100) / 80f))
             values.indices.forEach { index ->
