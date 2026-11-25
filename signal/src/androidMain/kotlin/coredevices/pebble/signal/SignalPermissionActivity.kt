@@ -47,9 +47,12 @@ class SignalPermissionActivity : Activity() {
         if (!resumed || !startReady) return
         observation?.let { id ->
             startReady = false
-            if (getSystemService(android.app.NotificationManager::class.java).areNotificationsEnabled() && (application as? SignalObservationHost)?.station?.pendingObservation(id) != null) {
-                try { startForegroundService(android.content.Intent(this, SignalObservationService::class.java).putExtra("session", id)) } catch (_: Exception) { (application as? SignalObservationHost)?.station?.stopObservation() }
-            } else (application as? SignalObservationHost)?.station?.stopObservation()
+            val station = (application as? SignalObservationHost)?.station
+            if (!getSystemService(android.app.NotificationManager::class.java).areNotificationsEnabled())
+                station?.observationNotStarted("Recording did not start because notifications are off for Signal Station. Turn them on in Android settings, then start again.")
+            else if (station?.pendingObservation(id) == null) station?.stopObservation()
+            else try { startForegroundService(android.content.Intent(this, SignalObservationService::class.java).putExtra("session", id)) }
+            catch (_: Exception) { station?.observationNotStarted("Android did not allow the recording to start. Open Signal Station and try again.") }
             finish(); return
         }
         if (wakeToken < 0) return

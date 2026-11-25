@@ -1260,6 +1260,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
         context.stopService(Intent(context, SignalObservationService::class.java))
         if (session != null && session.state in setOf("running", "paused")) finishObservation(session.id, "stopped", "Stopped by you. No automatic restart.")
     }
+    fun observationNotStarted(text: String) { stopObservation(); status(text) }
     fun finishObservation(id: String, state: String, text: String) {
         if (mutable.value.observationSession?.id == id && (observationWatchGeneration == generation || observationModelGeneration == generation)) { cancel(); observationWatchGeneration = null; observationModelGeneration = null }
         scope.launch {
