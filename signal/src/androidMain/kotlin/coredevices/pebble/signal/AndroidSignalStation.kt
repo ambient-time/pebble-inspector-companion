@@ -30,7 +30,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val store by lazy { SignalStore(context, namespace = storeNamespace, defaultSettings = SignalSettings(recognition = if (watchLink.capabilities.customTranscription) "openai" else "stock")) }
     private val localModels by lazy { com.lukesteuber.localmodels.LocalModels.get(context) }
-    private val providers by lazy { SignalProviders(providerClient ?: HttpClient(OkHttp), store) { provider, messages ->
+    private val providers by lazy { SignalProviders(providerClient ?: HttpClient(OkHttp) { engine { config { retryOnConnectionFailure(false) } } }, store) { provider, messages ->
         try { localAnswer?.invoke(provider, messages) ?: localModels.answer(provider, messages) }
         catch (e: com.lukesteuber.localmodels.LocalModelFailure) { throw SignalProviderException(e.message ?: "Local inference could not finish.") }
     } }
