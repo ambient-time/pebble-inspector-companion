@@ -50,6 +50,15 @@ class SignalScheduledAnalysisTest {
         assertFalse(SignalScheduledAnalysis.valid(session, a, b.copy(sourceKeys = keys + "location"), keys))
     }
 
+    @Test fun evidenceCarriesReadingsAndRecordIdsButNoWatchThreadOrSessionIdentifier() {
+        val a = sample("first", 100_000).copy(watchId = "watch-serial-1234"); val b = sample("second", 200_000).copy(watchId = "watch-serial-1234")
+        val evidence = SignalScheduledAnalysis.evidence(session, a, b, keys)
+        assertContains(evidence, "[first]"); assertContains(evidence, "first:battery"); assertContains(evidence, "second:battery")
+        assertFalse("watch-serial-1234" in evidence)
+        assertFalse("observation:run" in evidence)
+        assertFalse("\"sessionId\":\"run\"" in evidence)
+    }
+
     @Test fun explicitSessionRequestUsesOnlyBoundedTwoCapturePayloadWithMockTransport() = runBlocking {
         val a = sample("first", 100_000); val b = sample("second", 200_000)
         var requests = 0
