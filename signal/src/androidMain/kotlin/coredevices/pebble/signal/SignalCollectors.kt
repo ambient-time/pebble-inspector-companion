@@ -372,7 +372,13 @@ class SignalCollectors(private val context: Context) {
         val available = manager.getProviders(true).filter { it == LocationManager.NETWORK_PROVIDER || (it == LocationManager.GPS_PROVIDER && permitted(Manifest.permission.ACCESS_FINE_LOCATION)) }
         if (available.isEmpty()) return@withContext LocationResult(null, "provider_unavailable")
         val latest = CompletableDeferred<Location>()
-        val listener = object : LocationListener { override fun onLocationChanged(location: Location) { latest.complete(Location(location)) } }
+        val listener = object : LocationListener {
+            override fun onLocationChanged(location: Location) { latest.complete(Location(location)) }
+            // Abstract before Android 11, where the platform still calls them on a provider change.
+            @Deprecated("Deprecated in Java") override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) {}
+            override fun onProviderEnabled(provider: String) {}
+            override fun onProviderDisabled(provider: String) {}
+        }
         try {
             available.forEach { manager.requestLocationUpdates(it, 1000L, 0f, listener, Looper.getMainLooper()) }
             val fresh = withTimeoutOrNull(8_000) { latest.await() }
