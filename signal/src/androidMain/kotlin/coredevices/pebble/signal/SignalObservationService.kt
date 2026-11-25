@@ -55,10 +55,14 @@ class SignalObservationService : Service() {
                     if (!notificationsEnabled()) { owner.finishObservation(id, "stopped", pause!!); break }
                     if (pause != null) owner.observationStatus(id, "paused", pause) else {
                         owner.observationStatus(id, "running", "Collecting selected sources. Android may delay individual readings.")
-                        withTimeoutOrNull(minOf(90_000L, remainingMillis() ?: 90_000L).coerceAtLeast(1)) { owner.collectObservation(id) }
-                        if (remainingMillis()?.let { it > 0 } != false) {
-                            withTimeoutOrNull(minOf(65_000L, remainingMillis() ?: 65_000L).coerceAtLeast(1)) { owner.analyzeObservation(id) }
-                        }
+                        SignalSchedule.guardSample(
+                            sample = {
+                                withTimeoutOrNull(minOf(90_000L, remainingMillis() ?: 90_000L).coerceAtLeast(1)) { owner.collectObservation(id) }
+                                if (remainingMillis()?.let { it > 0 } != false) {
+                                    withTimeoutOrNull(minOf(65_000L, remainingMillis() ?: 65_000L).coerceAtLeast(1)) { owner.analyzeObservation(id) }
+                                }
+                            },
+                            failed = { owner.observationStatus(id, "running", "One sample could not be saved. The session continues on its schedule.") })
                     }
                     val until = pending.endsAt?.let { "until ${java.time.Instant.ofEpochMilli(it).atZone(java.time.ZoneId.systemDefault()).toLocalTime().withSecond(0).withNano(0)}" } ?: "until you stop it"
                     val schedule = if (pending.mode == "fixed") " · ${pending.intervalMinutes} min between scans" else ""
@@ -69,7 +73,9 @@ class SignalObservationService : Service() {
                             if (pending.mode == "battery_saver") 5 * 60_000L else 60_000L)) owner.observationTransition(id)
                 }
                 owner.finishObservation(id, "completed", "Observation session ended.")
-            } finally { stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) { owner.finishObservation(id, "interrupted", "The session stopped because Signal Station could not save its state. It will not restart automatically.") }
+            finally { stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
         }
         return START_NOT_STICKY
     }

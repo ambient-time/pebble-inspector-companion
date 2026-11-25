@@ -7,6 +7,16 @@ class SignalSchedule {
     companion object {
         fun remaining(startedAt: Long, endsAt: Long, now: Long) = (endsAt - now).coerceIn(0, (endsAt - startedAt).coerceAtLeast(0))
         fun intervalMinutes(value: Int) = value.coerceIn(1, 1440)
+        /** One failed sample must end neither the session nor the process. Cancellation still stops it. */
+        suspend fun guardSample(sample: suspend () -> Unit, failed: suspend () -> Unit) {
+            try { sample() }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (_: Exception) {
+                try { failed() }
+                catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                catch (_: Exception) {}
+            }
+        }
     }
     private val attempts = mutableMapOf<String, Long>()
     private var motionUntil = Long.MIN_VALUE

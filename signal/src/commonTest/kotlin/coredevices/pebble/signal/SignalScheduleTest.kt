@@ -27,6 +27,24 @@ class SignalScheduleTest {
         assertEquals(900L, SignalSchedule.remaining(100, 1000, 0))
         assertEquals(900L, SignalSchedule.remaining(100, 1000, 100))
     }
+    @Test fun failedSampleIsReportedAndDoesNotEscape() = kotlinx.coroutines.test.runTest {
+        var reported = 0
+        SignalSchedule.guardSample(sample = { error("storage unavailable") }, failed = { reported++ })
+        assertEquals(1, reported)
+        SignalSchedule.guardSample(sample = {}, failed = { reported++ })
+        assertEquals(1, reported, "A sample that succeeds reports nothing")
+        SignalSchedule.guardSample(sample = { error("storage unavailable") }, failed = { error("status could not be saved either") })
+    }
+    @Test fun cancelledSampleStillCancels() = kotlinx.coroutines.test.runTest {
+        var reported = 0
+        assertFailsWith<kotlinx.coroutines.CancellationException> {
+            SignalSchedule.guardSample(sample = { throw kotlinx.coroutines.CancellationException("stopped") }, failed = { reported++ })
+        }
+        assertFailsWith<kotlinx.coroutines.CancellationException> {
+            SignalSchedule.guardSample(sample = { error("failed") }, failed = { throw kotlinx.coroutines.CancellationException("stopped") })
+        }
+        assertEquals(0, reported)
+    }
     private val keys = setOf("location", "wifi", "presence.wifi", "bluetooth", "weather.current", "cellular", "sensor.1")
     @Test fun passiveWifiRemainsAvailableWhenActiveScanIsCoolingDown() {
         val schedule = SignalSchedule()
