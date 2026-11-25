@@ -14,7 +14,6 @@ class SignalOutdoorClient(http: HttpClient) {
     private val client = HttpClient(http.engine) { followRedirects = false; expectSuccess = false }
     private val weather = SignalWeather(http)
     fun close() { weather.close(); client.close() }
-    suspend fun searchPlaces(query: String): List<SignalPlace> = weather.search(query)
 
     suspend fun collect(config: OutdoorConfig, now: Long = Clock.System.now().toEpochMilliseconds()): List<OutdoorReading> = supervisorScope {
         SignalOutdoorSources.validate(config)
