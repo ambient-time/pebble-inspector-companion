@@ -1,7 +1,10 @@
 package coredevices.pebble.signal
 
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
@@ -17,3 +20,7 @@ fun SignalAlertDialog(onDismissRequest: () -> Unit, confirmButton: @Composable (
         modifier = modifier.padding(bottom = LocalSignalDialogBottomInset.current),
         dismissButton = dismissButton, title = title, text = text)
 }
+
+/** A dialog does not scroll its own text, so a long message would lose its last lines at large font sizes. */
+@Composable
+fun SignalDialogText(text: String) { Text(text, Modifier.verticalScroll(rememberScrollState())) }

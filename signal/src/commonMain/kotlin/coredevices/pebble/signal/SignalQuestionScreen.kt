@@ -15,7 +15,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.backhandler.BackHandler
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
@@ -56,7 +58,7 @@ internal fun SignalWatchQuestionPanel(state: SignalState, station: SignalStation
         if (exact && prepared) review.messages.forEachIndexed { index, (role, message) ->
             item(key = "message:$index") { SelectionContainer { Text("$role\n$message") } }
         }
-        if (prepared && expired) item(key = "expired") { Text("Review expired. Review again before sending. Nothing was sent.") }
+        if (prepared && expired) item(key = "expired") { Text("Review expired. Review again before sending. Nothing was sent.", Modifier.semantics { liveRegion = LiveRegionMode.Polite }) }
         item(key = "send") {
             if (!prepared || expired) Button({ station.reviewWatchQuestion(text) }, enabled = !state.busy && text.isNotBlank(), modifier = Modifier.fillMaxWidth().sizeIn(minHeight = 48.dp)) { Text("Review this question") }
             else Button(station::sendWatchQuestionReview, enabled = !state.busy, modifier = Modifier.fillMaxWidth().sizeIn(minHeight = 48.dp)) { Text("Send watch question once") }

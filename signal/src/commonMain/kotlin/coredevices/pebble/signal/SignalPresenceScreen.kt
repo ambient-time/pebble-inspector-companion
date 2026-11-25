@@ -340,7 +340,7 @@ internal fun SignalPresencePage(station: SignalStation, state: SignalState, onDe
     SignalLookupReviewDialog(state, station, onDetail)
     candidate?.let { found ->
         SignalAlertDialog(onDismissRequest = { candidate = null }, title = { Text("Name this device") }, text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("${found.radio} · ${found.address}")
                 OutlinedTextField(deviceLabel, { deviceLabel = it.take(80) }, label = { Text("Your device name") }, singleLine = true)
                 Text(if (found.beaconId.isBlank()) "This device will be matched by its current address, which can change." else "This device will be matched by its advertised beacon identity. Duplicate beacon identities are marked uncertain.")

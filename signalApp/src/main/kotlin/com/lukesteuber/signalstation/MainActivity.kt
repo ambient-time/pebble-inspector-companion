@@ -12,6 +12,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.ComposeView
 import coredevices.pebble.signal.SignalScreen
 import coredevices.pebble.signal.SignalAlertDialog
@@ -99,7 +101,7 @@ class MainActivity : ComponentActivity() {
                 onDismissRequest = { if (!selecting) showWatch = false },
                 title = { Text("Connect a watch") },
                 text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Pebble", style = MaterialTheme.typography.titleSmall)
+                    Text("Pebble", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleSmall)
                     Text("1. Connect your watch in its existing Pebble app.\n2. Choose that app below.\n3. Select your watch and tap Check connection.")
                     selectedHost?.let { pkg ->
                         val label = runCatching { packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString() }.getOrDefault(pkg)
@@ -121,7 +123,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     Text("The watch app is still in testing. Install Signal Station on the watch, then return here to choose the Pebble app that already manages it. Signal Station for Android keeps full replies and uses your saved answer setup.", style = MaterialTheme.typography.bodySmall)
-                    Text("Garmin", style = MaterialTheme.typography.titleSmall)
+                    Text("Garmin", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleSmall)
                     Text(if (garminWatches.isEmpty()) garminStatus else garminWatches.joinToString("\n") { "${it.name} · ${if (it.connected) "connected" else "not connected"}" })
                     Text("Garmin watches connect through Garmin Connect. Install Signal Station on the Garmin watch, then choose it under Settings → Watch. The Garmin app shows Home favorites and recent replies; questions and capture stay on Pebble and the phone.", style = MaterialTheme.typography.bodySmall)
                     if (!BuildConfig.PLAY_BUILD) TextButton(onClick = {

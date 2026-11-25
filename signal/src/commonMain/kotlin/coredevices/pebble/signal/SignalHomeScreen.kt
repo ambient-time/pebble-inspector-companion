@@ -34,7 +34,7 @@ fun homeStatusLabel(status: HomeActionStatus): String = when (status) {
 internal fun SignalHomePage(state: SignalState, station: SignalStation) {
     if (!state.homeReady) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Home", style = MaterialTheme.typography.headlineMedium)
+            Text("Home", Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineMedium)
             Text(state.homeStatus.ifBlank { "Opening Home safety records…" }, Modifier.semantics { liveRegion = LiveRegionMode.Polite })
         }
         return
@@ -50,7 +50,7 @@ internal fun SignalHomePage(state: SignalState, station: SignalStation) {
     val columns = GridCells.Adaptive((168 * LocalDensity.current.fontScale.coerceAtLeast(1f)).dp)
     LazyVerticalGrid(columns, Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item(span = { GridItemSpan(maxLineSpan) }) { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Home", style = MaterialTheme.typography.headlineMedium)
+            Text("Home", Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineMedium)
             Text(state.homeStatus, Modifier.semantics { liveRegion = LiveRegionMode.Polite })
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("grid" to "Favorites", "catalog" to "All devices", "connections" to "Connections", "activity" to "Activity & permissions").forEach { (key,label) -> FilterChip(section == key, { section = key }, label = { Text(label) }) }

@@ -250,7 +250,7 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
         }
         if (state.wakePhase !in setOf("stopped", "error", "draft")) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(state.wakeStatus, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                Text(state.wakeStatus, Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite }, style = MaterialTheme.typography.bodySmall)
                 TextButton(onClick = station::stopWakeListening) { Text("Stop listening") }
             }
         } else if (state.wakeDraft.isNotBlank() && page != SignalPage.Conversation) {
@@ -366,7 +366,7 @@ private fun SignalScreenContent(station: SignalStation, standalone: Boolean, onM
         SignalAlertDialog(
             onDismissRequest = { confirmation = null },
             title = { Text(request.title) },
-            text = { Text(request.message) },
+            text = { SignalDialogText(request.message) },
             confirmButton = {
                 TextButton(onClick = { confirmation = null; request.action() }) { Text("Confirm") }
             },
@@ -438,7 +438,7 @@ private fun SignalConversation(
                     Text(if (review.provider in SignalLocalModels.providers) "Only Send runs the selected model on this device. No cloud fallback. Dictation and external lookups have separate settings." else "Only Send contacts your provider. It may use credits.")
                     if (review.homeConnections.isNotEmpty()) Text("Home for this question: ${review.homeConnections.joinToString()}. ${if (review.homeActionsAllowed) "Reads and actions allowed; exact standing grants may execute." else "Read only. Actions are blocked, including standing grants."} Retrieved data goes to this provider.")
                     val expired = signalQuestionExpired(review.expiresAt)
-                    if (expired) Text("Review expired. Return to the question and review it again. Nothing was sent.")
+                    if (expired) Text("Review expired. Return to the question and review it again. Nothing was sent.", Modifier.semantics { liveRegion = LiveRegionMode.Polite })
                     if (!ready) OutlinedButton(onClick = onSettings) { Text("Set up answers") }
                     Button(onClick = station::sendReviewedQuestion, enabled = !state.busy && ready && !expired, modifier = Modifier.fillMaxWidth().sizeIn(minHeight = 48.dp)) { Text("Send question once") }
                 }
@@ -611,13 +611,13 @@ private fun SignalHistory(
                 SignalChoice("Source", source, listOf("" to "All sources") + state.sources.map { it.key to it.name }) { source = it }
                 Text("Dates use capture or save time in ${requested.zoneId}. Measurement periods remain in each record.", style = MaterialTheme.typography.bodySmall)
             }
-            if (dateError) Text("Use valid dates with the start on or before the end.", color = MaterialTheme.colorScheme.error)
+            if (dateError) Text("Use valid dates with the start on or before the end.", Modifier.semantics { liveRegion = LiveRegionMode.Polite }, color = MaterialTheme.colorScheme.error)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { selected = emptySet(); station.queryHistory(requested) }, enabled = !results.loading && !dateError) { Text(if (pending) "Apply filters" else "Refresh results") }
                 TextButton(onClick = { query = ""; from = ""; to = ""; source = ""; kind = "all"; selected = emptySet(); station.queryHistory(SignalHistoryQuery()) }, enabled = !results.loading) { Text("All history") }
             }
             if (results.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-            if (results.error.isNotBlank()) Text(results.error, color = MaterialTheme.colorScheme.error)
+            if (results.error.isNotBlank()) Text(results.error, Modifier.semantics { liveRegion = LiveRegionMode.Polite }, color = MaterialTheme.colorScheme.error)
             Text("${signalCount(results.matchingCount.toInt(), "result")} · ${selected.size} selected", Modifier.semantics { liveRegion = LiveRegionMode.Polite })
             if (pending) Text("Apply changed filters before using these results.")
             else if (results.updatedAt > 0) Text("Updated ${signalDateTime(results.updatedAt)} · refresh for new records.", style = MaterialTheme.typography.bodySmall)
@@ -648,7 +648,7 @@ private fun SignalHistory(
                     Text(signalDateTime(record.createdAt), style = MaterialTheme.typography.labelMedium)
                     Text(SignalDisplay.title(record), style = MaterialTheme.typography.titleMedium)
                     SignalDisplay.kindLine(record).takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                    TextButton(onClick = { onDetail(record.id) }) { Text("Open record") }
+                    TextButton(onClick = { onDetail(record.id) }, modifier = Modifier.semantics { contentDescription = "Open record: ${SignalDisplay.title(record)}, ${signalDateTime(record.createdAt)}" }) { Text("Open record") }
                 }
             }
         }
@@ -831,7 +831,7 @@ private fun SignalConfiguration(state: SignalState, station: SignalStation, onMa
             if (provider == "custom") {
                 OutlinedTextField(endpoint, { endpoint = it }, Modifier.fillMaxWidth(), label = { Text("HTTPS endpoint") }, supportingText = { Text("OpenAI-compatible Chat Completions endpoint") }, singleLine = true, enabled = !state.busy, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
             }
-            Text(if (provider in state.configuredProviders) "Key saved · leave blank to keep it" else "Add your provider key")
+            Text(if (provider in state.configuredProviders) "Key saved · leave blank to keep it" else "Add your provider key", Modifier.semantics { liveRegion = LiveRegionMode.Polite })
             SignalKeyField(key, { key = it }, "Answer provider key", !state.busy)
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

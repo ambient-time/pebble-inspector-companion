@@ -295,7 +295,7 @@ internal fun SignalSessionsPage(state: SignalState, station: SignalStation, onSo
                 }
                 if (confirmModelAnalysis) SignalAlertDialog(onDismissRequest = { confirmModelAnalysis = false },
                     title = { Text("Send readings on a schedule?") },
-                    text = { Text(if (state.settings.provider in SignalLocalModels.providers) "While a recording session runs, Signal Station will run ${providerLabel(state.settings.provider)} on the latest two captures of that session every few captures, without asking each time. With an on-device model nothing is sent. If you later switch to a cloud provider, this setting sends those captures to it." else "While a recording session runs, Signal Station will send the latest two captures of that session to ${SignalDisplay.answerSource(state.settings.provider, state.settings.model)} every few captures. It will not ask before each send. The readings go as saved, with nothing removed: if the session includes them, that means location, Wi-Fi and Bluetooth identifiers, cell ids and health readings. Your provider may charge for each request. Sending stops when the session stops, and you can turn this off here at any time.") },
+                    text = { SignalDialogText(if (state.settings.provider in SignalLocalModels.providers) "While a recording session runs, Signal Station will run ${providerLabel(state.settings.provider)} on the latest two captures of that session every few captures, without asking each time. With an on-device model nothing is sent. If you later switch to a cloud provider, this setting sends those captures to it." else "While a recording session runs, Signal Station will send the latest two captures of that session to ${SignalDisplay.answerSource(state.settings.provider, state.settings.model)} every few captures. It will not ask before each send. The readings go as saved, with nothing removed: if the session includes them, that means location, Wi-Fi and Bluetooth identifiers, cell ids and health readings. Your provider may charge for each request. Sending stops when the session stops, and you can turn this off here at any time.") },
                     confirmButton = { TextButton(onClick = { modelAnalysis = true; confirmModelAnalysis = false }) { Text("Turn on") } },
                     dismissButton = { TextButton(onClick = { confirmModelAnalysis = false }) { Text("Keep off") } })
                 if (modelAnalysis) {
@@ -494,7 +494,7 @@ internal fun SignalMemoryPage(state: SignalState, station: SignalStation, onEvid
         SignalMemoryEvidence(memory, SignalLearning.eligible(memory, state.settings), onDismiss = { detail = null }, onEvidence = { detail = null; onEvidence(it) })
     }
     if (noteOpen) SignalAlertDialog(onDismissRequest = { noteOpen = false }, title = { Text(if (edit == null) "Personal note" else "Correct the wording") }, text = {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(if (edit == null) "Write what you want to remember. This will be identified as your note, without an inferred observation behind it." else "Your correction will be preserved with this memory and its evidence.")
             OutlinedTextField(text, { text = it.take(2000) }, label = { Text("Your words") }, minLines = 3, maxLines = 8, modifier = Modifier.fillMaxWidth())
         }
