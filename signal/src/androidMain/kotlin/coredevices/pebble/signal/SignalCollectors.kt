@@ -344,7 +344,6 @@ class SignalCollectors(private val context: Context) {
         if (!location.hasAccuracy()) return null
         return SignalPresenceFix(location.latitude, location.longitude, location.accuracy.toDouble(), time)
     }
-    suspend fun locateFix(): SignalPresenceFix? = locate().fix()
     private fun locationObservations(result: LocationResult): List<SignalObservation> {
         val location = result.location ?: return unavailable(listOf("location"), result.status)
         return listOf(observation("location", "latitude=${location.latitude}; longitude=${location.longitude}; accuracy=${if (location.hasAccuracy()) location.accuracy else "unknown"}; provider=${location.provider}", "degrees; meters", result.status, result.measuredAt)
