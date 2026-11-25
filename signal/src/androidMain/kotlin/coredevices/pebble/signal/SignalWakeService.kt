@@ -37,7 +37,7 @@ internal object SignalWakeRuntime {
     fun valid(token: Long) = state.value.token == token && state.value.phase !in setOf("stopped", "error", "draft")
 }
 
-/** Declared only by the lab manifest. No audio is written to disk or sent online. */
+/** No audio is written to disk or sent online. */
 class SignalWakeService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var work: Job? = null
@@ -139,7 +139,7 @@ class SignalWakeService : Service() {
                                     recordingAt = SystemClock.elapsedRealtime()
                                     question.reset()
                                     @Suppress("DEPRECATION") val vibrator = getSystemService(VIBRATOR_SERVICE) as Vibrator
-                                    if (vibrator.hasVibrator()) vibrator.vibrate(VibrationEffect.createOneShot(80, VibrationEffect.DEFAULT_AMPLITUDE))
+                                    runCatching { if (vibrator.hasVibrator()) vibrator.vibrate(VibrationEffect.createOneShot(80, VibrationEffect.DEFAULT_AMPLITUDE)) }
                                     announce(requested, "recording", "Go ahead—say your question. Pause after speaking.")
                                 }
                             } else {
