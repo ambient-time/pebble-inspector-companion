@@ -1818,7 +1818,9 @@ open class AndroidSignalStation(private val context: Context, protected val watc
                         val memories = store.memory()
                         val eligibleMemories = memories.filter { SignalLearning.eligible(it, settings) }
                         val directory = File(context.cacheDir, "signal-export").apply { mkdirs(); listFiles()?.forEach(File::delete) }
-                        File(directory, "signal-history." + if (csv) "csv" else if (markdown) "md" else "json").apply {
+                        // A fresh name per export: a reused name keeps the same share link, which an app
+                        // granted an earlier export could still read, and the earlier cleanup timer would delete.
+                        File(directory, "signal-history-${java.time.LocalDate.now()}-${id().take(8)}." + if (csv) "csv" else if (markdown) "md" else "json").apply {
                             bufferedWriter().use { writer ->
                                 if (csv) writer.write(SignalCsv.header)
                                 else if (!markdown) writer.write("{\"schemaVersion\":3,\"records\":[")
