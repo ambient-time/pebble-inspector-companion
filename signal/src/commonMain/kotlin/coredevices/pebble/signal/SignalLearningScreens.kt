@@ -130,7 +130,7 @@ internal fun SignalTodayPage(state: SignalState, station: SignalStation, onAsk: 
         state.observationSession?.takeIf { it.state in setOf("running", "paused") }?.let { session -> item {
             Card { Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 LearningHeading("Recording in progress")
-                Text("${signalCount(session.captures, "capture")} saved · ${signalObservationEnd(session)}")
+                Text("${signalCount(session.captures, "capture")} saved · ${signalObservationEnd(session)}${if (session.missedSlots > 0) " · ${session.missedSlots} missed" else ""}")
                 Text(session.status, Modifier.semantics { liveRegion = LiveRegionMode.Polite }, style = MaterialTheme.typography.bodySmall)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = station::stopObservation) { Text("Stop recording") }
@@ -216,7 +216,7 @@ private fun SignalSessionSummary(session: SignalObservationSession, state: Signa
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         LearningHeading("Observation session")
         Text(session.status, Modifier.semantics { liveRegion = LiveRegionMode.Polite })
-        Text("${session.state.replace('_', ' ')} · ${signalObservationModeName(session.mode, session.intervalMinutes)} · ${session.captures} saved captures · ${signalObservationEnd(session)}", style = MaterialTheme.typography.bodySmall)
+        Text("${session.state.replace('_', ' ')} · ${signalObservationModeName(session.mode, session.intervalMinutes)} · ${session.captures} saved captures${if (session.missedSlots > 0) " · ${session.missedSlots} missed" else ""} · ${signalObservationEnd(session)}", style = MaterialTheme.typography.bodySmall)
         Text(if (session.localAnalysis) "Local change analysis after each capture with a previous sample." else "Automatic local analysis is off.", style = MaterialTheme.typography.bodySmall)
         if (session.modelAnalysis) Text("Model analysis every ${session.analysisEveryCaptures} saved captures · ${session.analysisProvider} · ${session.analysisModel}. Each request includes the latest two captures only.", style = MaterialTheme.typography.bodySmall)
         Text(if (session.attempts == 0 && session.captures > 0) "Attempt count was not recorded for this session." else "${session.attempts} collection attempts",
@@ -353,7 +353,7 @@ internal fun SignalSessionsPage(state: SignalState, station: SignalStation, onSo
             var expanded by remember(session.id) { mutableStateOf(false) }
             var visibleRecords by remember(session.id) { mutableStateOf(10) }
             Text(signalDateTime(session.startedAt), style = MaterialTheme.typography.labelLarge)
-            Text("${session.state.replace('_', ' ')} · ${signalObservationModeName(session.mode, session.intervalMinutes)} · ${session.captures} saved captures")
+            Text("${session.state.replace('_', ' ')} · ${signalObservationModeName(session.mode, session.intervalMinutes)} · ${session.captures} saved captures${if (session.missedSlots > 0) " · ${session.missedSlots} missed" else ""}")
             Text(if (session.attempts == 0 && session.captures > 0) "Attempt count was not recorded for this session." else "${session.attempts} collection attempts",
                 style = MaterialTheme.typography.bodySmall)
             Text(session.status, style = MaterialTheme.typography.bodySmall)

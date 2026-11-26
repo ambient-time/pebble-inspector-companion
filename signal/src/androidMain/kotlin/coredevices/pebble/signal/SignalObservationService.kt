@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.selects.select
 
 interface SignalObservationHost { val station: AndroidSignalStation }
 
@@ -35,18 +36,26 @@ class SignalObservationService : Service() {
                 if (Build.VERSION.SDK_INT >= 34 && "sensor.21" in pending.sourceKeys && (granted(Manifest.permission.BODY_SENSORS) || granted("android.permission.health.READ_HEART_RATE"))) types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH
                 startForeground(6110, notification, types)
             } else startForeground(6110, notification)
-        } catch (_: Exception) { owner.finishObservation(id, "interrupted", "Android did not allow the session to start. Review collection permissions and try again."); stopSelf(); return START_NOT_STICKY }
+        } catch (_: Exception) {
+            // The session is not active yet, so finishObservation would drop this message.
+            owner.observationNotStarted("Android did not allow the recording to start. Review collection permissions and try again.")
+            stopSelf(); return START_NOT_STICKY
+        }
+        val wake = SignalObservationWake(this).also { it.start() }
         job = serviceScope.launch {
             val deadline = pending.endsAt?.let { SystemClock.elapsedRealtime() + SignalSchedule.remaining(pending.startedAt, it, System.currentTimeMillis()) }
             fun remainingMillis() = deadline?.let { (it - SystemClock.elapsedRealtime()).coerceAtLeast(0) }
+            val anchor = SystemClock.elapsedRealtime()
+            var slot = 0L
             try {
                 owner.activateObservation(id)
                 while (isActive && (remainingMillis()?.let { it > 0 } != false)) {
+                    wake.hold(SignalObservationWake.SAMPLE_HOLD_MILLIS)
                     val battery = getSystemService(BatteryManager::class.java)
                     val power = getSystemService(PowerManager::class.java)
                     val level = battery.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
                     val pause = when {
-                        !notificationsEnabled() -> "Notifications are off; session stopped."
+                        !notificationsEnabled() -> "Recording notifications are off, so the session stopped. Turn them on in Android settings to record."
                         level in 0..14 && !battery.isCharging -> "Paused: battery below 15%."
                         filesDir.usableSpace < 250L * 1024 * 1024 -> "Paused: storage is low."
                         Build.VERSION.SDK_INT >= 29 && power.currentThermalStatus >= PowerManager.THERMAL_STATUS_SEVERE -> "Paused: phone is too warm."
@@ -67,20 +76,37 @@ class SignalObservationService : Service() {
                     val until = pending.endsAt?.let { "until ${java.time.Instant.ofEpochMilli(it).atZone(java.time.ZoneId.systemDefault()).toLocalTime().withSecond(0).withNano(0)}" } ?: "until you stop it"
                     val schedule = if (pending.mode == "fixed") " · ${pending.intervalMinutes} min between scans" else ""
                     notifications.notify(6110, notification(pause ?: "Observing $until$schedule. Tap Stop to end."))
-                    val wait = minOf(owner.observationDelayMillis(id), remainingMillis() ?: Long.MAX_VALUE).coerceAtLeast(1)
-                    if (pending.mode == "fixed") delay(wait)
-                    else if (awaitSignalTransition(this@SignalObservationService, pending.sourceKeys, wait,
-                            if (pending.mode == "battery_saver") 5 * 60_000L else 60_000L)) owner.observationTransition(id)
+                    val end = deadline ?: Long.MAX_VALUE
+                    if (pending.mode == "fixed") {
+                        val next = SignalSchedule.nextSlot(anchor, owner.observationDelayMillis(id), SystemClock.elapsedRealtime(), slot)
+                        if (next.missed > 0 && next.dueAt < end) owner.observationMissed(id, next.missed.coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
+                        slot = next.index
+                        wake.sleepUntil(minOf(next.dueAt, end))
+                    } else {
+                        val target = minOf(SystemClock.elapsedRealtime() + owner.observationDelayMillis(id), end)
+                        // Motion and network hints can end the wait early; the alarm bounds it either way.
+                        val moved = coroutineScope {
+                            val alarm = async { wake.sleepUntil(target); false }
+                            val hint = async { awaitSignalTransition(this@SignalObservationService, pending.sourceKeys, (target - SystemClock.elapsedRealtime()).coerceAtLeast(1),
+                                if (pending.mode == "battery_saver") 5 * 60_000L else 60_000L) }
+                            select<Boolean> { alarm.onAwait { it }; hint.onAwait { it } }.also { alarm.cancel(); hint.cancel() }
+                        }
+                        if (moved) owner.observationTransition(id)
+                    }
                 }
                 owner.finishObservation(id, "completed", "Observation session ended.")
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) { owner.finishObservation(id, "interrupted", "The session stopped because Signal Station could not save its state. It will not restart automatically.") }
-            finally { stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
+            finally { wake.stop(); stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
         }
         return START_NOT_STICKY
     }
     private fun granted(permission: String) = checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
-    private fun notificationsEnabled() = getSystemService(NotificationManager::class.java).areNotificationsEnabled()
+    // Blocking only the recording channel hides the notification and its Stop button, so treat it as off.
+    private fun notificationsEnabled(): Boolean {
+        val manager = getSystemService(NotificationManager::class.java)
+        return manager.areNotificationsEnabled() && manager.getNotificationChannel("signal-observation")?.importance != NotificationManager.IMPORTANCE_NONE
+    }
     private fun notification(text: String): Notification {
         val stop = PendingIntent.getService(this, 6110, Intent(this, SignalObservationService::class.java).setAction("stop"), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val open = packageManager.getLaunchIntentForPackage(packageName)?.let { PendingIntent.getActivity(this, 6111, it, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE) }

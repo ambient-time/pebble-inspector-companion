@@ -1,12 +1,36 @@
 package coredevices.pebble.signal
 
 data class SignalScheduleDecision(val enabled: Set<String>, val deferred: Set<String>, val activeWifi: Boolean)
+/** One step of the wait before a sample: stay awake for the rest of it, or set an alarm [alarmIn] from now. */
+data class SignalWakeStep(val holdAwake: Boolean, val alarmIn: Long)
+/** The next fixed-interval sample: its slot number, when it is due, and how many whole slots were skipped. */
+data class SignalSlot(val index: Long, val dueAt: Long, val missed: Long)
 
 /** Session-local monotonic timing. A process restart never resumes a schedule. */
 class SignalSchedule {
     companion object {
         fun remaining(startedAt: Long, endsAt: Long, now: Long) = (endsAt - now).coerceIn(0, (endsAt - startedAt).coerceAtLeast(0))
         fun intervalMinutes(value: Int) = value.coerceIn(1, 1440)
+        /** The last stretch before a sample runs awake; earlier, the phone may sleep between alarms. */
+        const val HOLD_AWAKE_MILLIS = 120_000L
+        /**
+         * Android may deliver an inexact allow-while-idle alarm up to 75% of its lead time late, and
+         * allows 72 such alarms an hour. Waking at half the remaining time therefore always lands before
+         * the sample is due, and a day-long interval needs about ten alarms.
+         */
+        fun wakeStep(remaining: Long): SignalWakeStep =
+            if (remaining <= HOLD_AWAKE_MILLIS) SignalWakeStep(true, remaining.coerceAtLeast(0)) else SignalWakeStep(false, remaining / 2)
+        /**
+         * Fixed sampling keeps to a grid that starts with the session, so slow samples do not drift it.
+         * A slot that is already due is taken now; whole slots that passed while the phone slept are
+         * counted as missed, never filled in.
+         */
+        fun nextSlot(anchor: Long, intervalMillis: Long, now: Long, lastIndex: Long): SignalSlot {
+            val interval = intervalMillis.coerceAtLeast(1)
+            val reached = if (now <= anchor) 0 else (now - anchor) / interval
+            val index = maxOf(lastIndex + 1, reached)
+            return SignalSlot(index, anchor + index * interval, index - lastIndex - 1)
+        }
         /** One failed sample must end neither the session nor the process. Cancellation still stops it. */
         suspend fun guardSample(sample: suspend () -> Unit, failed: suspend () -> Unit) {
             try { sample() }
@@ -33,7 +57,9 @@ class SignalSchedule {
         else -> 5 * 60_000L
     }
     fun decide(selected: Set<String>, mode: String, elapsed: Long, intervalMinutes: Int = 5): SignalScheduleDecision {
-        fun due(family: String, interval: Long): Boolean = attempts[family]?.let { elapsed < it || elapsed - it >= interval } ?: true
+        // Fixed samples follow a grid, so one can start a little early after a late one. Half an
+        // interval still keeps two scans of the same radio apart. Weather keeps its own limit.
+        fun due(family: String, interval: Long): Boolean = attempts[family]?.let { elapsed < it || elapsed - it >= if (mode == "fixed" && family != "weather") interval / 2 else interval } ?: true
         val interval = delayMillis(mode, elapsed, intervalMinutes)
         val deferred = selected.filter { key ->
             when {

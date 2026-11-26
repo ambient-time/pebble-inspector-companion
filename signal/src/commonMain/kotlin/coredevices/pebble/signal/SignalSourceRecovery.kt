@@ -18,6 +18,7 @@ object SignalSourceRecovery {
         "no_samples" -> "No sensor events arrived during the collection window."
         "invalid_samples" -> "The sensor did not return a usable measurement."
         "not_sampled" -> "No saved reading yet."
+        "screen_off_limited" -> "The screen was off, so Android limited the Bluetooth scan. Some devices may be missing."
         else -> ""
     }
 }
