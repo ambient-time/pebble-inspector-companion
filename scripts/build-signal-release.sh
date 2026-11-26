@@ -74,6 +74,12 @@ for notice in assets/signal-station/LICENSE-vosk.txt assets/signal-station/WAKE_
   fi
 done
 
+abis="$(unzip -Z1 "${built}" 'lib/*' 2>/dev/null | cut -d/ -f2 | sort -u | tr '\n' ' ')"
+if [[ "${abis}" != "arm64-v8a " ]]; then
+  echo "The release APK should carry only arm64-v8a native libraries; it has: ${abis:-none}" >&2
+  exit 1
+fi
+
 mkdir -p "${stage_dir}"
 find "${stage_dir}" -maxdepth 1 -type f -delete
 apk="signal-station-${version_name}-${version_code}-${revision:0:8}.apk"
