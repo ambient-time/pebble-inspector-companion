@@ -390,7 +390,9 @@ internal class AndroidHomeCoordinator(
                 val action = (data["action_id"] as? JsonPrimitive)?.contentOrNull.orEmpty()
                 val current = engine.currentState().ledger.firstOrNull { it.action.id == intent } ?: throw HomeException("Intent unavailable.")
                 require(current.authorizationMode == HomeAuthorizationMode.EXPLICIT_CONFIRMATION && current.authorizationOwner == owner && current.favoriteId == favorite && current.action.capabilityId == action)
-                engine.cancel(intent)
+                // A watch cannot unsend an action. Cancelling one already sent would only
+                // overwrite its result and stop the result check, so leave it alone.
+                if (current.status in pending) engine.cancel(intent)
             } else {
                 // The reply can be lost after prepare has already committed. Bind
                 // cancellation to that native intent even when the response cache

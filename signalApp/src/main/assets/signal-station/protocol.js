@@ -26,7 +26,11 @@ function createClient(options) {
       if (old.abort) old.abort();
       // XHR abort alone does not cancel a native coroutine.
       if (!fromNative && old.question && !old.questionSent) { /* Draft lifetime is explicit; navigation is not cancellation. */ }
-      else if (!fromNative && old.home) native('POST', 'home', Object.assign({},old.home,{kind:'home-cancel'}));
+      // Only an abandoned review holds a native intent worth cancelling. A sent
+      // confirmation cannot be unsent, and cancelling it would overwrite its
+      // result in the phone's ledger and stop the result check. Lists, details
+      // and handoffs hold nothing.
+      else if (!fromNative && old.home) { if (old.home.kind === 'home-review') native('POST', 'home', Object.assign({},old.home,{kind:'home-cancel'})); }
       else if (!fromNative && !old.history) native('POST', 'cancel', {request_id:old.id});
     }
   }
@@ -34,8 +38,15 @@ function createClient(options) {
     if (!valid(a)) return;
     if (a.timer) clear(a.timer);
     a.terminal = true;
-    if (a.home) return send({RequestId:a.id,Command:'home',HomeVersion:1,HomeMode:'result',HomeFavorite:a.home.favorite_id || '',ResponseText:'Home request unavailable. Check the phone.',Complete:1});
+    if (a.home) return send({RequestId:a.id,Command:'home',HomeVersion:1,HomeMode:'result',HomeFavorite:a.home.favorite_id || '',ResponseText:homeFailureText(a),Complete:1});
     send({RequestId:a.id, StatusText:message || 'Open Signal Station on your phone.', Complete:1});
+  }
+  // After a confirm leaves the watch, the action may have run. Never word a
+  // failure so that someone sends it again without checking.
+  function homeFailureText(a) {
+    if (a.home.kind !== 'home-confirm') return 'Home request unavailable. Check the phone.';
+    if (a.homePacket) return 'The phone has this action\'s result. Check it there before trying again.';
+    return 'The action may have been sent. Check your phone before trying again.';
   }
   function deliver(a) {
     if (!valid(a) || a.delivered) return;
