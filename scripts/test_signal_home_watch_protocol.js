@@ -3,7 +3,7 @@ const assert=require('assert'), fs=require('fs'), path=require('path');
 const protocol=require('../signalApp/src/main/assets/signal-station/protocol.js');
 function setup(negotiated=true){
  const h={messages:[],requests:[],timers:[],now:1000};
- h.client=protocol.createClient({now:()=>h.now,send:(p,done)=>{h.messages.push(p);done();},request:(method,url,body,done)=>{h.requests.push({method,url,body,done});return ()=>{};},setTimer:(fn,ms)=>{const t={fn,ms};h.timers.push(t);return t;},clearTimer:t=>t.cancelled=true});
+ h.client=protocol.createClient({now:()=>h.now,send:(p,done,failed)=>{h.messages.push(p);if(h.failSends){failed();return;}done();},request:(method,url,body,done)=>{h.requests.push({method,url,body,done});return ()=>{};},setTimer:(fn,ms)=>{const t={fn,ms};h.timers.push(t);return t;},clearTimer:t=>t.cancelled=true});
  if(negotiated){h.client.handle({RequestType:'ready',HomeVersion:1,QuestionReviewVersion:1});h.requests.at(-1).done(null,{home_version:1,question_review_version:1});}
  return h;
 }
@@ -59,6 +59,38 @@ test('older Home watch keeps reads but cannot review or confirm an action',()=>{
 });
 test('wire keys preserve all existing numeric values and append Home',()=>{
  const keys=require('../signalApp/src/main/assets/signal-station/message-keys.json');const names=['RequestType','RequestId','Prompt','SpeakerAvailable','Muted','ResponseText','StatusText','AudioExpected','AudioBegin','AudioChunk','AudioEnd','AudioAck','AudioSequence','Demo','Configured','VoiceEnabled','Volume','Snapshot','Command','Enabled','Complete','TextAck','ConfirmTranscript','ReducedMotion','BridgeReady','HomeVersion','HomePage','HomePages','HomeFavorite','HomeIntent','HomeAction','HomeExpires','HomeItems','HomeMode'];names.forEach((k,i)=>assert.equal(keys[k],10000+i));
+});
+test('a finished confirmation is not cancelled by the next watch request',()=>{
+ const h=setup();review(h);h.client.handle({RequestId:10,TextAck:1});send(h,11,'home-confirm',{HomeFavorite:'fav',HomeAction:'on',HomeIntent:'nonce'});
+ last(h).done(null,{mode:'result',favorite_id:'fav',text:'Done.'});h.client.handle({RequestId:11,TextAck:1});
+ send(h,12,'home-list',{HomePage:0});assert.equal(nativeHomes(h,'home-cancel').length,0);assert.equal(nativeHomes(h,'home-list').length,1);
+});
+test('a confirmation is never cancelled by the next request, with or without ACK, in flight or answered',()=>{
+ for(const answered of [false,true])for(const ack of [false,true]){
+  const h=setup();review(h);send(h,11,'home-confirm',{HomeFavorite:'fav',HomeAction:'on',HomeIntent:'nonce'});
+  if(answered)last(h).done(null,{mode:'result',favorite_id:'fav',text:'Done.'});if(ack)h.client.handle({RequestId:11,TextAck:1});
+  send(h,12,'home-list',{HomePage:0});assert.equal(nativeHomes(h,'home-cancel').length,0);assert.equal(nativeHomes(h,'home-confirm').length,1);
+  assert(!h.requests.some(r=>r.url.endsWith('/cancel')));
+ }
+});
+test('an abandoned review is still cancelled when the watch moves on',()=>{
+ const h=setup();review(h);send(h,12,'home-list',{HomePage:0});const cancels=nativeHomes(h,'home-cancel');assert.equal(cancels.length,1);assert.equal(cancels[0].body.request_id,10);assert.equal(cancels[0].body.intent_id,undefined);
+});
+test('leaving a list or detail sends no cancel of any kind',()=>{
+ const h=setup();send(h,10,'home-list',{HomePage:0});send(h,11,'home-open',{HomeFavorite:'fav'});send(h,12,'home-list',{HomePage:0});
+ assert.equal(nativeHomes(h,'home-cancel').length,0);assert(!h.requests.some(r=>r.url.endsWith('/cancel')));
+});
+test('a lost result after a confirmation never says Home was unavailable',()=>{
+ const h=setup();review(h);send(h,11,'home-confirm',{HomeFavorite:'fav',HomeAction:'on',HomeIntent:'nonce'});
+ h.failSends=true;last(h).done(null,{mode:'result',favorite_id:'fav',text:'Done.'});
+ const text=h.messages.at(-1).ResponseText;assert.equal(h.messages.at(-1).HomeMode,'result');assert(!/unavailable/i.test(text));assert(/before trying again/.test(text));
+});
+test('a failed confirmation request warns that the action may have run',()=>{
+ const h=setup();review(h);send(h,11,'home-confirm',{HomeFavorite:'fav',HomeAction:'on',HomeIntent:'nonce'});last(h).done('Network error');
+ const text=h.messages.at(-1).ResponseText;assert(/may have been sent/.test(text));assert(!/unavailable/i.test(text));
+});
+test('read requests keep the plain unavailable message',()=>{
+ const h=setup();send(h,10,'home-list',{HomePage:0});last(h).done('Network error');assert.equal(h.messages.at(-1).ResponseText,'Home request unavailable. Check the phone.');
 });
 // The historical PKJS has a separate compatibility contract. Its old immediate
 // Ask/confirm-wake assertions must not weaken the standalone review boundary.

@@ -259,6 +259,11 @@ class SignalHomeIntegrationTest {
             until { f.posts.size==2 }
             request(104,"home-confirm",intent)
             assertEquals(2,f.posts.size)
+            val sentEntry=f.entry(intent)
+            request(109,"home-cancel",intent) // A late watch cancel of a sent action keeps its result and result check.
+            assertFalse(f.entry(intent).cancelRequested)
+            assertEquals(sentEntry.message,f.entry(intent).message)
+            assertEquals(2,f.posts.size)
             val cancelledReview=request(105,"home-review")
             val cancelledIntent=cancelledReview["intent_id"]!!.jsonPrimitive.content
             request(105,"home-cancel") // Lost review response: no native intent ID available on the watch.
