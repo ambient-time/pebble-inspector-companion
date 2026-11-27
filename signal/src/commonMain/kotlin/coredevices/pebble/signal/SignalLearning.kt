@@ -65,7 +65,8 @@ data class SignalSourceStatus(
     val attempted: Boolean = false, val accepted: Int = 0, val omitted: Int = 0,
     val lastSuccessAt: Long? = null,
 )
-data class SignalDeletionPreview(val recordIds: Set<String>, val recordCount: Int, val memories: List<SignalMemory>, val memoryId: String? = null)
+/** [all] marks a delete-everything preview, re-read at confirmation so captures saved meanwhile are included. */
+data class SignalDeletionPreview(val recordIds: Set<String>, val recordCount: Int, val memories: List<SignalMemory>, val memoryId: String? = null, val all: Boolean = false)
 
 object SignalLearning {
     const val WINDOW_MILLIS = 28L * 24 * 60 * 60 * 1000

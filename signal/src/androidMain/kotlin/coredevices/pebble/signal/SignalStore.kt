@@ -118,6 +118,24 @@ class SignalStore(context: Context, private val namespace: String = "signal", pr
     suspend fun count() = dao.count()
     suspend fun thread(id: String, limit: Int = 100): List<SignalRecord> = dao.thread(opaqueIndex(id), Long.MAX_VALUE, limit.coerceIn(1, 200)).map(::decode)
     suspend fun threadIds(id: String): Set<String> = dao.threadIds(opaqueIndex(id)).toSet()
+    /**
+     * One page of matches, newest first. Decrypts at most [scan] rows per call, so a rare search term
+     * can't decrypt the whole history at once; [SignalRecordPage.cursor] continues from where it stopped.
+     */
+    suspend fun search(before: Long = Long.MAX_VALUE, limit: Int = 100, scan: Int = 1000, predicate: suspend (SignalRecord) -> Boolean): SignalRecordPage {
+        val result = mutableListOf<SignalRecord>(); var cursor = before; var scanned = 0
+        while (result.size < limit && scanned < scan) {
+            val rows = dao.page(cursor, minOf(100, scan - scanned))
+            if (rows.isEmpty()) return SignalRecordPage(result, 0, false)
+            for (row in rows) {
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                scanned++; cursor = row.position
+                val record = decode(row)
+                if (predicate(record)) { result += record; if (result.size >= limit) break }
+            }
+        }
+        return SignalRecordPage(result, cursor, dao.page(cursor, 1).isNotEmpty())
+    }
     suspend fun newest(limit: Int = 100, predicate: suspend (SignalRecord) -> Boolean): List<SignalRecord> {
         val result = mutableListOf<SignalRecord>(); var before = Long.MAX_VALUE
         do {

@@ -40,6 +40,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
     private val healthConnect by lazy { signalHealthConnectDeclared(context) }
     private val indexReady = CompletableDeferred<Unit>()
     private var historyCursor = Long.MAX_VALUE
+    private var historyQuery = ""
     private var historySearch: Job? = null
     private var historyGeneration = 0L
     private var learningJob: Job? = null
@@ -206,6 +207,9 @@ open class AndroidSignalStation(private val context: Context, protected val watc
         if (watchLink.watches.value.filter { it.connected }.any { it.id == selected && it.connectionId == runner.connectionId && it.appOpen } && trusted(runner))
             runCatching { runner.sendConfigMessage("{\"kind\":\"refresh\"}") }
     }
+    private suspend fun analysisAccessReady(provider: String): Boolean =
+        if (provider in SignalLocalModels.providers) provider in (localReadiness ?: localModels.ready).value
+        else !store.get(provider).isNullOrBlank()
     private suspend fun configured(): Set<String> = providerNames.filter { !store.get(it).isNullOrBlank() }.toSet() + (localReadiness ?: localModels.ready).value
     override fun updateSettings(settings: SignalSettings) = persistSettings(settings)
     override fun setHomeVisible(visible: Boolean) { if (mutable.value.initialized) home.setVisible(visible) }
@@ -735,7 +739,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
                     }
                 }
                 preparedLookup = null
-                mutable.update { it.copy(lookupReview = null, records = (listOf(record) + it.records).take(200), selectedRecordId = record.id,
+                mutable.update { it.copy(lookupReview = null, records = (listOf(record) + it.records).take(HISTORY_LOADED_MAX), selectedRecordId = record.id,
                     presenceStatus = if (readings.any { row -> row.status in setOf("candidate", "estimate", "coarse_estimate") }) "Lookup saved with its source capture. Review candidates before saving a place." else "Lookup unavailable. Original readings remain saved.") }
             }
             refreshPersonalState()
@@ -902,7 +906,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
             if (record.id in deletedIds || (token != null && token != generation)) return@withLock
             val normalized = SignalLearning.normalize(record)
             withContext(Dispatchers.IO) { store.save(normalized); if (mutable.value.settings.learningEnabled) learning.ingest(normalized, now()) }
-            mutable.update { it.copy(records = (listOf(normalized) + it.records.filterNot { previous -> previous.id == normalized.id }).sortedByDescending { row -> row.createdAt }.take(200),
+            mutable.update { it.copy(records = (listOf(normalized) + it.records.filterNot { previous -> previous.id == normalized.id }).sortedByDescending { row -> row.createdAt }.take(HISTORY_LOADED_MAX),
                 selectedRecord = if (it.selectedRecordId == normalized.id) normalized else it.selectedRecord) }
             if (record.id == activeRecord) activeRequest?.let { wireResults[it] = activeWatch to record }
             while (wireResults.size > 20) wireResults.remove(wireResults.keys.first())
@@ -1178,19 +1182,20 @@ open class AndroidSignalStation(private val context: Context, protected val watc
         persistence.withLock {
             if (ticket != observationGeneration || pendingSession?.id != id) return@withLock
             val old = mutable.value.observationSession?.takeIf { it.id == id && it.state == "running" } ?: return@withLock
-            val changes = withContext(Dispatchers.IO) {
+            // The sample, its comparison, learning and the session counters commit together, so a crash
+            // can't leave a saved sample missing from the session's counts. State is published after commit.
+            val (changes, next) = withContext(Dispatchers.IO) {
                 val previous = observationPreviousRecordId?.let { store.record(it) }
                 val changes = if (session.localAnalysis) SignalChanges.createScheduled(record, previous, selected, this@AndroidSignalStation.id(), now(), sourceNames()) else null
-                store.atomic { store.save(record); changes?.let { store.save(it) }; if (settings.learningEnabled) learning.ingest(record, now()) }
+                val next = old.copy(lastAttemptAt = now(), lastSuccessAt = if (readings.any(SignalLearning::fresh)) now() else old.lastSuccessAt,
+                    attempts = old.attempts + 1, captures = old.captures + 1,
+                    status = if (changes != null) "Sample and local change analysis saved. Missing readings remain unknown." else "Sample saved. Missing readings remain unknown.")
+                store.atomic { store.save(record); changes?.let { store.save(it) }; if (settings.learningEnabled) learning.ingest(record, now()); store.session(next) }
                 observationAnalysisPair = previous?.let { it to record }
-                changes
+                changes to next
             }
             observationPreviousRecordId = record.id
-            val next = old.copy(lastAttemptAt = now(), lastSuccessAt = if (readings.any(SignalLearning::fresh)) now() else old.lastSuccessAt,
-                attempts = old.attempts + 1, captures = old.captures + 1,
-                status = if (changes != null) "Sample and local change analysis saved. Missing readings remain unknown." else "Sample saved. Missing readings remain unknown.")
-            withContext(Dispatchers.IO) { store.session(next) }
-            mutable.update { it.copy(observationSession = next, status = next.status, records = (listOfNotNull(changes, record) + it.records).take(200)) }
+            mutable.update { it.copy(observationSession = next, status = next.status, records = (listOfNotNull(changes, record) + it.records).take(HISTORY_LOADED_MAX)) }
         }
         collectionDiagnostics(budget.observations, acquisitionStarted, "${session.mode}; wifi=${if (decision.activeWifi) "active_allowed" else "passive"}; deferred=${decision.deferred.size}")
         if (selected.any { it.startsWith("healthconnect.") } && now() - observationLastHealth >= 15 * 60_000L) {
@@ -1217,7 +1222,9 @@ open class AndroidSignalStation(private val context: Context, protected val watc
                 mutable.value.settings == settings && currentSettings == settings
             try {
                 if (!validSession()) throw CancellationException()
-                val evidence = SignalScheduledAnalysis.evidence(session, pair.first, pair.second, settings.enabled)
+                val evidence = if (session.analysisProvider in SignalLocalModels.providers)
+                    SignalScheduledAnalysis.localEvidence(session, pair.first, pair.second, settings.enabled, ANSWER_INSTRUCTIONS)
+                else SignalScheduledAnalysis.evidence(session, pair.first, pair.second, settings.enabled)
                 val messages = listOf("system" to ANSWER_INSTRUCTIONS, "user" to evidence)
                 providers.validateRequest(settings, messages)
                 val record = SignalRecord(this@AndroidSignalStation.id(), "observation:$id", now(), SignalScheduledAnalysis.question,
@@ -1231,7 +1238,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
                     if (!validSession()) throw CancellationException()
                     val unchanged = withContext(Dispatchers.IO) {
                         store.record(pair.first.id) == pair.first && store.record(pair.second.id) == pair.second &&
-                            !store.get(session.analysisProvider).isNullOrBlank()
+                            analysisAccessReady(session.analysisProvider)
                     }
                     if (!unchanged) throw SignalProviderException("Session evidence or provider access changed. This analysis was not sent.")
                     phase = "provider_response"
@@ -1328,7 +1335,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
                 provider = "local", model = "", state = "ready", kind = "health_sync", sessionId = sessionId,
                 sourceKeys = settings.enabled.filter { it.startsWith("healthconnect.") }.toSet(), references = retained)
             withContext(Dispatchers.IO) { store.save(receipt) }
-            mutable.update { it.copy(records = (listOf(receipt) + it.records).take(200)) }
+            mutable.update { it.copy(records = (listOf(receipt) + it.records).take(HISTORY_LOADED_MAX)) }
         }
     }
 
@@ -1659,37 +1666,54 @@ open class AndroidSignalStation(private val context: Context, protected val watc
         }
     }
 
-    private fun historyPage(before: Long, query: String = "") {
-        historySearch?.cancel(); val ticket = ++historyGeneration
+    /**
+     * Loads history a page at a time. Older pages are added to what is already shown (up to
+     * [HISTORY_LOADED_MAX] records); a search keeps paging from where its last bounded scan stopped.
+     */
+    private fun historyPage(before: Long, query: String = historyQuery, append: Boolean = false) {
+        historySearch?.cancel(); val ticket = ++historyGeneration; historyQuery = query
         mutable.update { it.copy(historyLoading = true) }
         historySearch = scope.launch {
             try {
                 initialized.await()
-                val page = withContext(Dispatchers.IO) {
-                    if (query.isBlank()) store.page(before)
-                    else SignalRecordPage(store.newest(100) { row -> query.trim().lowercase() in (row.question + " " + row.answer + " " + row.observations.joinToString { o -> o.key + " " + o.value }).lowercase() }, 0, false)
+                val needle = query.trim().lowercase()
+                val page = try {
+                    withContext(Dispatchers.IO) {
+                        if (needle.isEmpty()) store.page(before)
+                        else store.search(before) { row -> needle in (row.question + " " + row.answer + " " + row.observations.joinToString { o -> o.key + " " + o.value }).lowercase() }
+                    }
+                } catch (_: OutOfMemoryError) {
+                    if (ticket == historyGeneration) status("History is too large to load here. Search for fewer records.")
+                    return@launch
                 }
-                if (ticket == historyGeneration) { historyCursor = page.cursor; mutable.update { it.copy(records = page.records, historyHasMore = page.hasMore, historyLoading = false) } }
+                if (ticket == historyGeneration) {
+                    historyCursor = page.cursor
+                    mutable.update {
+                        val records = if (append) (it.records + page.records).distinctBy { record -> record.id }.take(HISTORY_LOADED_MAX) else page.records
+                        val capped = append && records.size >= HISTORY_LOADED_MAX
+                        it.copy(records = records, historyHasMore = page.hasMore && !capped, historyCapped = capped, historyLoading = false)
+                    }
+                }
             } finally { if (ticket == historyGeneration) mutable.update { it.copy(historyLoading = false) } }
         }
     }
-    override fun loadMoreHistory() { if (!mutable.value.historyLoading && mutable.value.historyHasMore) historyPage(historyCursor) }
+    override fun loadMoreHistory() { if (!mutable.value.historyLoading && mutable.value.historyHasMore) historyPage(historyCursor, historyQuery, append = true) }
     override fun searchSavedHistory(query: String) = historyPage(Long.MAX_VALUE, query.take(200))
     override fun previewDeleteRecords(ids: Set<String>?) {
-        stopObservation(); learningJob?.cancel(); historySearch?.cancel(); cancel()
+        learningJob?.cancel(); historySearch?.cancel()
         scope.launch {
             indexReady.await(); persistence.withLock {
                 val preview = withContext(Dispatchers.IO) {
                     val initial = ids ?: buildSet { store.walk { _, r -> add(r.id) }; store.sessions().forEach { add("s:${it.id}") }; store.savedQuestions().forEach { add("q:${it.id}") } }
                     val closure = store.deletionClosure(initial)
-                    SignalDeletionPreview(initial, closure.count { store.record(it) != null }, store.memory().filter { "m:${it.id}" in closure })
+                    SignalDeletionPreview(initial, closure.count { store.record(it) != null }, store.memory().filter { "m:${it.id}" in closure }, all = ids == null)
                 }
                 mutable.update { it.copy(deletionPreview = preview) }
             }
         }
     }
     override fun previewForgetMemory(id: String) {
-        stopObservation(); learningJob?.cancel(); cancel()
+        learningJob?.cancel()
         scope.launch {
             indexReady.await(); persistence.withLock {
                 val preview = withContext(Dispatchers.IO) {
@@ -1709,7 +1733,11 @@ open class AndroidSignalStation(private val context: Context, protected val watc
             indexReady.await(); persistence.withLock {
                 withContext(Dispatchers.IO) {
                     store.atomic {
-                        val closure = store.deletionClosure(preview.recordIds + listOfNotNull(preview.memoryId?.let { "m:$it" }))
+                        // A delete-everything preview is re-read now: a recording may have saved captures since it opened.
+                        val initial = if (!preview.all) preview.recordIds else buildSet {
+                            store.walk { _, r -> add(r.id) }; store.sessions().forEach { add("s:${it.id}") }; store.savedQuestions().forEach { add("q:${it.id}") }
+                        }
+                        val closure = store.deletionClosure(initial + listOfNotNull(preview.memoryId?.let { "m:$it" }))
                         val memories = store.memory().filter { "m:${it.id}" in closure }
                         val retained = memories.filter { it.id in keepAsNotes && it.state in setOf("confirmed", "note") }
                         deletedIds += closure

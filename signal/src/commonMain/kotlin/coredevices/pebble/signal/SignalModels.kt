@@ -148,6 +148,7 @@ data class SignalState(
     val sourceStatus: List<SignalSourceStatus> = emptyList(),
     val deletionPreview: SignalDeletionPreview? = null,
     val historyHasMore: Boolean = false,
+    val historyCapped: Boolean = false,
     val historyCount: Long = 0,
     val historyLoading: Boolean = false,
     val historyReady: Boolean = false,
@@ -327,3 +328,6 @@ data class SignalDiagnosticReport(
     val elapsedMs: Long = 0, val payloadBytes: Int = 0,
     val sourceOutcomes: Map<String, String> = emptyMap(), val scheduler: String = "",
 )
+
+/** Records kept in memory for the history screens; older ones stay in storage and in search. */
+internal const val HISTORY_LOADED_MAX = 1000

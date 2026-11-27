@@ -30,6 +30,11 @@ internal class GemmaDownloader(
 
     fun run(freeBytes: Long, onProgress: (bytes: Long) -> Unit, onVerifying: () -> Unit) {
         if (store.isInstalled()) return
+        // Before the free-space check: a model already in place needs no second copy's worth of space.
+        if (store.needsRecovery()) {
+            onVerifying()
+            if (store.recover(::checkCancelled)) return
+        }
         store.partial.parentFile?.mkdirs()
         var offset = store.partial.takeIf { it.isFile }?.length() ?: 0L
         if (offset > pinned.bytes) {
