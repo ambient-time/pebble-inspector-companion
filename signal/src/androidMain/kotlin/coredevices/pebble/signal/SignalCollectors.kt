@@ -3,6 +3,7 @@ package coredevices.pebble.signal
 import android.Manifest
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.ScanFilter
+import android.bluetooth.le.ScanRecord
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
@@ -84,7 +85,9 @@ class SignalCollectors(private val context: Context) {
         val fix = locationResult.await().fix()
         val coverage = listOf("bluetooth", "wifi").associateWith { radio ->
             val rows = readings.filter { it.key == radio }
-            if (rows.any { it.status == "fresh" }) "fresh" else rows.firstOrNull()?.status ?: "disabled"
+            // A limited scan is real but partial: an enrolled device it missed is unknown, not absent.
+            if (rows.any { it.fields["scanMode"] == "screen_off_limited" }) "screen_off_limited"
+            else if (rows.any { it.status == "fresh" }) "fresh" else rows.firstOrNull()?.status ?: "disabled"
         }
         val presence = SignalPresence.observations(settings.enabled, settings.presenceTargets, settings.placeFences,
             candidates, coverage, fix, System.currentTimeMillis())
@@ -259,11 +262,18 @@ class SignalCollectors(private val context: Context) {
         }
         val targets = settings.presenceTargets.filter { it.enabled && it.radio == "bluetooth" }
         val filtered = settings.enabled.none { it == "bluetooth" || it.startsWith("bluetooth.") } && targets.isNotEmpty() && targets.all { it.beaconId.isBlank() }
-        val filters = if (filtered) targets.map { ScanFilter.Builder().setDeviceAddress(it.address).build() } else null
+        // Android stops unfiltered scans while the screen is off. On Android 13 and later, filters on
+        // advertisement fields still see most advertisers; earlier versions see nothing. Either way the
+        // scan is partial, and is labelled so an empty or short list is not read as absence.
+        val limited = !filtered && !context.getSystemService(PowerManager::class.java).isInteractive
+        val filters = if (filtered) targets.map { ScanFilter.Builder().setDeviceAddress(it.address).build() }
+            else if (limited && Build.VERSION.SDK_INT >= 33) listOf(ScanRecord.DATA_TYPE_FLAGS, ScanRecord.DATA_TYPE_MANUFACTURER_SPECIFIC_DATA).map { ScanFilter.Builder().setAdvertisingDataType(it).build() }
+            else null
         try { scanner.startScan(filters, ScanSettings.Builder().setScanMode(if (filtered) ScanSettings.SCAN_MODE_LOW_POWER else ScanSettings.SCAN_MODE_LOW_LATENCY).build(), callback); delay(5_000) }
         finally { runCatching { scanner.stopScan(callback) } }
         if (failure.get() != 0) return RadioProbe(unavailable(keys, if (failure.get() == -1) "permission_denied" else "scan_failed_${failure.get()}"))
         val ordered = synchronized(results) { results.values.sortedByDescending { it.result.rssi } }
+        if (ordered.isEmpty() && limited) return RadioProbe(keys.map { observation(it, "The screen was off, so Android limited this Bluetooth scan and none were seen. Devices may be nearby.", status = "screen_off_limited").copy(fields = mapOf("scanMode" to "screen_off_limited")) })
         if (ordered.isEmpty()) return RadioProbe(keys.map { observation(it, "No advertisements observed in five seconds; this does not prove no devices are nearby.", status = "empty_observation") })
         val candidates = ordered.map { retained ->
             val (count, median) = retained.window.summary(SystemClock.elapsedRealtime())
@@ -278,15 +288,15 @@ class SignalCollectors(private val context: Context) {
             buildList {
                 if ("bluetooth" in enabled) add(observation("bluetooth", "observation=$index; rssi=${result.rssi}; samples=$count; medianRssi=${median ?: "unknown"}; txPower=${result.scanRecord?.txPowerLevel?.takeUnless { it == Int.MIN_VALUE } ?: "unknown"}", "dBm", measuredAt = at).copy(metric = "rssi", number = result.rssi.toDouble(), sampleCount = count,
                     fields = mapOf("slot" to index.toString(), "medianRssi" to (median?.toString() ?: "unknown"), "firstSeenAt" to (retained.firstSeenAt?.toString() ?: "unknown"),
-                        "lastSeenAt" to (at?.toString() ?: "unknown"), "scanMode" to if (filtered) "enrolled_filtered" else "broad")))
+                        "lastSeenAt" to (at?.toString() ?: "unknown"), "scanMode" to if (filtered) "enrolled_filtered" else if (limited) "screen_off_limited" else "broad")))
                 if ("bluetooth.names" in enabled) add(observation("bluetooth.names", "observation=$index; name=${result.scanRecord?.deviceName.orEmpty().take(100)}", measuredAt = at).copy(fields = mapOf("slot" to index.toString(), "name" to result.scanRecord?.deviceName.orEmpty().take(100))))
                 if ("bluetooth.identifiers" in enabled) add(observation("bluetooth.identifiers", "observation=$index; address=${result.device.address}${retained.metadata.identity.takeIf { it.isNotBlank() }?.let { "; beacon=$it" }.orEmpty()}", measuredAt = at).copy(fields = mapOf("slot" to index.toString(), "address" to result.device.address, "beacon" to retained.metadata.identity)))
                 if ("bluetooth.services" in enabled) add(observation("bluetooth.services", "observation=$index; services=${result.scanRecord?.serviceUuids.orEmpty().take(12)}; metadata=${retained.metadata.description}", measuredAt = at).copy(fields = mapOf("slot" to index.toString(), "services" to result.scanRecord?.serviceUuids.orEmpty().take(12).joinToString(), "metadata" to retained.metadata.description)))
             }
         }
         val omitted = (seen.size - ordered.size).coerceAtLeast(0)
-        return RadioProbe(output + keys.map { observation(it, "scanSeconds=5; retained=${ordered.size}; omittedAtLeast=$omitted")
-            .copy(metric = "coverage", fields = mapOf("retained" to ordered.size.toString(), "omitted" to omitted.toString())) }, candidates)
+        return RadioProbe(output + keys.map { observation(it, "scanSeconds=5; retained=${ordered.size}; omittedAtLeast=$omitted${if (limited) "; screen off, so Android limited the scan" else ""}")
+            .copy(metric = "coverage", fields = mapOf("retained" to ordered.size.toString(), "omitted" to omitted.toString(), "scanMode" to if (limited) "screen_off_limited" else if (filtered) "enrolled_filtered" else "broad")) }, candidates)
     }
 
     @Suppress("DEPRECATION")

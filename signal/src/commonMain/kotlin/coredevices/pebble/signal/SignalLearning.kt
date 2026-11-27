@@ -55,6 +55,8 @@ data class SignalObservationSession(
     val analysisProvider: String = "",
     val analysisModel: String = "",
     val analysisEndpoint: String = "",
+    /** Fixed-interval slots that passed with no sample, for example while Android kept the phone asleep. */
+    val missedSlots: Int = 0,
 )
 
 data class SignalSourceStatus(

@@ -1126,6 +1126,15 @@ open class AndroidSignalStation(private val context: Context, protected val watc
             withContext(Dispatchers.IO) { store.session(next) }; mutable.update { it.copy(observationSession = next) }
         }
     }
+    suspend fun observationMissed(id: String, missed: Int) {
+        if (missed <= 0) return
+        persistence.withLock {
+            val old = mutable.value.observationSession?.takeIf { it.id == id && it.state in setOf("running", "paused") } ?: return@withLock
+            val total = old.missedSlots + missed
+            val next = old.copy(missedSlots = total, status = "${if (total == 1) "1 scheduled sample was" else "$total scheduled samples were"} missed while the phone was asleep or busy. Each saved capture keeps its real time.")
+            withContext(Dispatchers.IO) { store.session(next) }; mutable.update { it.copy(observationSession = next) }
+        }
+    }
     suspend fun collectObservation(id: String) {
         val session = mutable.value.observationSession?.takeIf { it.id == id && it.state == "running" } ?: return
         if (mutable.value.busy) { observationStatus(id, "running", "Skipped this sample while another request was running."); return }
