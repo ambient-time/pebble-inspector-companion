@@ -1181,18 +1181,19 @@ open class AndroidSignalStation(private val context: Context, protected val watc
         persistence.withLock {
             if (ticket != observationGeneration || pendingSession?.id != id) return@withLock
             val old = mutable.value.observationSession?.takeIf { it.id == id && it.state == "running" } ?: return@withLock
-            val changes = withContext(Dispatchers.IO) {
+            // The sample, its comparison, learning and the session counters commit together, so a crash
+            // can't leave a saved sample missing from the session's counts. State is published after commit.
+            val (changes, next) = withContext(Dispatchers.IO) {
                 val previous = observationPreviousRecordId?.let { store.record(it) }
                 val changes = if (session.localAnalysis) SignalChanges.createScheduled(record, previous, selected, this@AndroidSignalStation.id(), now(), sourceNames()) else null
-                store.atomic { store.save(record); changes?.let { store.save(it) }; if (settings.learningEnabled) learning.ingest(record, now()) }
+                val next = old.copy(lastAttemptAt = now(), lastSuccessAt = if (readings.any(SignalLearning::fresh)) now() else old.lastSuccessAt,
+                    attempts = old.attempts + 1, captures = old.captures + 1,
+                    status = if (changes != null) "Sample and local change analysis saved. Missing readings remain unknown." else "Sample saved. Missing readings remain unknown.")
+                store.atomic { store.save(record); changes?.let { store.save(it) }; if (settings.learningEnabled) learning.ingest(record, now()); store.session(next) }
                 observationAnalysisPair = previous?.let { it to record }
-                changes
+                changes to next
             }
             observationPreviousRecordId = record.id
-            val next = old.copy(lastAttemptAt = now(), lastSuccessAt = if (readings.any(SignalLearning::fresh)) now() else old.lastSuccessAt,
-                attempts = old.attempts + 1, captures = old.captures + 1,
-                status = if (changes != null) "Sample and local change analysis saved. Missing readings remain unknown." else "Sample saved. Missing readings remain unknown.")
-            withContext(Dispatchers.IO) { store.session(next) }
             mutable.update { it.copy(observationSession = next, status = next.status, records = (listOfNotNull(changes, record) + it.records).take(200)) }
         }
         collectionDiagnostics(budget.observations, acquisitionStarted, "${session.mode}; wifi=${if (decision.activeWifi) "active_allowed" else "passive"}; deferred=${decision.deferred.size}")
