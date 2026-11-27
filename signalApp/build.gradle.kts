@@ -98,7 +98,11 @@ android {
     }
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8 shrinks and optimizes the release build (F-Droid reviewers ask for it). Keep rules
+            // for reflection and JNI users are in proguard-rules.pro; libraries ship their own.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // Phones are 64-bit ARM. The other six ABIs added 57 MB for emulators,
             // Chromebooks and 32-bit phones; Gemma has no 32-bit library at all.
             // Debug builds keep every ABI for x86 emulators.
