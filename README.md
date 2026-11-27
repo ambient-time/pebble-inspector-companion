@@ -134,9 +134,7 @@ See [public source access](docs/signal-station/open-source.md) for repository an
 
 Upstream software by [Core Devices](https://github.com/coredevices/mobileapp).
 
-## Around here
+## Related
 
-[Luke Steuber](https://github.com/lukeslp) · [Data Poems](https://github.com/data-poems) · [Ambient Time](https://github.com/ambient-time) · [Actually Useful AI](https://github.com/actually-useful-ai) · [One Impossible Thing](https://github.com/one-impossible-thing)
-
-Made by [Luke Steuber](https://lukesteuber.com). Questions or collaboration:
-[luke@lukesteuber.com](mailto:luke@lukesteuber.com).
+- [Field Inspector](https://github.com/ambient-time/pebble-field-inspector)
+- [Signal Station download](https://dr.eamer.dev/downloads/apps/signal-station/)
