@@ -206,6 +206,9 @@ open class AndroidSignalStation(private val context: Context, protected val watc
         if (watchLink.watches.value.filter { it.connected }.any { it.id == selected && it.connectionId == runner.connectionId && it.appOpen } && trusted(runner))
             runCatching { runner.sendConfigMessage("{\"kind\":\"refresh\"}") }
     }
+    private suspend fun analysisAccessReady(provider: String): Boolean =
+        if (provider in SignalLocalModels.providers) provider in (localReadiness ?: localModels.ready).value
+        else !store.get(provider).isNullOrBlank()
     private suspend fun configured(): Set<String> = providerNames.filter { !store.get(it).isNullOrBlank() }.toSet() + (localReadiness ?: localModels.ready).value
     override fun updateSettings(settings: SignalSettings) = persistSettings(settings)
     override fun setHomeVisible(visible: Boolean) { if (mutable.value.initialized) home.setVisible(visible) }
@@ -1217,7 +1220,9 @@ open class AndroidSignalStation(private val context: Context, protected val watc
                 mutable.value.settings == settings && currentSettings == settings
             try {
                 if (!validSession()) throw CancellationException()
-                val evidence = SignalScheduledAnalysis.evidence(session, pair.first, pair.second, settings.enabled)
+                val evidence = if (session.analysisProvider in SignalLocalModels.providers)
+                    SignalScheduledAnalysis.localEvidence(session, pair.first, pair.second, settings.enabled, ANSWER_INSTRUCTIONS)
+                else SignalScheduledAnalysis.evidence(session, pair.first, pair.second, settings.enabled)
                 val messages = listOf("system" to ANSWER_INSTRUCTIONS, "user" to evidence)
                 providers.validateRequest(settings, messages)
                 val record = SignalRecord(this@AndroidSignalStation.id(), "observation:$id", now(), SignalScheduledAnalysis.question,
@@ -1231,7 +1236,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
                     if (!validSession()) throw CancellationException()
                     val unchanged = withContext(Dispatchers.IO) {
                         store.record(pair.first.id) == pair.first && store.record(pair.second.id) == pair.second &&
-                            !store.get(session.analysisProvider).isNullOrBlank()
+                            analysisAccessReady(session.analysisProvider)
                     }
                     if (!unchanged) throw SignalProviderException("Session evidence or provider access changed. This analysis was not sent.")
                     phase = "provider_response"
