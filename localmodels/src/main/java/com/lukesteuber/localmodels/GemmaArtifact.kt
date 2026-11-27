@@ -29,6 +29,27 @@ internal class GemmaModelStore(directory: File, private val pinned: PinnedModel 
     fun isInstalled(): Boolean = model.isFile && model.length() == pinned.bytes &&
         receipt.isFile && runCatching { receipt.readText() == receiptText() }.getOrDefault(false)
 
+    /** A full-size model without a valid receipt: activation was interrupted after the move. */
+    fun needsRecovery(): Boolean = !isInstalled() && model.isFile && model.length() == pinned.bytes
+
+    /**
+     * Re-checks a model that was moved into place but never got its receipt, so a verified 2.59 GB
+     * file isn't downloaded again. Returns false (and deletes it) when the file doesn't verify.
+     */
+    fun recover(checkCancelled: () -> Unit): Boolean {
+        try {
+            pinned.verify(model, checkCancelled)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: IllegalStateException) {
+            model.delete()
+            return false
+        }
+        checkCancelled()
+        writeReceipt()
+        return true
+    }
+
     /** Checks the finished transfer and swaps it into place atomically. */
     fun activate(checkCancelled: () -> Unit) {
         try {
@@ -45,6 +66,10 @@ internal class GemmaModelStore(directory: File, private val pinned: PinnedModel 
         checkCancelled()
         model.parentFile?.mkdirs()
         Files.move(partial.toPath(), model.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        writeReceipt()
+    }
+
+    private fun writeReceipt() {
         val pending = File(receipt.parentFile, "${receipt.name}.new")
         pending.writeText(receiptText())
         Files.move(pending.toPath(), receipt.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
