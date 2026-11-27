@@ -377,6 +377,7 @@ internal fun SignalSessionsPage(state: SignalState, station: SignalStation, onSo
                 if (state.historyHasMore) OutlinedButton(onClick = station::loadMoreHistory, enabled = !state.busy && !state.historyLoading) {
                     Text(if (state.historyLoading) "Loading older activity…" else "Load older activity")
                 }
+                if (state.historyCapped) Text("Showing the ${HISTORY_LOADED_MAX} most recently loaded records. Search History to find older ones.", style = MaterialTheme.typography.bodySmall)
             }
         }
     }

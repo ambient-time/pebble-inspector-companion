@@ -40,6 +40,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
     private val healthConnect by lazy { signalHealthConnectDeclared(context) }
     private val indexReady = CompletableDeferred<Unit>()
     private var historyCursor = Long.MAX_VALUE
+    private var historyQuery = ""
     private var historySearch: Job? = null
     private var historyGeneration = 0L
     private var learningJob: Job? = null
@@ -738,7 +739,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
                     }
                 }
                 preparedLookup = null
-                mutable.update { it.copy(lookupReview = null, records = (listOf(record) + it.records).take(200), selectedRecordId = record.id,
+                mutable.update { it.copy(lookupReview = null, records = (listOf(record) + it.records).take(HISTORY_LOADED_MAX), selectedRecordId = record.id,
                     presenceStatus = if (readings.any { row -> row.status in setOf("candidate", "estimate", "coarse_estimate") }) "Lookup saved with its source capture. Review candidates before saving a place." else "Lookup unavailable. Original readings remain saved.") }
             }
             refreshPersonalState()
@@ -905,7 +906,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
             if (record.id in deletedIds || (token != null && token != generation)) return@withLock
             val normalized = SignalLearning.normalize(record)
             withContext(Dispatchers.IO) { store.save(normalized); if (mutable.value.settings.learningEnabled) learning.ingest(normalized, now()) }
-            mutable.update { it.copy(records = (listOf(normalized) + it.records.filterNot { previous -> previous.id == normalized.id }).sortedByDescending { row -> row.createdAt }.take(200),
+            mutable.update { it.copy(records = (listOf(normalized) + it.records.filterNot { previous -> previous.id == normalized.id }).sortedByDescending { row -> row.createdAt }.take(HISTORY_LOADED_MAX),
                 selectedRecord = if (it.selectedRecordId == normalized.id) normalized else it.selectedRecord) }
             if (record.id == activeRecord) activeRequest?.let { wireResults[it] = activeWatch to record }
             while (wireResults.size > 20) wireResults.remove(wireResults.keys.first())
@@ -1194,7 +1195,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
                 changes to next
             }
             observationPreviousRecordId = record.id
-            mutable.update { it.copy(observationSession = next, status = next.status, records = (listOfNotNull(changes, record) + it.records).take(200)) }
+            mutable.update { it.copy(observationSession = next, status = next.status, records = (listOfNotNull(changes, record) + it.records).take(HISTORY_LOADED_MAX)) }
         }
         collectionDiagnostics(budget.observations, acquisitionStarted, "${session.mode}; wifi=${if (decision.activeWifi) "active_allowed" else "passive"}; deferred=${decision.deferred.size}")
         if (selected.any { it.startsWith("healthconnect.") } && now() - observationLastHealth >= 15 * 60_000L) {
@@ -1334,7 +1335,7 @@ open class AndroidSignalStation(private val context: Context, protected val watc
                 provider = "local", model = "", state = "ready", kind = "health_sync", sessionId = sessionId,
                 sourceKeys = settings.enabled.filter { it.startsWith("healthconnect.") }.toSet(), references = retained)
             withContext(Dispatchers.IO) { store.save(receipt) }
-            mutable.update { it.copy(records = (listOf(receipt) + it.records).take(200)) }
+            mutable.update { it.copy(records = (listOf(receipt) + it.records).take(HISTORY_LOADED_MAX)) }
         }
     }
 
@@ -1665,21 +1666,38 @@ open class AndroidSignalStation(private val context: Context, protected val watc
         }
     }
 
-    private fun historyPage(before: Long, query: String = "") {
-        historySearch?.cancel(); val ticket = ++historyGeneration
+    /**
+     * Loads history a page at a time. Older pages are added to what is already shown (up to
+     * [HISTORY_LOADED_MAX] records); a search keeps paging from where its last bounded scan stopped.
+     */
+    private fun historyPage(before: Long, query: String = historyQuery, append: Boolean = false) {
+        historySearch?.cancel(); val ticket = ++historyGeneration; historyQuery = query
         mutable.update { it.copy(historyLoading = true) }
         historySearch = scope.launch {
             try {
                 initialized.await()
-                val page = withContext(Dispatchers.IO) {
-                    if (query.isBlank()) store.page(before)
-                    else SignalRecordPage(store.newest(100) { row -> query.trim().lowercase() in (row.question + " " + row.answer + " " + row.observations.joinToString { o -> o.key + " " + o.value }).lowercase() }, 0, false)
+                val needle = query.trim().lowercase()
+                val page = try {
+                    withContext(Dispatchers.IO) {
+                        if (needle.isEmpty()) store.page(before)
+                        else store.search(before) { row -> needle in (row.question + " " + row.answer + " " + row.observations.joinToString { o -> o.key + " " + o.value }).lowercase() }
+                    }
+                } catch (_: OutOfMemoryError) {
+                    if (ticket == historyGeneration) status("History is too large to load here. Search for fewer records.")
+                    return@launch
                 }
-                if (ticket == historyGeneration) { historyCursor = page.cursor; mutable.update { it.copy(records = page.records, historyHasMore = page.hasMore, historyLoading = false) } }
+                if (ticket == historyGeneration) {
+                    historyCursor = page.cursor
+                    mutable.update {
+                        val records = if (append) (it.records + page.records).distinctBy { record -> record.id }.take(HISTORY_LOADED_MAX) else page.records
+                        val capped = append && records.size >= HISTORY_LOADED_MAX
+                        it.copy(records = records, historyHasMore = page.hasMore && !capped, historyCapped = capped, historyLoading = false)
+                    }
+                }
             } finally { if (ticket == historyGeneration) mutable.update { it.copy(historyLoading = false) } }
         }
     }
-    override fun loadMoreHistory() { if (!mutable.value.historyLoading && mutable.value.historyHasMore) historyPage(historyCursor) }
+    override fun loadMoreHistory() { if (!mutable.value.historyLoading && mutable.value.historyHasMore) historyPage(historyCursor, historyQuery, append = true) }
     override fun searchSavedHistory(query: String) = historyPage(Long.MAX_VALUE, query.take(200))
     override fun previewDeleteRecords(ids: Set<String>?) {
         learningJob?.cancel(); historySearch?.cancel()
