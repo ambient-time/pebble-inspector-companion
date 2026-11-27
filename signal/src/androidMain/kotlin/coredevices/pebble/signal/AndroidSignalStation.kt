@@ -1676,20 +1676,20 @@ open class AndroidSignalStation(private val context: Context, protected val watc
     override fun loadMoreHistory() { if (!mutable.value.historyLoading && mutable.value.historyHasMore) historyPage(historyCursor) }
     override fun searchSavedHistory(query: String) = historyPage(Long.MAX_VALUE, query.take(200))
     override fun previewDeleteRecords(ids: Set<String>?) {
-        stopObservation(); learningJob?.cancel(); historySearch?.cancel(); cancel()
+        learningJob?.cancel(); historySearch?.cancel()
         scope.launch {
             indexReady.await(); persistence.withLock {
                 val preview = withContext(Dispatchers.IO) {
                     val initial = ids ?: buildSet { store.walk { _, r -> add(r.id) }; store.sessions().forEach { add("s:${it.id}") }; store.savedQuestions().forEach { add("q:${it.id}") } }
                     val closure = store.deletionClosure(initial)
-                    SignalDeletionPreview(initial, closure.count { store.record(it) != null }, store.memory().filter { "m:${it.id}" in closure })
+                    SignalDeletionPreview(initial, closure.count { store.record(it) != null }, store.memory().filter { "m:${it.id}" in closure }, all = ids == null)
                 }
                 mutable.update { it.copy(deletionPreview = preview) }
             }
         }
     }
     override fun previewForgetMemory(id: String) {
-        stopObservation(); learningJob?.cancel(); cancel()
+        learningJob?.cancel()
         scope.launch {
             indexReady.await(); persistence.withLock {
                 val preview = withContext(Dispatchers.IO) {
@@ -1709,7 +1709,11 @@ open class AndroidSignalStation(private val context: Context, protected val watc
             indexReady.await(); persistence.withLock {
                 withContext(Dispatchers.IO) {
                     store.atomic {
-                        val closure = store.deletionClosure(preview.recordIds + listOfNotNull(preview.memoryId?.let { "m:$it" }))
+                        // A delete-everything preview is re-read now: a recording may have saved captures since it opened.
+                        val initial = if (!preview.all) preview.recordIds else buildSet {
+                            store.walk { _, r -> add(r.id) }; store.sessions().forEach { add("s:${it.id}") }; store.savedQuestions().forEach { add("q:${it.id}") }
+                        }
+                        val closure = store.deletionClosure(initial + listOfNotNull(preview.memoryId?.let { "m:$it" }))
                         val memories = store.memory().filter { "m:${it.id}" in closure }
                         val retained = memories.filter { it.id in keepAsNotes && it.state in setOf("confirmed", "note") }
                         deletedIds += closure
