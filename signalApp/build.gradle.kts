@@ -99,6 +99,10 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            // Phones are 64-bit ARM. The other six ABIs added 57 MB for emulators,
+            // Chromebooks and 32-bit phones; Gemma has no 32-bit library at all.
+            // Debug builds keep every ABI for x86 emulators.
+            ndk { abiFilters += "arm64-v8a" }
             if (releaseSigningAvailable) signingConfig = signingConfigs.getByName("release")
         }
     }
